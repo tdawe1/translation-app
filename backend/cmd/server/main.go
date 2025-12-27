@@ -52,6 +52,9 @@ func main() {
 	}
 	authHandler := handlers.NewAuthHandler(jwtSecret)
 
+	webhookSecret := os.Getenv("LEMONSQUEZY_WEBHOOK_SECRET")
+	lemonHandler := handlers.NewLemonSqueezyHandler(webhookSecret)
+
 	// Health check
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -73,6 +76,10 @@ func main() {
 	protected := api.Group("/")
 	protected.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
 	protected.Get("/me", authHandler.GetMe)
+
+	// Webhook routes (public, verified via signature)
+	webhooks := api.Group("/webhooks")
+	webhooks.Post("/lemonsqueezy", lemonHandler.HandleWebhook)
 
 	// Start server
 	port := os.Getenv("PORT")
