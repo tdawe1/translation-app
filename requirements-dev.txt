@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Additional development tools
+ipython>=8.18.0
+ipdb>=0.13.13
+watchdog>=3.0.0
