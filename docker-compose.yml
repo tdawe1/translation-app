@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:17-alpine
     container_name: gengowatcher-postgres
     environment:
       POSTGRES_DB: gengowatcher
@@ -19,7 +19,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     container_name: gengowatcher-redis
     command: redis-server --appendonly yes
     ports:
@@ -38,6 +38,24 @@ services:
     ports:
       - "1025:1025"  # SMTP
       - "8025:8025"  # Web UI
+
+  # Go backend service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gengowatcher-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgres://gengo:devpass@postgres:5432/gengowatcher
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=dev-secret-change-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:

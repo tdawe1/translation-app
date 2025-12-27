@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "IBM Plex Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  --color-red-50: oklch(0.95 0.01 25);
+  --color-orange-50: oklch(0.95 0.02 55);
+  --color-yellow-50: oklch(0.95 0.03 85);
+  --color-green-50: oklch(0.95 0.03 145);
+  --color-cyan-50: oklch(0.95 0.02 200);
+  --color-blue-50: oklch(0.95 0.02 250);
+  --color-indigo-50: oklch(0.95 0.03 280);
+  --color-violet-50: oklch(0.95 0.04 310);
+}
+
+body {
+  font-family: var(--font-display);
+}
+
+/* Data Factory: Bento cards, precision hover, no shadow lift */
+.bento-card {
+  background: #ffffff;
+  border: 1px solid rgb(229, 229, 229);
+  border-radius: 0;
+  transition: border-color 0.15s ease;
+}
+
+.bento-card:hover {
+  border-color: rgb(59, 130, 246);
+}
