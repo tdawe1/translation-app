@@ -38,8 +38,14 @@ func main() {
 	// Middleware
 	app.Use(recover.New())
 	app.Use(logger.New())
+
+	allowOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if allowOrigins == "" {
+		allowOrigins = "http://localhost:3000"
+	}
+
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:3000,http://localhost:3001",
+		AllowOrigins:     allowOrigins,
 		AllowCredentials: true,
 		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
 		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS",
@@ -48,7 +54,7 @@ func main() {
 	// Initialize handlers
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		jwtSecret = "dev-secret-change-in-production"
+		log.Fatal("JWT_SECRET environment variable is required")
 	}
 	authHandler := handlers.NewAuthHandler(jwtSecret)
 
