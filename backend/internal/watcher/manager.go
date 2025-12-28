@@ -21,7 +21,7 @@ type Job struct {
 	Reward float64 `json:"reward"`
 	URL    string  `json:"url"`
 	Source string  `json:"source"` // "rss" or "websocket"
-	UserID string  `json:"user_id"`
+	UserID uuid.UUID `json:"user_id"`
 }
 
 // WatcherInstance represents an active watcher for a user
@@ -39,7 +39,7 @@ type WatcherInstance struct {
 
 // UserWatcherManager manages per-user watcher instances
 type UserWatcherManager struct {
-	db       *models.DB
+	db       *gorm.DB
 	redis    *redis.Client
 	watchers map[uuid.UUID]*WatcherInstance
 	mu       sync.RWMutex
@@ -47,7 +47,7 @@ type UserWatcherManager struct {
 }
 
 // NewUserWatcherManager creates a new watcher manager
-func NewUserWatcherManager(db *models.DB, redisClient *redis.Client) *UserWatcherManager {
+func NewUserWatcherManager(db *gorm.DB, redisClient *redis.Client) *UserWatcherManager {
 	return &UserWatcherManager{
 		db:       db,
 		redis:    redisClient,
@@ -155,22 +155,32 @@ func (m *UserWatcherManager) GetStatus(userID uuid.UUID) (string, error) {
 
 // runWatcher runs the monitoring loop for a watcher instance
 func (m *UserWatcherManager) runWatcher(instance *WatcherInstance) {
+	// Create job channel for this instance
+	jobChan := make(chan Job, 100)
+
 	// Start RSS monitor
 	go func() {
-		if err := instance.RSS.Start(instance.Context, m.handleJob); err != nil {
+		if err := instance.RSS.Start(instance.Context, jobChan); err != nil {
 			m.publishError(instance.UserID, err.Error())
 		}
 	}()
 
 	// Start WebSocket monitor
 	go func() {
-		if err := instance.WebSocket.Start(instance.Context, m.handleJob); err != nil {
+		if err := instance.WebSocket.Start(instance.Context, jobChan); err != nil {
 			m.publishError(instance.UserID, err.Error())
 		}
 	}()
 
-	// Wait for cancellation
-	<-instance.Context.Done()
+	// Process jobs from channel
+	for {
+		select {
+		case <-instance.Context.Done():
+			return
+		case job := <-jobChan:
+			m.handleJob(job)
+		}
+	}
 }
 
 // handleJob processes a new job
@@ -205,7 +215,8 @@ func (m *UserWatcherManager) isJobSeen(userID uuid.UUID, jobID string) bool {
 	key := fmt.Sprintf("user:%s:seen_jobs", userID)
 
 	// Use Redis SISMEMBER to check if job ID exists
-	result := m.redis.SIsMember(m.Context(), key, jobID)
+	ctx := context.Background()
+	result := m.redis.SIsMember(ctx, key, jobID)
 	if result.Err() != nil {
 		return false
 	}
@@ -215,8 +226,9 @@ func (m *UserWatcherManager) isJobSeen(userID uuid.UUID, jobID string) bool {
 
 // recordJob records a job as seen
 func (m *UserWatcherManager) recordJob(job Job) {
+	ctx := context.Background()
 	key := fmt.Sprintf("user:%s:seen_jobs", job.UserID)
-	m.redis.SAdd(m.Context(), key, job.ID)
+	m.redis.SAdd(ctx, key, job.ID)
 
 	// Also update in database
 	var state models.WatcherState
@@ -237,21 +249,24 @@ func (m *UserWatcherManager) incrementJobCount(userID uuid.UUID) {
 
 // publishJob publishes a job to the user's Redis channel
 func (m *UserWatcherManager) publishJob(job Job) {
+	ctx := context.Background()
 	channel := fmt.Sprintf("user:%s:jobs", job.UserID)
 	jobData, _ := json.Marshal(job)
-	m.redis.Publish(m.Context(), channel, jobData)
+	m.redis.Publish(ctx, channel, jobData)
 }
 
 // publishEvent publishes an event to the user's Redis channel
 func (m *UserWatcherManager) publishEvent(userID uuid.UUID, event string) {
+	ctx := context.Background()
 	channel := fmt.Sprintf("user:%s:events", userID)
-	m.redis.Publish(m.Context(), channel, fmt.Sprintf(`{"type":"%s"}`, event))
+	m.redis.Publish(ctx, channel, fmt.Sprintf(`{"type":"%s"}`, event))
 }
 
 // publishError publishes an error to the user's Redis channel
 func (m *UserWatcherManager) publishError(userID uuid.UUID, errMsg string) {
+	ctx := context.Background()
 	channel := fmt.Sprintf("user:%s:errors", userID)
-	m.redis.Publish(m.Context(), channel, fmt.Sprintf(`{"error":"%s"}`, errMsg))
+	m.redis.Publish(ctx, channel, fmt.Sprintf(`{"error":"%s"}`, errMsg))
 }
 
 // updateState updates the watcher state in the database

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -49,26 +50,26 @@ func InitDB(config *Config) error {
 	}
 
 	// Configure GORM logger
+	logLevel := logger.Silent
+	if os.Getenv("ENV") == "development" {
+		logLevel = logger.Info
+	}
+
 	gormLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
 		logger.Config{
 			SlowThreshold:             200,
-			LogLevel:                  logger.Silent,
+			LogLevel:                  logLevel,
 			IgnoreRecordNotFoundError: true,
 			Colorful:                  false,
 		},
 	)
 
-	// Set log level based on environment
-	if os.Getenv("ENV") == "development" {
-		gormLogger.LogLevel = logger.Info
-	}
-
 	var err error
 	DB, err = gorm.Open(postgres.Open(config.DSN()), &gorm.Config{
 		Logger: gormLogger,
-		NowFunc: func() string {
-			return "CURRENT_TIMESTAMP"
+		NowFunc: func() time.Time {
+			return time.Now()
 		},
 	})
 

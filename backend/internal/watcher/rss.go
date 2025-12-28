@@ -3,7 +3,6 @@ package watcher
 import (
 	"context"
 	"encoding/xml"
-	"fmt"
 	"log"
 	"time"
 

@@ -6,11 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"os"
 
-	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/tdawe1/translation-app/internal/models"
 )
@@ -65,11 +63,11 @@ func (h *LemonSqueezyHandler) HandleWebhook(c *fiber.Ctx) error {
 	}
 
 	// Read body
-	body, err := io.ReadAll(c.Body())
-	if err != nil {
+	body := c.Body()
+	if len(body) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Failed to read body",
-			"code":  "READ_ERROR",
+			"error": "Empty body",
+			"code":  "EMPTY_BODY",
 		})
 	}
 
