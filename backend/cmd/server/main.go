@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -8,58 +9,93 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/redis/go-redis/v9"
 
+	"github.com/tdawe1/translation-app/internal/auth"
+	"github.com/tdawe1/translation-app/internal/config"
+	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/handlers"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/models"
+	"github.com/tdawe1/translation-app/internal/watcher"
 )
 
 func main() {
-	// Initialize database
-	if err := models.InitDB(nil); err != nil {
+	// Load configuration
+	cfg := config.Load()
+
+	// Initialize database with dependency injection
+	db, err := database.New(cfg)
+	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
+	// Get underlying GORM DB for migrations
+	gormDB, ok := database.GetPool(db)
+	if !ok {
+		log.Fatalf("Failed to get GORM database instance")
+	}
+
 	// Auto migrate
-	if err := models.AutoMigrate(); err != nil {
+	if err := gormDB.AutoMigrate(
+		&models.User{},
+		&models.OAuthAccount{},
+		&models.APIKey{},
+		&models.RefreshToken{},
+		&models.WatcherConfig{},
+		&models.WatcherState{},
+		&models.SubscriptionPlan{},
+		&models.Subscription{},
+		&models.BillingEvent{},
+		&models.AuditLog{},
+	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
 	// Close database connection on exit
-	sqlDB, _ := models.DB.DB()
+	sqlDB, _ := gormDB.DB()
 	defer sqlDB.Close()
 
+	// Initialize services
+	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
+	userSvc := auth.NewUserService(db, tokenSvc)
+
+	// Initialize handlers
+	authHandler := handlers.NewAuthHandler(userSvc, cfg.CookieSecure)
+	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret)
+
+	// Initialize Redis
+	redisOpts, err := redis.ParseURL(getEnv("REDIS_URL", "redis://localhost:6379/0"))
+	if err != nil {
+		log.Fatalf("Failed to parse Redis URL: %v", err)
+	}
+	redisClient := redis.NewClient(redisOpts)
+
+	// Test Redis connection
+	if _, err := redisClient.Ping(context.Background()).Result(); err != nil {
+		log.Printf("Warning: Redis connection failed: %v", err)
+	}
+
+	// Initialize watcher manager
+	watcherManager := watcher.NewUserWatcherManager(gormDB, redisClient)
+	watcherHandler := handlers.NewWatcherHandler(watcherManager)
+
+	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		AppName:               "GengoWatcher SaaS API",
 		DisableStartupMessage: false,
-		EnablePrintRoutes:     os.Getenv("ENV") == "development",
+		EnablePrintRoutes:     cfg.IsDevelopment(),
 	})
 
 	// Middleware
 	app.Use(recover.New())
 	app.Use(logger.New())
-
-	allowOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
-	if allowOrigins == "" {
-		allowOrigins = "http://localhost:3000"
-	}
-
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     allowOrigins,
+		AllowOrigins:     cfg.AllowedOrigins,
 		AllowCredentials: true,
 		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
 		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS",
 	}))
-
-	// Initialize handlers
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is required")
-	}
-	authHandler := handlers.NewAuthHandler(jwtSecret)
-
-	webhookSecret := os.Getenv("LEMONSQUEZY_WEBHOOK_SECRET")
-	lemonHandler := handlers.NewLemonSqueezyHandler(webhookSecret)
 
 	// Health check
 	app.Get("/health", func(c *fiber.Ctx) error {
@@ -73,28 +109,41 @@ func main() {
 	api := app.Group("/api/v1")
 
 	// Auth routes (public)
-	auth := api.Group("/auth")
-	auth.Post("/register", authHandler.Register)
-	auth.Post("/login", authHandler.Login)
-	auth.Post("/logout", authHandler.Logout)
+	authGroup := api.Group("/auth")
+	authGroup.Post("/register", authHandler.Register)
+	authGroup.Post("/login", authHandler.Login)
+	authGroup.Post("/logout", authHandler.Logout)
 
 	// Protected routes (require auth)
 	protected := api.Group("/")
 	protected.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
 	protected.Get("/me", authHandler.GetMe)
 
+	// Watcher routes (protected)
+	watcherGroup := api.Group("/watcher")
+	watcherGroup.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
+	watcherGroup.Get("/config", watcherHandler.GetConfig)
+	watcherGroup.Put("/config", watcherHandler.UpdateConfig)
+	watcherGroup.Get("/state", watcherHandler.GetState)
+	watcherGroup.Post("/start", watcherHandler.StartWatcher)
+	watcherGroup.Post("/stop", watcherHandler.StopWatcher)
+
 	// Webhook routes (public, verified via signature)
 	webhooks := api.Group("/webhooks")
 	webhooks.Post("/lemonsqueezy", lemonHandler.HandleWebhook)
 
 	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8000"
-	}
-
-	log.Printf("Server starting on port %s", port)
-	if err := app.Listen(":" + port); err != nil {
+	log.Printf("Server starting on port %s (env: %s)", cfg.Port, cfg.Env)
+	if err := app.Listen(":" + cfg.Port); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// getEnv retrieves an environment variable or returns the default value
+func getEnv(key, defaultVal string) string {
+	val := os.Getenv(key)
+	if val != "" {
+		return val
+	}
+	return defaultVal
 }

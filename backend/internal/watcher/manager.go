@@ -2,13 +2,11 @@ package watcher
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
 	"github.com/tdawe1/translation-app/internal/models"
@@ -39,20 +37,22 @@ type WatcherInstance struct {
 
 // UserWatcherManager manages per-user watcher instances
 type UserWatcherManager struct {
-	db       *gorm.DB
-	redis    *redis.Client
-	watchers map[uuid.UUID]*WatcherInstance
-	mu       sync.RWMutex
-	jobChan  chan Job
+	db            *gorm.DB
+	redis         *redis.Client
+	watchers      map[uuid.UUID]*WatcherInstance
+	mu            sync.RWMutex
+	stateManager  *StateManager
+	jobProcessor  *JobProcessor
 }
 
 // NewUserWatcherManager creates a new watcher manager
 func NewUserWatcherManager(db *gorm.DB, redisClient *redis.Client) *UserWatcherManager {
 	return &UserWatcherManager{
-		db:       db,
-		redis:    redisClient,
-		watchers: make(map[uuid.UUID]*WatcherInstance),
-		jobChan:  make(chan Job, 1000),
+		db:            db,
+		redis:         redisClient,
+		watchers:      make(map[uuid.UUID]*WatcherInstance),
+		stateManager:  NewStateManager(db),
+		jobProcessor:  NewJobProcessor(db, redisClient),
 	}
 }
 
@@ -67,13 +67,13 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 	}
 
 	// Load user config and state
-	var config models.WatcherConfig
-	if err := m.db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+	config, err := m.stateManager.LoadConfig(userID)
+	if err != nil {
 		return fmt.Errorf("config not found for user %s: %w", userID, err)
 	}
 
-	var state models.WatcherState
-	if err := m.db.Where("user_id = ?", userID).First(&state).Error; err != nil {
+	state, err := m.stateManager.LoadState(userID)
+	if err != nil {
 		return fmt.Errorf("state not found for user %s: %w", userID, err)
 	}
 
@@ -82,12 +82,12 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 
 	// Create monitors
 	rss := NewRSSMonitor(config.RSSFeedURL, userID, config.MinReward)
-	ws := NewWebSocketMonitor("", userID) // Session token from config
+	ws := NewWebSocketMonitor(userID, config.GengoSessionToken, "", config.GengoUserID)
 
 	instance := &WatcherInstance{
 		UserID:    userID,
-		Config:    &config,
-		State:     &state,
+		Config:    config,
+		State:     state,
 		RSS:       rss,
 		WebSocket: ws,
 		Context:   ctx,
@@ -101,10 +101,16 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 	go m.runWatcher(instance)
 
 	// Update state
-	m.updateState(userID, "running")
+	if err := m.stateManager.UpdateStatus(userID, StatusRunning); err != nil {
+		// Log but don't fail
+		fmt.Printf("Failed to update state: %v", err)
+	}
 
 	// Notify user
-	m.publishEvent(userID, "watcher_started")
+	ctx = context.Background()
+	if err := m.jobProcessor.PublishEvent(ctx, userID, EventTypeWatcherStarted); err != nil {
+		fmt.Printf("Failed to publish event: %v", err)
+	}
 
 	return nil
 }
@@ -123,10 +129,15 @@ func (m *UserWatcherManager) StopWatcher(userID uuid.UUID) error {
 	instance.Running = false
 
 	// Update state
-	m.updateState(userID, "stopped")
+	if err := m.stateManager.UpdateStatus(userID, StatusStopped); err != nil {
+		return fmt.Errorf("failed to update state: %w", err)
+	}
 
 	// Notify user
-	m.publishEvent(userID, "watcher_stopped")
+	ctx := context.Background()
+	if err := m.jobProcessor.PublishEvent(ctx, userID, EventTypeWatcherStopped); err != nil {
+		return fmt.Errorf("failed to publish event: %w", err)
+	}
 
 	return nil
 }
@@ -137,20 +148,15 @@ func (m *UserWatcherManager) GetStatus(userID uuid.UUID) (string, error) {
 	defer m.mu.RUnlock()
 
 	instance, exists := m.watchers[userID]
-	if !exists {
-		// Check database for state
-		var state models.WatcherState
-		if err := m.db.Where("user_id = ?", userID).First(&state).Error; err != nil {
-			return "unknown", nil
+	if exists {
+		if instance.Running {
+			return StatusRunning, nil
 		}
-		return state.WatcherStatus, nil
+		return StatusStopped, nil
 	}
 
-	if instance.Running {
-		return "running", nil
-	}
-
-	return "stopped", nil
+	// Check database for state
+	return m.stateManager.GetStatus(userID)
 }
 
 // runWatcher runs the monitoring loop for a watcher instance
@@ -161,15 +167,13 @@ func (m *UserWatcherManager) runWatcher(instance *WatcherInstance) {
 	// Start RSS monitor
 	go func() {
 		if err := instance.RSS.Start(instance.Context, jobChan); err != nil {
-			m.publishError(instance.UserID, err.Error())
+			m.jobProcessor.PublishError(instance.Context, instance.UserID, err.Error())
 		}
 	}()
 
 	// Start WebSocket monitor
 	go func() {
-		if err := instance.WebSocket.Start(instance.Context, jobChan); err != nil {
-			m.publishError(instance.UserID, err.Error())
-		}
+		instance.WebSocket.Start(instance.Context, jobChan)
 	}()
 
 	// Process jobs from channel
@@ -178,105 +182,12 @@ func (m *UserWatcherManager) runWatcher(instance *WatcherInstance) {
 		case <-instance.Context.Done():
 			return
 		case job := <-jobChan:
-			m.handleJob(job)
+			if err := m.jobProcessor.ProcessJob(instance.Context, job); err != nil {
+				// Log error but continue processing
+				fmt.Printf("Error processing job: %v\n", err)
+			}
 		}
 	}
-}
-
-// handleJob processes a new job
-func (m *UserWatcherManager) handleJob(job Job) {
-	// Check if already seen (deduplication)
-	if m.isJobSeen(job.UserID, job.ID) {
-		return
-	}
-
-	// Check reward filter
-	var config models.WatcherConfig
-	if err := m.db.Where("user_id = ?", job.UserID).First(&config).Error; err != nil {
-		return
-	}
-
-	if job.Reward < config.MinReward || job.Reward > config.MaxReward {
-		return
-	}
-
-	// Record job
-	m.recordJob(job)
-
-	// Update statistics
-	m.incrementJobCount(job.UserID)
-
-	// Publish to user's Redis channel
-	m.publishJob(job)
-}
-
-// isJobSeen checks if a job has already been seen
-func (m *UserWatcherManager) isJobSeen(userID uuid.UUID, jobID string) bool {
-	key := fmt.Sprintf("user:%s:seen_jobs", userID)
-
-	// Use Redis SISMEMBER to check if job ID exists
-	ctx := context.Background()
-	result := m.redis.SIsMember(ctx, key, jobID)
-	if result.Err() != nil {
-		return false
-	}
-
-	return result.Val()
-}
-
-// recordJob records a job as seen
-func (m *UserWatcherManager) recordJob(job Job) {
-	ctx := context.Background()
-	key := fmt.Sprintf("user:%s:seen_jobs", job.UserID)
-	m.redis.SAdd(ctx, key, job.ID)
-
-	// Also update in database
-	var state models.WatcherState
-	m.db.Where("user_id = ?", job.UserID).First(&state)
-
-	// Parse existing job IDs
-	// For simplicity, just append to the list
-	// In production, you'd want to limit this list size
-}
-
-// incrementJobCount increments the job count for a user
-func (m *UserWatcherManager) incrementJobCount(userID uuid.UUID) {
-	m.db.Model(&models.WatcherState{}).
-		Where("user_id = ?", userID).
-		UpdateColumn("total_jobs_found", gorm.Expr("total_jobs_found + 1")).
-		Update("last_activity", time.Now())
-}
-
-// publishJob publishes a job to the user's Redis channel
-func (m *UserWatcherManager) publishJob(job Job) {
-	ctx := context.Background()
-	channel := fmt.Sprintf("user:%s:jobs", job.UserID)
-	jobData, _ := json.Marshal(job)
-	m.redis.Publish(ctx, channel, jobData)
-}
-
-// publishEvent publishes an event to the user's Redis channel
-func (m *UserWatcherManager) publishEvent(userID uuid.UUID, event string) {
-	ctx := context.Background()
-	channel := fmt.Sprintf("user:%s:events", userID)
-	m.redis.Publish(ctx, channel, fmt.Sprintf(`{"type":"%s"}`, event))
-}
-
-// publishError publishes an error to the user's Redis channel
-func (m *UserWatcherManager) publishError(userID uuid.UUID, errMsg string) {
-	ctx := context.Background()
-	channel := fmt.Sprintf("user:%s:errors", userID)
-	m.redis.Publish(ctx, channel, fmt.Sprintf(`{"error":"%s"}`, errMsg))
-}
-
-// updateState updates the watcher state in the database
-func (m *UserWatcherManager) updateState(userID uuid.UUID, status string) {
-	m.db.Model(&models.WatcherState{}).
-		Where("user_id = ?", userID).
-		Updates(map[string]interface{}{
-			"watcher_status": status,
-			"last_activity":  time.Now(),
-		})
 }
 
 // GetActiveWatchers returns the count of active watchers
@@ -298,11 +209,28 @@ func (m *UserWatcherManager) StopAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	ctx := context.Background()
 	for userID, instance := range m.watchers {
 		if instance.Running {
 			instance.Cancel()
 			instance.Running = false
-			m.updateState(userID, "stopped")
+			m.stateManager.UpdateStatus(userID, StatusStopped)
+			m.jobProcessor.PublishEvent(ctx, userID, EventTypeWatcherStopped)
 		}
 	}
+}
+
+// UpdateConfig updates the watcher config for a user
+func (m *UserWatcherManager) UpdateConfig(config *models.WatcherConfig) error {
+	return m.stateManager.UpdateConfig(config)
+}
+
+// GetConfig retrieves the watcher config for a user
+func (m *UserWatcherManager) GetConfig(userID uuid.UUID) (*models.WatcherConfig, error) {
+	return m.stateManager.LoadConfig(userID)
+}
+
+// GetState retrieves the watcher state for a user
+func (m *UserWatcherManager) GetState(userID uuid.UUID) (*models.WatcherState, error) {
+	return m.stateManager.LoadState(userID)
 }

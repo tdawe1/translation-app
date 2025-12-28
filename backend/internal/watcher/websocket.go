@@ -2,56 +2,313 @@ package watcher
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/gofiber/websocket/v2"
+	"github.com/gorilla/websocket"
 )
 
-// WebSocketMonitor monitors Gengo WebSocket for new jobs
+const (
+	// Gengo WebSocket URL
+	gengoWebSocketURL = "wss://live-dashboard.gengo.com"
+
+	// Time between heartbeat pings
+	heartbeatInterval = 30 * time.Second
+
+	// Maximum time to wait for pong response
+	pongWait = 45 * time.Second
+
+	// Reconnection delay on failure
+	reconnectDelay = 10 * time.Second
+)
+
+// WebSocketMonitor monitors Gengo's WebSocket for new jobs
 type WebSocketMonitor struct {
-	SessionToken string
 	UserID       uuid.UUID
-	Conn         *websocket.Conn
+	UserSession  string
+	UserKey      string
+	GengoUserID  string // External Gengo user ID
+	seenIDs      map[string]bool
+	mu           sync.RWMutex
+
+	// Connection state
+	conn         *websocket.Conn
+	status       string
+	statusMu     sync.RWMutex
+
+	// Metrics
+	lastPongTime time.Time
+	pingLatency  time.Duration
 }
 
 // NewWebSocketMonitor creates a new WebSocket monitor
-func NewWebSocketMonitor(sessionToken string, userID uuid.UUID) *WebSocketMonitor {
+func NewWebSocketMonitor(userID uuid.UUID, userSession, userKey, gengoUserID string) *WebSocketMonitor {
 	return &WebSocketMonitor{
-		SessionToken: sessionToken,
-		UserID:       userID,
+		UserID:      userID,
+		UserSession: userSession,
+		UserKey:     userKey,
+		GengoUserID: gengoUserID,
+		seenIDs:     make(map[string]bool),
+		status:      "disconnected",
 	}
+}
+
+// wsAuthPayload represents the authentication payload sent to Gengo
+type wsAuthPayload struct {
+	Action      string `json:"action"`
+	UserSession string `json:"user_session"`
+	UserKey     string `json:"user_key"`
+	UserID      string `json:"user_id"`
+}
+
+// wsMessage represents a message received from Gengo
+type wsMessage struct {
+	Type   string                 `json:"type"`
+	JobID  string                 `json:"job_id,omitempty"`
+	Other  map[string]interface{} `json:"-"`
+}
+
+// UnmarshalJSON handles unmarshaling with unknown fields
+func (m *wsMessage) UnmarshalJSON(data []byte) error {
+	// First, try to unmarshal into a map to capture all fields
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	// Extract known fields
+	if typ, ok := raw["type"].(string); ok {
+		m.Type = typ
+	}
+	if jobID, ok := raw["job_id"].(string); ok {
+		m.JobID = jobID
+	}
+
+	// Store unknown fields
+	m.Other = make(map[string]interface{})
+	for k, v := range raw {
+		if k != "type" && k != "job_id" {
+			m.Other[k] = v
+		}
+	}
+	return nil
 }
 
 // Start begins monitoring the WebSocket connection
-func (m *WebSocketMonitor) Start(ctx context.Context, jobChan chan<- Job) error {
-	// TODO: Implement WebSocket connection to Gengo
-	// This would:
-	// 1. Connect to Gengo's WebSocket endpoint
-	// 2. Authenticate with the session token
-	// 3. Listen for job notifications
-	// 4. Parse job data and send to jobChan
+func (m *WebSocketMonitor) Start(ctx context.Context, jobChan chan<- Job) {
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[WS] Monitor stopped for user %s", m.UserID)
+			return
+		default:
+			if err := m.connectAndMonitor(ctx, jobChan); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				log.Printf("[WS] Connection error for user %s: %v (reconnecting in %v)", m.UserID, err, reconnectDelay)
+				m.setStatus("reconnecting")
+			}
+		}
 
-	log.Printf("WebSocket monitor started for user %s", m.UserID)
-
-	// Keep running until context is cancelled
-	<-ctx.Done()
-
-	log.Printf("WebSocket monitor stopped for user %s", m.UserID)
-	return nil
-}
-
-// Connect establishes the WebSocket connection
-func (m *WebSocketMonitor) Connect() error {
-	// TODO: Implement WebSocket connection logic
-	// Use the session token to authenticate with Gengo
-	return nil
-}
-
-// Disconnect closes the WebSocket connection
-func (m *WebSocketMonitor) Disconnect() error {
-	if m.Conn != nil {
-		return m.Conn.Close()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(reconnectDelay):
+		}
 	}
+}
+
+// connectAndMonitor establishes a connection and monitors for jobs
+func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<- Job) error {
+	m.setStatus("connecting")
+
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 15 * time.Second,
+	}
+
+	conn, _, err := dialer.DialContext(ctx, gengoWebSocketURL, nil)
+	if err != nil {
+		return fmt.Errorf("dial failed: %w", err)
+	}
+	defer conn.Close()
+
+	m.conn = conn
+
+	conn.SetPongHandler(func(string) error {
+		m.mu.Lock()
+		m.lastPongTime = time.Now()
+		m.mu.Unlock()
+		return nil
+	})
+
+	if err := m.authenticate(ctx); err != nil {
+		return fmt.Errorf("authentication failed: %w", err)
+	}
+
+	m.setStatus("live")
+	log.Printf("[WS] Connected and authenticated for user %s", m.UserID)
+
+	heartbeatTicker := time.NewTicker(heartbeatInterval)
+	defer heartbeatTicker.Stop()
+
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case <-heartbeatTicker.C:
+			if err := m.sendPing(); err != nil {
+				return fmt.Errorf("ping failed: %w", err)
+			}
+			conn.SetReadDeadline(time.Now().Add(pongWait))
+
+		default:
+			conn.SetReadDeadline(time.Now().Add(heartbeatInterval + 5*time.Second))
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					return fmt.Errorf("connection closed: %w", err)
+				}
+				// Check for timeout (net.Error with Timeout() == true)
+				if netErr, ok := err.(interface{ Timeout() bool }); ok && netErr.Timeout() {
+					continue
+				}
+				return fmt.Errorf("read failed: %w", err)
+			}
+
+			if err := m.processMessage(message, jobChan); err != nil {
+				log.Printf("[WS] Error processing message for user %s: %v", m.UserID, err)
+			}
+		}
+	}
+}
+
+// authenticate sends the authentication payload
+func (m *WebSocketMonitor) authenticate(ctx context.Context) error {
+	m.setStatus("authenticating")
+
+	authPayload := wsAuthPayload{
+		Action:      "authenticate",
+		UserSession: m.UserSession,
+		UserKey:     m.UserKey,
+		UserID:      m.GengoUserID,
+	}
+
+	data, err := json.Marshal(authPayload)
+	if err != nil {
+		return fmt.Errorf("marshal auth payload: %w", err)
+	}
+
+	if err := m.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		return fmt.Errorf("send auth: %w", err)
+	}
+
+	log.Printf("[WS] Sent authentication for user %s (gengo_id=%s)", m.UserID, m.GengoUserID)
 	return nil
+}
+
+// sendPing sends a heartbeat ping
+func (m *WebSocketMonitor) sendPing() error {
+	start := time.Now()
+	if err := m.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	m.pingLatency = time.Since(start)
+	m.mu.Unlock()
+
+	log.Printf("[WS] Sent ping for user %s (latency: %v)", m.UserID, m.pingLatency)
+	return nil
+}
+
+// processMessage handles an incoming WebSocket message
+func (m *WebSocketMonitor) processMessage(data []byte, jobChan chan<- Job) error {
+	var msg wsMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return nil
+	}
+
+	log.Printf("[WS] Received message for user %s: type=%s", m.UserID, msg.Type)
+
+	switch msg.Type {
+	case "available_collection":
+		return m.handleJobAvailable(msg, jobChan)
+
+	default:
+		log.Printf("[WS] Ignoring message type '%s' for user %s", msg.Type, m.UserID)
+	}
+
+	return nil
+}
+
+// handleJobAvailable processes a new job notification
+func (m *WebSocketMonitor) handleJobAvailable(msg wsMessage, jobChan chan<- Job) error {
+	jobID := msg.JobID
+	if jobID == "" {
+		return fmt.Errorf("job_id missing in available_collection message")
+	}
+
+	m.mu.Lock()
+	if m.seenIDs[jobID] {
+		m.mu.Unlock()
+		log.Printf("[WS] User %s: Job %s already seen, skipping", m.UserID, jobID)
+		return nil
+	}
+	m.seenIDs[jobID] = true
+	m.mu.Unlock()
+
+	job := Job{
+		ID:     jobID,
+		Title:  fmt.Sprintf("Job %s", jobID),
+		Reward: 0,
+		URL:    fmt.Sprintf("https://gengo.com/dashboard/jobs/%s", jobID),
+		Source: "websocket",
+		UserID: m.UserID,
+	}
+
+	select {
+	case jobChan <- job:
+		log.Printf("[WS] User %s: New job from WebSocket - %s", m.UserID, jobID)
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("timeout sending to job channel")
+	}
+
+	return nil
+}
+
+// GetStatus returns the current connection status
+func (m *WebSocketMonitor) GetStatus() string {
+	m.statusMu.RLock()
+	defer m.statusMu.RUnlock()
+	return m.status
+}
+
+// setStatus updates the connection status
+func (m *WebSocketMonitor) setStatus(status string) {
+	m.statusMu.Lock()
+	defer m.statusMu.Unlock()
+	m.status = status
+}
+
+// GetPingLatency returns the last measured ping latency
+func (m *WebSocketMonitor) GetPingLatency() time.Duration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.pingLatency
+}
+
+// Stop closes the WebSocket connection
+func (m *WebSocketMonitor) Stop() {
+	m.setStatus("stopped")
+	if m.conn != nil {
+		m.conn.Close()
+	}
 }

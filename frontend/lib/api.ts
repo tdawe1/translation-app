@@ -1,7 +1,11 @@
 /**
  * API Client for GengoWatcher SaaS
- * Communicates with the Go backend at /api/v1/*
+ * Refactored with proper separation of concerns and type safety
  */
+
+// ============================================================
+// Types and Interfaces
+// ============================================================
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -36,17 +40,58 @@ export interface LoginRequest {
   password: string;
 }
 
-class ApiError extends Error {
+export interface WatcherConfig {
+  user_id: string;
+  rss_feed_url: string;
+  websocket_enabled: boolean;
+  min_reward: number;
+  max_reward: number;
+  included_language_pairs: string[];
+  enable_desktop_notifications: boolean;
+  enable_sound_notifications: boolean;
+  enable_email_notifications: boolean;
+  auto_accept_enabled: boolean;
+}
+
+export interface WatcherState {
+  user_id: string;
+  watcher_status: string;
+  total_jobs_found: number;
+  total_jobs_accepted: number;
+  total_earnings: number;
+  last_activity: string;
+}
+
+// ============================================================
+// Error Handling
+// ============================================================
+
+/**
+ * ApiErrorClass represents a structured API error
+ * Named with "Class" suffix to avoid shadowing the ApiErrorResponse interface
+ */
+export class ApiErrorClass extends Error {
   code: string;
   details?: Record<string, unknown>;
 
   constructor(message: string, code: string, details?: Record<string, unknown>) {
     super(message);
-    this.name = "ApiError";
+    this.name = "ApiErrorClass";
     this.code = code;
     this.details = details;
   }
+
+  /**
+   * Checks if this error is a specific error code
+   */
+  isCode(code: string): boolean {
+    return this.code === code;
+  }
 }
+
+// ============================================================
+// HTTP Client
+// ============================================================
 
 /**
  * HTTP client with interceptors for auth
@@ -70,9 +115,10 @@ class HttpClient {
 
     // Add access token from sessionStorage if available
     const token = sessionStorage.getItem("access_token");
-    const headers: HeadersInit = {
-      ...this.defaultHeaders,
-      ...options.headers,
+    // HeadersInit is a union type, so we use a plain object for manipulation
+    const headers: Record<string, string> = {
+      ...(this.defaultHeaders as Record<string, string>),
+      ...(options.headers as Record<string, string>),
     };
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
@@ -84,20 +130,22 @@ class HttpClient {
       credentials: "include", // Send httpOnly cookies
     });
 
-    // Handle 401 Unauthorized - try to refresh or redirect
+    // Handle 401 Unauthorized - redirect to login
     if (response.status === 401) {
       sessionStorage.removeItem("access_token");
-      window.location.href = "/auth/login";
-      throw new ApiError("Unauthorized", "UNAUTHORIZED");
+      if (typeof window !== "undefined") {
+        window.location.href = "/auth/login";
+      }
+      throw new ApiErrorClass("Unauthorized", "UNAUTHORIZED");
     }
 
     // Handle other errors
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      throw new ApiError(
-        data.error || response.statusText,
-        data.code || "UNKNOWN_ERROR",
-        data.details
+      throw new ApiErrorClass(
+        (data.error as string) || response.statusText,
+        (data.code as string) || "UNKNOWN_ERROR",
+        data.details as Record<string, unknown> | undefined
       );
     }
 
@@ -122,16 +170,28 @@ class HttpClient {
     });
   }
 
+  patch<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, {
+      method: "PATCH",
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
   delete<T>(path: string): Promise<T> {
     return this.request<T>(path, { method: "DELETE" });
   }
 }
 
+// ============================================================
+// API Client Singleton
+// ============================================================
+
 const client = new HttpClient(API_URL);
 
-/**
- * Auth API
- */
+// ============================================================
+// Auth API
+// ============================================================
+
 export const authApi = {
   register: (data: RegisterRequest): Promise<AuthResponse> =>
     client.post<AuthResponse>("/api/v1/auth/register", data),
@@ -139,36 +199,15 @@ export const authApi = {
   login: (data: LoginRequest): Promise<AuthResponse> =>
     client.post<AuthResponse>("/api/v1/auth/login", data),
 
-  logout: (): Promise<{ message: string }> =>
-    client.post<{ message: string }>("/api/v1/auth/logout"),
+  logout: (): Promise<void> =>
+    client.post<void>("/api/v1/auth/logout"),
 
   me: (): Promise<User> => client.get<User>("/api/v1/me"),
 };
 
-/**
- * Watcher API
- */
-export interface WatcherConfig {
-  user_id: string;
-  rss_feed_url: string;
-  websocket_enabled: boolean;
-  min_reward: number;
-  max_reward: number;
-  included_language_pairs: string[];
-  enable_desktop_notifications: boolean;
-  enable_sound_notifications: boolean;
-  enable_email_notifications: boolean;
-  auto_accept_enabled: boolean;
-}
-
-export interface WatcherState {
-  user_id: string;
-  watcher_status: string;
-  total_jobs_found: number;
-  total_jobs_accepted: number;
-  total_earnings: number;
-  last_activity: string;
-}
+// ============================================================
+// Watcher API
+// ============================================================
 
 export const watcherApi = {
   getConfig: (): Promise<WatcherConfig> =>
@@ -187,5 +226,8 @@ export const watcherApi = {
     client.post<{ status: string }>("/api/v1/watcher/stop"),
 };
 
-export { client, ApiError as ApiErrorClass };
-export type { ApiErrorResponse };
+// ============================================================
+// Exports
+// ============================================================
+
+export { client, ApiErrorClass as ApiError };

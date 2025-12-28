@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
-import { authApi, ApiError } from "@/lib/api";
+import { authApi, ApiErrorClass } from "@/lib/api";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -48,7 +48,7 @@ export default function RegisterPage() {
       // Redirect to dashboard
       router.push("/dashboard");
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiErrorClass) {
         setError(err.message);
       } else {
         setError("An unexpected error occurred");

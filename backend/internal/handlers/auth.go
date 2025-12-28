@@ -1,25 +1,23 @@
 package handlers
 
 import (
-	"time"
-
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 
-	"github.com/tdawe1/translation-app/internal/models"
+	"github.com/tdawe1/translation-app/internal/auth"
+	apperrors "github.com/tdawe1/translation-app/internal/errors"
 )
 
 // AuthHandler handles authentication endpoints
 type AuthHandler struct {
-	jwtSecret []byte
+	userService *auth.UserService
+	secureCookie bool
 }
 
 // NewAuthHandler creates a new auth handler
-func NewAuthHandler(jwtSecret string) *AuthHandler {
+func NewAuthHandler(userService *auth.UserService, secureCookie bool) *AuthHandler {
 	return &AuthHandler{
-		jwtSecret: []byte(jwtSecret),
+		userService:  userService,
+		secureCookie: secureCookie,
 	}
 }
 
@@ -35,135 +33,34 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-// AuthResponse represents successful authentication
-type AuthResponse struct {
-	AccessToken string       `json:"access_token"`
-	User        UserResponse  `json:"user"`
-}
-
-// UserResponse represents user data
-type UserResponse struct {
-	ID           string `json:"id"`
-	Email        string `json:"email"`
-	EmailVerified bool   `json:"email_verified"`
-	IsActive     bool   `json:"is_active"`
-}
-
 // Register handles user registration
 func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	var req RegisterRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-			"code":  "INVALID_REQUEST",
-		})
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
 	}
 
 	// Validate input
 	if len(req.Password) < 8 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Password must be at least 8 characters",
-			"code":  "WEAK_PASSWORD",
-		})
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrWeakPassword, "Password must be at least 8 characters")
 	}
 
-	// Check if user exists
-	var existingUser models.User
-	result := models.DB.Where("email = ?", req.Email).First(&existingUser)
-	if result.Error == nil {
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-			"error": "User with this email already exists",
-			"code":  "USER_EXISTS",
-		})
-	}
+	result, apiErr := h.userService.Register(auth.RegisterRequest{
+		Email:    req.Email,
+		Password: req.Password,
+	})
 
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to process password",
-			"code":  "PASSWORD_ERROR",
-		})
-	}
-
-	// Create user
-	user := models.User{
-		Email:        req.Email,
-		PasswordHash: string(hashedPassword),
-		IsActive:     true,
-	}
-
-	// Start transaction
-	tx := models.DB.Begin()
-	if tx.Error != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Database error",
-			"code":  "DATABASE_ERROR",
-		})
-	}
-
-	if err := tx.Create(&user).Error; err != nil {
-		tx.Rollback()
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create user",
-			"code":  "CREATE_ERROR",
-		})
-	}
-
-	// Create default watcher config
-	config := models.WatcherConfig{
-		UserID: user.ID,
-	}
-	if err := tx.Create(&config).Error; err != nil {
-		tx.Rollback()
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create watcher config",
-			"code":  "CONFIG_ERROR",
-		})
-	}
-
-	// Create default watcher state
-	state := models.WatcherState{
-		UserID:       user.ID,
-		WatcherStatus: "stopped",
-	}
-	if err := tx.Create(&state).Error; err != nil {
-		tx.Rollback()
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create watcher state",
-			"code":  "STATE_ERROR",
-		})
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to commit transaction",
-			"code":  "COMMIT_ERROR",
-		})
-	}
-
-	// Generate tokens
-	accessToken, err := h.generateAccessToken(user.ID.String())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to generate token",
-			"code":  "TOKEN_ERROR",
-		})
+	if apiErr != nil {
+		status := h.statusCodeForError(apiErr.(*apperrors.APIError).Code)
+		return RespondWithAPIError(c, status, apiErr.(*apperrors.APIError))
 	}
 
 	// Set httpOnly cookie
-	c.Cookie(&fiber.Cookie{
-		Name:     "session_token",
-		Value:    accessToken,
-		HTTPOnly: true,
-		Secure:   false, // Set true in production with HTTPS
-		SameSite: "Lax",
-		Expires:  time.Now().Add(7 * 24 * time.Hour),
-	})
+	SetSessionCookie(c, result.AccessToken, h.secureCookie)
 
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
-		AccessToken: accessToken,
-		User:        userToResponse(&user),
+		AccessToken: result.AccessToken,
+		User:        UserToResponse(result.User),
 	})
 }
 
@@ -171,59 +68,25 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-			"code":  "INVALID_REQUEST",
-		})
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
 	}
 
-	// Find user
-	var user models.User
-	result := models.DB.Where("email = ?", req.Email).First(&user)
-	if result.Error != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid email or password",
-			"code":  "INVALID_CREDENTIALS",
-		})
-	}
+	result, apiErr := h.userService.Login(auth.LoginRequest{
+		Email:    req.Email,
+		Password: req.Password,
+	})
 
-	// Verify password
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid email or password",
-			"code":  "INVALID_CREDENTIALS",
-		})
-	}
-
-	if !user.IsActive {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "User account is inactive",
-			"code":  "INACTIVE_USER",
-		})
-	}
-
-	// Generate token
-	accessToken, err := h.generateAccessToken(user.ID.String())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to generate token",
-			"code":  "TOKEN_ERROR",
-		})
+	if apiErr != nil {
+		status := h.statusCodeForError(apiErr.(*apperrors.APIError).Code)
+		return RespondWithAPIError(c, status, apiErr.(*apperrors.APIError))
 	}
 
 	// Set httpOnly cookie
-	c.Cookie(&fiber.Cookie{
-		Name:     "session_token",
-		Value:    accessToken,
-		HTTPOnly: true,
-		Secure:   false,
-		SameSite: "Lax",
-		Expires:  time.Now().Add(7 * 24 * time.Hour),
-	})
+	SetSessionCookie(c, result.AccessToken, h.secureCookie)
 
 	return c.JSON(AuthResponse{
-		AccessToken: accessToken,
-		User:        userToResponse(&user),
+		AccessToken: result.AccessToken,
+		User:        UserToResponse(result.User),
 	})
 }
 
@@ -231,68 +94,55 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 func (h *AuthHandler) GetMe(c *fiber.Ctx) error {
 	userID, ok := GetUserID(c)
 	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Not authenticated",
-			"code":  "NOT_AUTHENTICATED",
-		})
+		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Not authenticated")
 	}
 
-	userUUID, err := uuid.Parse(userID)
+	userUUID, err := ParseUserID(userID)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid user ID",
-			"code":  "INVALID_USER_ID",
-		})
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidUserID, "Invalid user ID")
 	}
 
-	var user models.User
-	if err := models.DB.Where("id = ?", userUUID).First(&user).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "User not found",
-			"code":  "USER_NOT_FOUND",
-		})
+	user, apiErr := h.userService.GetUserByID(userUUID)
+	if apiErr != nil {
+		status := h.statusCodeForError(apiErr.(*apperrors.APIError).Code)
+		return RespondWithAPIError(c, status, apiErr.(*apperrors.APIError))
 	}
 
-	return c.JSON(userToResponse(&user))
+	return c.JSON(UserToResponse(user))
 }
 
 // Logout handles logout
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
-	c.ClearCookie("session_token")
+	ClearSessionCookie(c)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// generateAccessToken generates a JWT access token
-func (h *AuthHandler) generateAccessToken(userID string) (string, error) {
-	claims := jwt.MapClaims{
-		"sub": userID,
-		"exp": time.Now().Add(15 * time.Minute).Unix(),
-		"iat": time.Now().Unix(),
-		"type": "access",
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(h.jwtSecret)
-}
-
-// userToResponse converts User model to UserResponse
-func userToResponse(user *models.User) UserResponse {
-	return UserResponse{
-		ID:            user.ID.String(),
-		Email:         user.Email,
-		EmailVerified: user.EmailVerified,
-		IsActive:      user.IsActive,
+// statusCodeForError maps error codes to HTTP status codes
+func (h *AuthHandler) statusCodeForError(code apperrors.ErrorCode) int {
+	switch code {
+	case apperrors.ErrInvalidRequest, apperrors.ErrWeakPassword, apperrors.ErrInvalidUserID:
+		return fiber.StatusBadRequest
+	case apperrors.ErrUserExists:
+		return fiber.StatusConflict
+	case apperrors.ErrInvalidCredentials:
+		return fiber.StatusUnauthorized
+	case apperrors.ErrInactiveUser:
+		return fiber.StatusForbidden
+	case apperrors.ErrUserNotFound:
+		return fiber.StatusNotFound
+	default:
+		return fiber.StatusInternalServerError
 	}
 }
 
-// GetUserID is exported from middleware
+// GetUserID retrieves the user ID from the request context
 var GetUserID = func(c *fiber.Ctx) (string, bool) {
 	claims := c.Locals("user")
 	if claims == nil {
 		return "", false
 	}
 
-	userClaims, ok := claims.(jwt.MapClaims)
+	userClaims, ok := claims.(map[string]interface{})
 	if !ok {
 		return "", false
 	}
