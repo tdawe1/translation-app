@@ -27,7 +27,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Host:     getEnv("DB_HOST", "localhost"),
-		Port:     getEnv("DB_PORT", "5432"),
+		Port:     getEnv("DB_PORT", "5433"),
 		User:     getEnv("DB_USER", "gengo"),
 		Password: getEnv("DB_PASSWORD", "devpass"),
 		DBName:   getEnv("DB_NAME", "gengowatcher"),
