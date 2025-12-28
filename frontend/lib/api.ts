@@ -5,7 +5,8 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-export interface ApiError {
+/** Shape of error response from the API */
+export interface ApiErrorResponse {
   error: string;
   code: string;
   details?: Record<string, unknown>;
@@ -186,4 +187,5 @@ export const watcherApi = {
     client.post<{ status: string }>("/api/v1/watcher/stop"),
 };
 
-export { client, ApiError };
+export { client, ApiError as ApiErrorClass };
+export type { ApiErrorResponse };
