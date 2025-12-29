@@ -29,6 +29,14 @@ type Database interface {
 	Begin(opts ...*sql.TxOptions) *gorm.DB
 	// Exec executes raw SQL
 	Exec(sql string, values ...interface{}) *gorm.DB
+	// Save saves a value (including associations)
+	Save(value interface{}) *gorm.DB
+	// Updates updates multiple columns
+	Updates(values interface{}) *gorm.DB
+	// UpdateColumn updates a single column with expression
+	UpdateColumn(column string, value interface{}) *gorm.DB
+	// Update updates a single column
+	Update(column string, value interface{}) *gorm.DB
 }
 
 // gormDB wraps gorm.DB to implement our Database interface

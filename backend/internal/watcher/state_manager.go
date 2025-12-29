@@ -6,16 +6,17 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/models"
 )
 
 // StateManager handles database operations for watcher state
 type StateManager struct {
-	db *gorm.DB
+	db database.Database
 }
 
 // NewStateManager creates a new state manager
-func NewStateManager(db *gorm.DB) *StateManager {
+func NewStateManager(db database.Database) *StateManager {
 	return &StateManager{db: db}
 }
 

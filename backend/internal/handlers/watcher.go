@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
+	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/models"
 	"github.com/tdawe1/translation-app/internal/watcher"
 )
@@ -13,12 +14,14 @@ import (
 // WatcherHandler handles watcher control endpoints
 type WatcherHandler struct {
 	manager *watcher.UserWatcherManager
+	db      database.Database
 }
 
 // NewWatcherHandler creates a new watcher handler
-func NewWatcherHandler(manager *watcher.UserWatcherManager) *WatcherHandler {
+func NewWatcherHandler(manager *watcher.UserWatcherManager, db database.Database) *WatcherHandler {
 	return &WatcherHandler{
 		manager: manager,
+		db:      db,
 	}
 }
 
@@ -41,7 +44,7 @@ func (h *WatcherHandler) GetConfig(c *fiber.Ctx) error {
 	}
 
 	var config models.WatcherConfig
-	if err := models.DB.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
+	if err := h.db.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Watcher config not found",
 			"code":  "CONFIG_NOT_FOUND",
@@ -96,7 +99,7 @@ func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
 
 	// Load existing config
 	var config models.WatcherConfig
-	if err := models.DB.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
+	if err := h.db.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Watcher config not found",
 			"code":  "CONFIG_NOT_FOUND",
@@ -148,7 +151,7 @@ func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
 	}
 
 	// Apply updates
-	if err := models.DB.Model(&config).Updates(updates).Error; err != nil {
+	if err := h.db.Model(&config).Updates(updates).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update config",
 			"code":  "UPDATE_ERROR",
@@ -156,7 +159,7 @@ func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
 	}
 
 	// Reload config
-	if err := models.DB.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
+	if err := h.db.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to reload config",
 			"code":  "RELOAD_ERROR",
@@ -185,7 +188,7 @@ func (h *WatcherHandler) GetState(c *fiber.Ctx) error {
 	}
 
 	var state models.WatcherState
-	if err := models.DB.Where("user_id = ?", userUUID).First(&state).Error; err != nil {
+	if err := h.db.Where("user_id = ?", userUUID).First(&state).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Watcher state not found",
 			"code":  "STATE_NOT_FOUND",

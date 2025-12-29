@@ -14,6 +14,20 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
+// Pre-compiled regex patterns for reward extraction (compiled once at package load)
+var (
+	// Pattern 1: $XX.XX or $XXX
+	rewardDollarRegex = regexp.MustCompile(`\$(\d+\.?\d*)`)
+	// Pattern 2: XX.XX USD or XX.XX dollars (case insensitive)
+	rewardUSDRegex = regexp.MustCompile(`(?i)(\d+\.?\d*)\s*(?:USD|dollars?)`)
+	// Pattern 3: USD XX.XX or Reward: XX.XX
+	rewardPrefixRegex = regexp.MustCompile(`(?i)(?:USD|Reward|price)\s*[:=]?\s*\$?(\d+\.?\d*)`)
+	// Pattern 4: Just a number followed by currency symbol
+	rewardSymbolRegex = regexp.MustCompile(`(\d+\.?\d*)\s*[$€£¥]`)
+	// Language pair pattern: ISO code patterns like "EN to JP", "EN→JP", "EN-JP"
+	langPairRegex = regexp.MustCompile(`(?i)\b([a-z]{2})\s*(?:to|→|-)\s*([a-z]{2})\b`)
+)
+
 // RSSMonitor monitors an RSS feed for new jobs
 type RSSMonitor struct {
 	feedParser *gofeed.Parser
@@ -170,34 +184,31 @@ func (m *RSSMonitor) extractReward(item *gofeed.Item) float64 {
 
 // extractRewardFromString extracts a reward value from a string
 // Supports formats: $5.00, 5.00 USD, USD 5.00, Reward: $5.00
+// Uses pre-compiled regex patterns for better performance
 func (m *RSSMonitor) extractRewardFromString(s string) float64 {
 	// Pattern 1: $XX.XX or $XXX
-	re1 := regexp.MustCompile(`\$(\d+\.?\d*)`)
-	if matches := re1.FindStringSubmatch(s); len(matches) > 1 {
+	if matches := rewardDollarRegex.FindStringSubmatch(s); len(matches) > 1 {
 		if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
 			return val
 		}
 	}
 
 	// Pattern 2: XX.XX USD or XX.XX dollars (case insensitive)
-	re2 := regexp.MustCompile(`(?i)(\d+\.?\d*)\s*(?:USD|dollars?)`)
-	if matches := re2.FindStringSubmatch(s); len(matches) > 1 {
+	if matches := rewardUSDRegex.FindStringSubmatch(s); len(matches) > 1 {
 		if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
 			return val
 		}
 	}
 
 	// Pattern 3: USD XX.XX or Reward: XX.XX
-	re3 := regexp.MustCompile(`(?i)(?:USD|Reward|price)\s*[:=]?\s*\$?(\d+\.?\d*)`)
-	if matches := re3.FindStringSubmatch(s); len(matches) > 1 {
+	if matches := rewardPrefixRegex.FindStringSubmatch(s); len(matches) > 1 {
 		if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
 			return val
 		}
 	}
 
 	// Pattern 4: Just a number followed by currency symbol
-	re4 := regexp.MustCompile(`(\d+\.?\d*)\s*[$€£¥]`)
-	if matches := re4.FindStringSubmatch(s); len(matches) > 1 {
+	if matches := rewardSymbolRegex.FindStringSubmatch(s); len(matches) > 1 {
 		if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
 			return val
 		}
@@ -298,8 +309,8 @@ func (m *RSSMonitor) extractLanguagePair(title, description string) string {
 	}
 
 	// Check for ISO code patterns like "EN to JP", "EN→JP", "EN-JP"
-	re := regexp.MustCompile(`(?i)\b([a-z]{2})\s*(?:to|→|-)\s*([a-z]{2})\b`)
-	if matches := re.FindStringSubmatch(text); len(matches) > 2 {
+	// Uses pre-compiled regex for better performance
+	if matches := langPairRegex.FindStringSubmatch(text); len(matches) > 2 {
 		return fmt.Sprintf("%s → %s", strings.ToLower(matches[1]), strings.ToLower(matches[2]))
 	}
 

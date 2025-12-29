@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/models"
 )
 
@@ -42,12 +43,14 @@ type LemonSqueezyWebhookEvent struct {
 // LemonSqueezyHandler handles LemonSqueezy webhooks
 type LemonSqueezyHandler struct {
 	webhookSecret string
+	db            database.Database
 }
 
 // NewLemonSqueezyHandler creates a new LemonSqueezy webhook handler
-func NewLemonSqueezyHandler(webhookSecret string) *LemonSqueezyHandler {
+func NewLemonSqueezyHandler(webhookSecret string, db database.Database) *LemonSqueezyHandler {
 	return &LemonSqueezyHandler{
 		webhookSecret: webhookSecret,
+		db:            db,
 	}
 }
 
@@ -91,7 +94,7 @@ func (h *LemonSqueezyHandler) HandleWebhook(c *fiber.Ctx) error {
 
 	// Check for duplicate event (idempotency)
 	var existingEvent models.BillingEvent
-	result := models.DB.Where("event_id = ?", event.Meta.EventID).First(&existingEvent)
+	result := h.db.Where("event_id = ?", event.Meta.EventID).First(&existingEvent)
 	if result.Error == nil {
 		// Already processed, return success
 		return c.SendStatus(fiber.StatusOK)
@@ -157,7 +160,7 @@ func (h *LemonSqueezyHandler) processEvent(event *LemonSqueezyWebhookEvent) erro
 	}
 
 	// Save billing event
-	return models.DB.Create(&billingEvent).Error
+	return h.db.Create(&billingEvent).Error
 }
 
 // getEventType extracts the event type from the event
@@ -190,23 +193,26 @@ func (h *LemonSqueezyHandler) handleSubscriptionActive(event *LemonSqueezyWebhoo
 		return fmt.Errorf("no user_id in event")
 	}
 
+	// Use the subscription item ID from LemonSqueezy
+	lemonSubscriptionID := event.Data.Attributes.FirstSubscriptionItem.ID
+
 	// Find or create subscription
 	var subscription models.Subscription
-	result := models.DB.Where("lemon_subscription_id = ?", event.Data.Attributes.UserID).First(&subscription)
+	result := h.db.Where("lemon_subscription_id = ?", lemonSubscriptionID).First(&subscription)
 
 	if result.Error != nil {
 		// Create new subscription
 		subscription = models.Subscription{
 			UserID:             *userID,
-			LemonSubscriptionID: event.Data.Attributes.UserID,
-			SubscriptionStatus: event.Data.Attributes.Status,
+			LemonSubscriptionID: lemonSubscriptionID,
+			SubscriptionStatus:  event.Data.Attributes.Status,
 		}
 	} else {
 		// Update existing
 		subscription.SubscriptionStatus = event.Data.Attributes.Status
 	}
 
-	return models.DB.Save(&subscription).Error
+	return h.db.Save(&subscription).Error
 }
 
 // handleSubscriptionCancelled handles subscription cancellation
@@ -215,7 +221,7 @@ func (h *LemonSqueezyHandler) handleSubscriptionCancelled(event *LemonSqueezyWeb
 		return fmt.Errorf("no user_id in event")
 	}
 
-	return models.DB.Model(&models.Subscription{}).
+	return h.db.Model(&models.Subscription{}).
 		Where("user_id = ?", *userID).
 		Update("subscription_status", "cancelled").
 		Error
@@ -227,7 +233,7 @@ func (h *LemonSqueezyHandler) handleSubscriptionPaused(event *LemonSqueezyWebhoo
 		return fmt.Errorf("no user_id in event")
 	}
 
-	return models.DB.Model(&models.Subscription{}).
+	return h.db.Model(&models.Subscription{}).
 		Where("user_id = ?", *userID).
 		Update("subscription_status", "paused").
 		Error
@@ -239,7 +245,7 @@ func (h *LemonSqueezyHandler) handleSubscriptionUnpaused(event *LemonSqueezyWebh
 		return fmt.Errorf("no user_id in event")
 	}
 
-	return models.DB.Model(&models.Subscription{}).
+	return h.db.Model(&models.Subscription{}).
 		Where("user_id = ?", *userID).
 		Update("subscription_status", "active").
 		Error
@@ -251,7 +257,7 @@ func (h *LemonSqueezyHandler) handleSubscriptionExpired(event *LemonSqueezyWebho
 		return fmt.Errorf("no user_id in event")
 	}
 
-	return models.DB.Model(&models.Subscription{}).
+	return h.db.Model(&models.Subscription{}).
 		Where("user_id = ?", *userID).
 		Update("subscription_status", "expired").
 		Error

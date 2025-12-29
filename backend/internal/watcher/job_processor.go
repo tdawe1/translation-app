@@ -9,17 +9,18 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/models"
 )
 
 // JobProcessor handles job filtering, deduplication, and publishing
 type JobProcessor struct {
-	db    *gorm.DB
+	db    database.Database
 	redis *redis.Client
 }
 
 // NewJobProcessor creates a new job processor
-func NewJobProcessor(db *gorm.DB, redis *redis.Client) *JobProcessor {
+func NewJobProcessor(db database.Database, redis *redis.Client) *JobProcessor {
 	return &JobProcessor{
 		db:    db,
 		redis: redis,

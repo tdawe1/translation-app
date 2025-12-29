@@ -62,7 +62,7 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(userSvc, cfg.CookieSecure)
-	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret)
+	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret, db)
 
 	// Initialize Redis
 	redisOpts, err := redis.ParseURL(getEnv("REDIS_URL", "redis://localhost:6379/0"))
@@ -77,8 +77,8 @@ func main() {
 	}
 
 	// Initialize watcher manager
-	watcherManager := watcher.NewUserWatcherManager(gormDB, redisClient)
-	watcherHandler := handlers.NewWatcherHandler(watcherManager)
+	watcherManager := watcher.NewUserWatcherManager(db, redisClient)
+	watcherHandler := handlers.NewWatcherHandler(watcherManager, db)
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{

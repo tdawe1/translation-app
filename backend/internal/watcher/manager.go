@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 
+	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/models"
 )
 
@@ -37,7 +37,7 @@ type WatcherInstance struct {
 
 // UserWatcherManager manages per-user watcher instances
 type UserWatcherManager struct {
-	db            *gorm.DB
+	db            database.Database
 	redis         *redis.Client
 	watchers      map[uuid.UUID]*WatcherInstance
 	mu            sync.RWMutex
@@ -46,7 +46,7 @@ type UserWatcherManager struct {
 }
 
 // NewUserWatcherManager creates a new watcher manager
-func NewUserWatcherManager(db *gorm.DB, redisClient *redis.Client) *UserWatcherManager {
+func NewUserWatcherManager(db database.Database, redisClient *redis.Client) *UserWatcherManager {
 	return &UserWatcherManager{
 		db:            db,
 		redis:         redisClient,

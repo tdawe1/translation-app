@@ -10,25 +10,25 @@ Transforming GengoWatcher from a localhost-only tool to a remotely-hosted multi-
 
 - **Per-User Watcher Instances**: Each user gets isolated RSS + WebSocket monitoring
 - **Multi-Method Authentication**: Email/password, magic links, OAuth (Google/GitHub), API keys
-- **Subscription Billing**: Stripe integration with multiple tiers
+- **Subscription Billing**: LemonSqueezy integration with multiple tiers
 - **Real-Time Notifications**: Redis pub/sub for instant job alerts
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Backend | FastAPI, SQLAlchemy 2.0 async |
-| Database | PostgreSQL (prod) / SQLite (local) |
-| Auth | Argon2id, JWT, httpOnly cookies |
+| Backend | Go 1.23, Fiber 3.x, GORM |
+| Database | PostgreSQL |
+| Auth | bcrypt, golang-jwt/jwt, httpOnly cookies |
 | Real-time | Redis pub/sub |
-| Billing | Stripe |
+| Billing | LemonSqueezy |
 | Email | Resend |
-| Frontend | React 18, TypeScript, Vite |
+| Frontend | Next.js 16, React 19, Zustand |
 
 ## Development
 
 ### Prerequisites
-- Python 3.11+
+- Go 1.23+
 - Docker & Docker Compose
 - Node.js 18+ (for frontend)
 
@@ -36,37 +36,41 @@ Transforming GengoWatcher from a localhost-only tool to a remotely-hosted multi-
 
 ```bash
 # Clone and navigate
-cd /home/thomas/GengoWatcher-SaaS
+cd translation-app
 
 # Start services (PostgreSQL, Redis, MailHog)
 docker-compose up -d
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # or `.venv\Scripts\activate` on Windows
-
-# Install dependencies
-pip install -r requirements-dev.txt
 
 # Copy environment template
 cp .env.example .env
 # Edit .env with your values
 
-# Install pre-commit hooks
-pre-commit install
-
-# Run tests
-pytest tests/ -v
+# Set required environment variables
+export JWT_SECRET=$(openssl rand -hex 32)
+export LEMONQUEEZY_WEBHOOK_SECRET=your_webhook_secret
 ```
 
 ### Running
 
 ```bash
-# API server
-uvicorn src.gengowatcher.main:app --reload --host 0.0.0.0 --port 8000
+# Backend API server
+cd backend && go run ./cmd/server
 
 # Frontend dev server
 cd frontend && npm run dev
+```
+
+### Development Commands
+
+```bash
+# Run Go tests
+cd backend && go test ./...
+
+# Build backend
+cd backend && go build -o bin/server ./cmd/server
+
+# Type check backend
+cd backend && go vet ./...
 ```
 
 ## Project Status
