@@ -5,7 +5,21 @@ import (
 
 	"github.com/tdawe1/translation-app/internal/auth"
 	apperrors "github.com/tdawe1/translation-app/internal/errors"
+	"github.com/tdawe1/translation-app/internal/middleware"
 )
+
+// getAPIError safely converts an error to *apperrors.APIError.
+// Returns nil if the error is not of the correct type.
+func getAPIError(err error) *apperrors.APIError {
+	if err == nil {
+		return nil
+	}
+	apiErr, ok := err.(*apperrors.APIError)
+	if !ok {
+		return nil
+	}
+	return apiErr
+}
 
 // AuthHandler handles authentication endpoints
 type AuthHandler struct {
@@ -51,8 +65,12 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	})
 
 	if apiErr != nil {
-		status := h.statusCodeForError(apiErr.(*apperrors.APIError).Code)
-		return RespondWithAPIError(c, status, apiErr.(*apperrors.APIError))
+		errObj := getAPIError(apiErr)
+		if errObj == nil {
+			return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Internal error")
+		}
+		status := h.statusCodeForError(errObj.Code)
+		return RespondWithAPIError(c, status, errObj)
 	}
 
 	// Set httpOnly cookie
@@ -77,8 +95,12 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	})
 
 	if apiErr != nil {
-		status := h.statusCodeForError(apiErr.(*apperrors.APIError).Code)
-		return RespondWithAPIError(c, status, apiErr.(*apperrors.APIError))
+		errObj := getAPIError(apiErr)
+		if errObj == nil {
+			return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Internal error")
+		}
+		status := h.statusCodeForError(errObj.Code)
+		return RespondWithAPIError(c, status, errObj)
 	}
 
 	// Set httpOnly cookie
@@ -92,7 +114,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 
 // GetMe returns current user info
 func (h *AuthHandler) GetMe(c *fiber.Ctx) error {
-	userID, ok := GetUserID(c)
+	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Not authenticated")
 	}
@@ -104,8 +126,12 @@ func (h *AuthHandler) GetMe(c *fiber.Ctx) error {
 
 	user, apiErr := h.userService.GetUserByID(userUUID)
 	if apiErr != nil {
-		status := h.statusCodeForError(apiErr.(*apperrors.APIError).Code)
-		return RespondWithAPIError(c, status, apiErr.(*apperrors.APIError))
+		errObj := getAPIError(apiErr)
+		if errObj == nil {
+			return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Internal error")
+		}
+		status := h.statusCodeForError(errObj.Code)
+		return RespondWithAPIError(c, status, errObj)
 	}
 
 	return c.JSON(UserToResponse(user))
@@ -133,23 +159,4 @@ func (h *AuthHandler) statusCodeForError(code apperrors.ErrorCode) int {
 	default:
 		return fiber.StatusInternalServerError
 	}
-}
-
-// GetUserID retrieves the user ID from the request context
-var GetUserID = func(c *fiber.Ctx) (string, bool) {
-	claims := c.Locals("user")
-	if claims == nil {
-		return "", false
-	}
-
-	userClaims, ok := claims.(map[string]interface{})
-	if !ok {
-		return "", false
-	}
-
-	if sub, ok := userClaims["sub"].(string); ok {
-		return sub, true
-	}
-
-	return "", false
 }

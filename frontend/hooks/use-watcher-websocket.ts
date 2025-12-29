@@ -34,13 +34,39 @@ interface WSErrorMessage {
   timestamp: string;
 }
 
-interface WSJobMessage {
+interface WSJobDataMessage {
   type: "job";
-  data: unknown;
+  data: JobData;
   timestamp: string;
 }
 
-type WSMessage = WSConnectedMessage | WSEventMessage | WSErrorMessage | WSJobMessage;
+// Strict interface for job data from WebSocket
+interface JobData {
+  id: string;
+  title: string;
+  reward: number;
+  url: string;
+  source: "rss" | "websocket";
+  timestamp?: string;
+}
+
+type WSMessage = WSConnectedMessage | WSEventMessage | WSErrorMessage | WSJobDataMessage;
+
+// Type guard for JobData
+function isJobData(data: unknown): data is JobData {
+  if (typeof data !== "object" || data === null) {
+    return false;
+  }
+  const d = data as Record<string, unknown>;
+  return (
+    typeof d.id === "string" &&
+    typeof d.title === "string" &&
+    typeof d.reward === "number" &&
+    typeof d.url === "string" &&
+    (d.source === "rss" || d.source === "websocket") &&
+    (d.timestamp === undefined || typeof d.timestamp === "string")
+  );
+}
 
 interface UseWatcherWebSocketOptions {
   enabled?: boolean;
@@ -128,22 +154,20 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
 
             case "job":
               console.log("[WS] New job:", message.data);
-              // Add job to store (handle both wrapped and direct job messages)
-              const jobData =
-                "data" in message && typeof message.data === "object"
-                  ? (message.data as unknown as Job)
-                  : (message as unknown as Job);
-              if (jobData.id) {
+              // Use type guard to safely validate job data
+              if (isJobData(message.data)) {
                 addJob({
-                  id: jobData.id,
-                  title: jobData.title || "Unknown Job",
-                  reward: jobData.reward || 0,
-                  url: jobData.url || "#",
-                  source: jobData.source || "rss",
-                  timestamp: jobData.timestamp || new Date().toISOString(),
+                  id: message.data.id,
+                  title: message.data.title,
+                  reward: message.data.reward,
+                  url: message.data.url,
+                  source: message.data.source,
+                  timestamp: message.data.timestamp || new Date().toISOString(),
                 });
+                onJob?.(message.data);
+              } else {
+                console.warn("[WS] Invalid job data received:", message.data);
               }
-              onJob?.(message.data);
               break;
 
             default:

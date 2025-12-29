@@ -2,11 +2,17 @@ package middleware
 
 import (
 	"errors"
+	"log"
 	"os"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+)
+
+const (
+	// minSecretLength is the minimum required length for JWT secret (256 bits for HS256)
+	minSecretLength = 32
 )
 
 var (
@@ -15,29 +21,43 @@ var (
 
 	// ErrInvalidToken is returned when the token is invalid
 	ErrInvalidToken = errors.New("invalid authorization token")
+
+	// jwtConfig is the default configuration
+	jwtConfig = &JWTConfig{
+		Secret:      validateJWTSecretOrFatal(os.Getenv("JWT_SECRET")),
+		Lookup:      "header:Authorization",
+		AuthScheme:  "Bearer",
+		ContextKey:  "user",
+	}
 )
+
+// validateJWTSecretOrFatal validates the JWT secret and exits if invalid
+func validateJWTSecretOrFatal(secret string) string {
+	if secret == "" {
+		log.Fatal("FATAL: JWT_SECRET environment variable is not set. " +
+			"Authentication cannot function without a secure secret. " +
+			"Please set JWT_SECRET to a random string of at least 32 characters.")
+	}
+	if len(secret) < minSecretLength {
+		log.Fatalf("FATAL: JWT_SECRET must be at least %d characters (256 bits for HS256). "+
+			"Current length: %d. Please generate a stronger secret.", minSecretLength, len(secret))
+	}
+	return secret
+}
 
 // JWTConfig holds JWT middleware configuration
 type JWTConfig struct {
-	Secret         string
-	Lookup        string
-	AuthScheme    string
-	ContextKey     string
-	 ErrorHandler  fiber.ErrorHandler
-}
-
-// jwtConfig is the default configuration
-var jwtConfig = &JWTConfig{
-	Secret:      os.Getenv("JWT_SECRET"),
-	Lookup:      "header:Authorization",
-	AuthScheme:  "Bearer",
-	ContextKey:  "user",
+	Secret        string
+	Lookup       string
+	AuthScheme   string
+	ContextKey    string
+	ErrorHandler fiber.ErrorHandler
 }
 
 // NewJWTConfig creates a new JWT config with options
 func NewJWTConfig(options ...func(*JWTConfig)) *JWTConfig {
 	config := &JWTConfig{
-		Secret:     os.Getenv("JWT_SECRET"),
+		Secret:     validateJWTSecretOrFatal(os.Getenv("JWT_SECRET")),
 		Lookup:     "header:Authorization",
 		AuthScheme: "Bearer",
 		ContextKey:  "user",
@@ -47,9 +67,10 @@ func NewJWTConfig(options ...func(*JWTConfig)) *JWTConfig {
 		option(config)
 	}
 
-	// Set default secret if empty
-	if config.Secret == "" {
-		config.Secret = "change-this-secret-in-production"
+	// Re-validate after options have been applied (in case an option modified Secret)
+	if config.Secret == "" || len(config.Secret) < minSecretLength {
+		log.Fatalf("FATAL: JWT_SECRET validation failed after applying options. " +
+			"Secret must be at least %d characters.", minSecretLength)
 	}
 
 	return config
@@ -166,26 +187,6 @@ func validateToken(tokenString, secret string) (jwt.MapClaims, error) {
 	}
 
 	return nil, ErrInvalidToken
-}
-
-// GetUserID extracts user ID from context (after JWT middleware)
-func GetUserID(c *fiber.Ctx) (string, bool) {
-	claims := c.Locals("user")
-	if claims == nil {
-		return "", false
-	}
-
-	// BetterAuth uses "sub" for user ID
-	userClaims, ok := claims.(jwt.MapClaims)
-	if !ok {
-		return "", false
-	}
-
-	if sub, ok := userClaims["sub"].(string); ok {
-		return sub, true
-	}
-
-	return "", false
 }
 
 // WebSocketAuth returns a middleware that validates JWT from query parameter

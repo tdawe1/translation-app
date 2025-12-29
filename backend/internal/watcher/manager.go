@@ -12,6 +12,43 @@ import (
 	"github.com/tdawe1/translation-app/internal/models"
 )
 
+// NewTestManager creates a watcher manager for testing
+// This is a test-only constructor that doesn't start background goroutines
+func NewTestManager(t interface{}) *UserWatcherManager {
+	// Create a mock Redis client for testing (using miniredis would be better)
+	// For now, we'll use a real Redis client pointing to test DB
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       15, // Test database
+	})
+
+	// Create a minimal database wrapper
+	minimalDB := &minimalTestDB{}
+
+	return &UserWatcherManager{
+		db:            minimalDB,
+		redis:         redisClient,
+		watchers:      make(map[uuid.UUID]*WatcherInstance),
+		stateManager:  NewStateManager(minimalDB),
+		jobProcessor:  NewJobProcessor(minimalDB, redisClient),
+	}
+}
+
+// minimalTestDB is a minimal database.Database implementation for testing
+type minimalTestDB struct{}
+
+func (m *minimalTestDB) Create(value interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) First(dest interface{}, conds ...interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Where(query interface{}, args ...interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Model(value interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Begin(opts ...interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Exec(sql string, values ...interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Save(value interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Updates(values interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) UpdateColumn(column string, value interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Update(column string, value interface{}) *gorm.DB { return nil }
+
 // Job represents a detected job from RSS or WebSocket
 type Job struct {
 	ID     string  `json:"id"`

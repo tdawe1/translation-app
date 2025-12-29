@@ -79,7 +79,7 @@ func main() {
 	// Initialize watcher manager
 	watcherManager := watcher.NewUserWatcherManager(db, redisClient)
 	watcherHandler := handlers.NewWatcherHandler(watcherManager, db)
-	wsHandler := handlers.NewWebSocketHandler(redisClient)
+	wsHandler := handlers.NewWebSocketHandler(redisClient, cfg.AllowedOriginList())
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
@@ -111,8 +111,9 @@ func main() {
 
 	// Auth routes (public)
 	authGroup := api.Group("/auth")
-	authGroup.Post("/register", authHandler.Register)
-	authGroup.Post("/login", authHandler.Login)
+	authLimiter := middleware.AuthLimiters()
+	authGroup.Post("/register", authLimiter.Register, authHandler.Register)
+	authGroup.Post("/login", authLimiter.Login, authHandler.Login)
 	authGroup.Post("/logout", authHandler.Logout)
 
 	// Protected routes (require auth)
@@ -129,12 +130,15 @@ func main() {
 	watcherGroup.Post("/start", watcherHandler.StartWatcher)
 	watcherGroup.Post("/stop", watcherHandler.StopWatcher)
 
+	// WebSocket ticket endpoint (protected, used to get short-lived ticket for WS connection)
+	protected.Post("/auth/ws-ticket", wsHandler.GetWSTicket)
+
 	// Webhook routes (public, verified via signature)
 	webhooks := api.Group("/webhooks")
 	webhooks.Post("/lemonsqueezy", lemonHandler.HandleWebhook)
 
-	// WebSocket route (auth via query parameter token)
-	app.Get("/ws", middleware.WebSocketAuth(middleware.NewJWTConfig()), wsHandler.HandleWebSocket())
+	// WebSocket route (auth via short-lived ticket from /api/v1/auth/ws-ticket)
+	app.Get("/ws", wsHandler.HandleWebSocket())
 
 	// Start server
 	log.Printf("Server starting on port %s (env: %s)", cfg.Port, cfg.Env)

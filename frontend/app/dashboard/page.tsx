@@ -136,7 +136,11 @@ export default function DashboardPage() {
                   <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                 )}
               </div>
-              <p className={`text-3xl font-light ${statusDisplay.color}`}>
+              <p
+                role="status"
+                aria-live="polite"
+                className={`text-3xl font-light ${statusDisplay.color}`}
+              >
                 {statusDisplay.text}
               </p>
             </div>
@@ -146,7 +150,11 @@ export default function DashboardPage() {
               <h3 className="text-orange-600 font-mono text-xs uppercase tracking-widest mb-2">
                 Jobs Found
               </h3>
-              <p className="text-3xl font-light">
+              <p
+                role="status"
+                aria-live="polite"
+                className="text-3xl font-light"
+              >
                 {state?.total_jobs_found ?? 0}
               </p>
             </div>
@@ -156,7 +164,11 @@ export default function DashboardPage() {
               <h3 className="text-yellow-600 font-mono text-xs uppercase tracking-widest mb-2">
                 Earnings
               </h3>
-              <p className="text-3xl font-light">
+              <p
+                role="status"
+                aria-live="polite"
+                className="text-3xl font-light"
+              >
                 ${state?.total_earnings?.toFixed(2) ?? "0.00"}
               </p>
             </div>

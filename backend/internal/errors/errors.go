@@ -27,6 +27,9 @@ const (
 	ErrDatabase    ErrorCode = "DATABASE_ERROR"
 	ErrCommitError ErrorCode = "COMMIT_ERROR"
 	ErrPasswordError ErrorCode = "PASSWORD_ERROR"
+
+	// Internal errors
+	ErrInternal ErrorCode = "INTERNAL_ERROR"
 )
 
 // APIError represents a structured error response

@@ -2,7 +2,7 @@
  * WatcherConfigForm - Form for editing watcher configuration
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWatcherStore } from "@/store/watcher";
 import type { WatcherConfig } from "@/lib/api";
 
@@ -32,9 +32,11 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
   const [error, setError] = useState<string | null>(null);
 
   // Update form data when config loads
-  if (config && JSON.stringify(formData) !== JSON.stringify(config)) {
-    setFormData(config);
-  }
+  useEffect(() => {
+    if (config) {
+      setFormData(config);
+    }
+  }, [config]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

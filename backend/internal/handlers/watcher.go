@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/tdawe1/translation-app/internal/database"
+	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/models"
 	"github.com/tdawe1/translation-app/internal/watcher"
 )
@@ -27,7 +28,7 @@ func NewWatcherHandler(manager *watcher.UserWatcherManager, db database.Database
 
 // GetConfig returns the user's watcher configuration
 func (h *WatcherHandler) GetConfig(c *fiber.Ctx) error {
-	userID, ok := GetUserID(c)
+	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Not authenticated",
@@ -73,7 +74,7 @@ type UpdateConfigRequest struct {
 
 // UpdateConfig updates the user's watcher configuration
 func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
-	userID, ok := GetUserID(c)
+	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Not authenticated",
@@ -171,7 +172,7 @@ func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
 
 // GetState returns the user's watcher state
 func (h *WatcherHandler) GetState(c *fiber.Ctx) error {
-	userID, ok := GetUserID(c)
+	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Not authenticated",
@@ -204,7 +205,7 @@ func (h *WatcherHandler) GetState(c *fiber.Ctx) error {
 
 // StartWatcher starts the user's watcher
 func (h *WatcherHandler) StartWatcher(c *fiber.Ctx) error {
-	userID, ok := GetUserID(c)
+	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Not authenticated",
@@ -237,7 +238,7 @@ func (h *WatcherHandler) StartWatcher(c *fiber.Ctx) error {
 
 // StopWatcher stops the user's watcher
 func (h *WatcherHandler) StopWatcher(c *fiber.Ctx) error {
-	userID, ok := GetUserID(c)
+	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Not authenticated",

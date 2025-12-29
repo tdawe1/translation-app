@@ -63,6 +63,7 @@ export function JobList() {
         </h3>
         <button
           onClick={clearJobs}
+          aria-label="Clear all jobs"
           className="font-mono text-xs text-neutral-400 hover:text-red-600 transition-colors"
         >
           Clear
