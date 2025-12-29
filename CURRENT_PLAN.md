@@ -231,54 +231,73 @@
 > - Test runtime: <5 seconds vs ~45 seconds
 > - **No testcontainers, no MSW, no fixtures**
 
+### ✅ Backend Tests (COMPLETED)
+
+**File: `backend/tests/helpers.go`**
+- `TestDB(t *testing.T)` - PostgreSQL test database connection
+- `TestRedis(t *testing.T)` - Redis client (DB 15) with skip if unavailable
+- `CreateTestUser(t, db, email)` - Creates user with watcher config/state
+- `GenerateTestToken(t, userID)` - Real JWT token generation
+
+**File: `backend/tests/watcher_test.go`**
+- `TestWatcher_CompleteFlow` - Full watcher lifecycle (6 subtests)
+- `TestWatcher_UnauthorizedAccess` - Auth rejection (2 subtests)
+- `TestWatcher_ConcurrentStart` - Concurrent start safety
+
+**Test Results:**
+```
+PASS: TestWatcher_CompleteFlow (0.02s)
+  └─ 6/6 subtests passed
+PASS: TestWatcher_UnauthorizedAccess (0.00s)
+  └─ 2/2 subtests passed
+PASS: TestWatcher_ConcurrentStart (0.01s)
+ok  	github.com/tdawe1/translation-app/tests	0.032s
+```
+
+**Key Implementation Details:**
+- Uses PostgreSQL `gengowatcher_test` database (port 5433)
+- JWT middleware properly integrated with test tokens
+- `databaseWrapper` adapts `*gorm.DB` to `database.Database` interface
+- `NewTestManager(db)` accepts optional test database for real operations
+
 ### Test Infrastructure Setup (Simplified)
 
-#### 1. Backend Test Setup
+#### Backend Test Setup
 
 **Flat Directory Structure:**
 ```
 backend/tests/
-├── websocket_test.go    # WebSocket handler + auth + integration
-├── watcher_test.go      # Watcher CRUD + flow
-└── helpers.go           # Only if >3 shared helpers
+├── helpers.go           # Test DB, Redis, user creation, JWT
+└── watcher_test.go      # Watcher integration tests
 ```
 
 **Test Configuration:**
 ```bash
-# .env.test
-DATABASE_URL=sqlite://file::memory:?cache=shared&_foreign_keys=true
+# Required for running tests
 JWT_SECRET=test-secret-for-testing-only-32-chars-min
-REDIS_URL=redis://localhost:6379/1
+
+# Optional (uses defaults if not set)
+TEST_DB_HOST=localhost
+TEST_DB_PORT=5433
+TEST_DB_USER=gengo
+TEST_DB_PASSWORD=devpass
+TEST_DB_NAME=gengowatcher_test
+TEST_DB_SSLMODE=disable
 ```
 
-**Dependencies to Add:**
-- `github.com/stretchr/testify` - Assertions (already in go.mod)
-- `github.com/gorilla/websocket` - WebSocket client for testing
-- **No testcontainers** - Use SQLite for fast tests
-
-#### 2. Frontend Test Setup
-
-**Flat Directory Structure:**
-```
-frontend/tests/
-├── dashboard.test.tsx   # Full user journey (config + WS + jobs)
-└── setup.ts             # Test setup with mocks
+**Run Tests:**
+```bash
+cd backend
+make test              # Run all tests
+make test-verbose      # Run with verbose output
+make test-coverage     # Run with coverage report
 ```
 
-**Dependencies to Add:**
-- `vitest` - Fast test runner
-- `@testing-library/react` - Component testing utilities
-- `@testing-library/user-event` - User interaction simulation
-- `happy-dom` - Lightweight DOM environment
-- **No MSW** - Use direct mocks for WebSocket
+### Pending Tests
 
----
+#### Backend Tests (~150 LOC)
 
-### Tests to Implement
-
-#### Backend Tests (~200 LOC)
-
-**`tests/websocket_test.go`**
+**`tests/websocket_test.go`** (NOT YET IMPLEMENTED)
 ```go
 func TestWebSocket_Authentication(t *testing.T) {
     // Tests: missing token, invalid token, valid token
@@ -291,19 +310,6 @@ func TestWebSocket_ReceivesEventNotification(t *testing.T) {
 }
 func TestWebSocket_HandlesDisconnect(t *testing.T) {
     // Tests: graceful cleanup
-}
-```
-
-**`tests/watcher_test.go`**
-```go
-func TestWatcher_CompleteFlow(t *testing.T) {
-    // 1. Register → Login → Config (404) → Update → Start → Stop
-}
-func TestWatcher_UnauthorizedAccess(t *testing.T) {
-    // Tests: requests without JWT are rejected
-}
-func TestWatcher_ConcurrentStart(t *testing.T) {
-    // Tests: multiple start calls only start once
 }
 ```
 
