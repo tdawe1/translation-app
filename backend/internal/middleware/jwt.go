@@ -76,6 +76,8 @@ func JWTValidator(config *JWTConfig) fiber.Handler {
 		case "Cookie":
 			extractor = extractTokenFromCookie
 		}
+	case "query":
+		extractor = extractTokenFromQuery
 	}
 
 	return func(c *fiber.Ctx) error {
@@ -133,6 +135,19 @@ func extractTokenFromCookie(c *fiber.Ctx, config *JWTConfig) (string, error) {
 	return token, nil
 }
 
+// extractTokenFromQuery extracts token from query parameter
+func extractTokenFromQuery(c *fiber.Ctx, config *JWTConfig) (string, error) {
+	token := c.Query("token", "")
+	if token == "" {
+		return "", ErrMissingToken
+	}
+	// Remove "Bearer " prefix if present
+	if strings.HasPrefix(token, config.AuthScheme+" ") {
+		token = strings.TrimPrefix(token, config.AuthScheme+" ")
+	}
+	return token, nil
+}
+
 // validateToken validates a JWT token and returns the claims
 func validateToken(tokenString, secret string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
@@ -171,4 +186,22 @@ func GetUserID(c *fiber.Ctx) (string, bool) {
 	}
 
 	return "", false
+}
+
+// WebSocketAuth returns a middleware that validates JWT from query parameter
+// For WebSocket connections that can't use standard headers
+func WebSocketAuth(config *JWTConfig) fiber.Handler {
+	if config == nil {
+		config = jwtConfig
+	}
+
+	// Override context key to store user_id as string
+	cfg := &JWTConfig{
+		Secret:     config.Secret,
+		Lookup:     "query:token",
+		AuthScheme: "Bearer",
+		ContextKey:  "user_id",
+	}
+
+	return JWTValidator(cfg)
 }

@@ -79,6 +79,7 @@ func main() {
 	// Initialize watcher manager
 	watcherManager := watcher.NewUserWatcherManager(db, redisClient)
 	watcherHandler := handlers.NewWatcherHandler(watcherManager, db)
+	wsHandler := handlers.NewWebSocketHandler(redisClient)
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
@@ -131,6 +132,9 @@ func main() {
 	// Webhook routes (public, verified via signature)
 	webhooks := api.Group("/webhooks")
 	webhooks.Post("/lemonsqueezy", lemonHandler.HandleWebhook)
+
+	// WebSocket route (auth via query parameter token)
+	app.Get("/ws", middleware.WebSocketAuth(middleware.NewJWTConfig()), wsHandler.HandleWebSocket())
 
 	// Start server
 	log.Printf("Server starting on port %s (env: %s)", cfg.Port, cfg.Env)
