@@ -99,9 +99,10 @@ func (h *WebSocketHandler) GetWSTicket(c *fiber.Ctx) error {
 	})
 }
 
-// validateTicket validates a WebSocket ticket and returns the user ID
+// ValidateTicket validates a WebSocket ticket and returns the user ID
 // The ticket is deleted after successful validation (one-time use)
-func (h *WebSocketHandler) validateTicket(ctx context.Context, ticket string) (string, error) {
+// Exported for testing
+func (h *WebSocketHandler) ValidateTicket(ctx context.Context, ticket string) (string, error) {
 	if ticket == "" {
 		return "", ErrInvalidWSTicket
 	}
@@ -135,8 +136,9 @@ func (h *WebSocketHandler) validateTicket(ctx context.Context, ticket string) (s
 	return userID, nil
 }
 
-// validateOrigin checks if the Origin header is in the allowed list
-func (h *WebSocketHandler) validateOrigin(origin string) error {
+// ValidateOrigin checks if the Origin header is in the allowed list
+// Exported for testing
+func (h *WebSocketHandler) ValidateOrigin(origin string) error {
 	if origin == "" {
 		// Some clients don't send Origin (e.g., some mobile apps, non-browser clients)
 		// Allow these connections but log a warning
@@ -157,7 +159,7 @@ func (h *WebSocketHandler) validateOrigin(origin string) error {
 func (h *WebSocketHandler) HandleWebSocket() fiber.Handler {
 	return websocket.New(func(c *websocket.Conn) {
 		// Validate Origin header before doing any expensive operations
-		if err := h.validateOrigin(c.Headers("Origin")); err != nil {
+		if err := h.ValidateOrigin(c.Headers("Origin")); err != nil {
 			log.Printf("[WS] Rejected connection from origin %s: %v", c.Headers("Origin"), err)
 			c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(
 				websocket.ClosePolicyViolation, "Origin not allowed",
@@ -179,7 +181,7 @@ func (h *WebSocketHandler) HandleWebSocket() fiber.Handler {
 
 		// Validate ticket and get user ID
 		ticketCtx := context.Background()
-		userIDStr, err := h.validateTicket(ticketCtx, ticket)
+		userIDStr, err := h.ValidateTicket(ticketCtx, ticket)
 		if err != nil {
 			log.Printf("[WS] Rejected connection: invalid ticket: %v", err)
 			c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(
@@ -207,7 +209,7 @@ func (h *WebSocketHandler) HandleWebSocket() fiber.Handler {
 		defer cancel()
 
 		// Subscribe to user's Redis channels
-		pubsub := h.redis.Subscribe(ctx, h.getUserChannels(userID)...)
+		pubsub := h.redis.Subscribe(ctx, h.GetUserChannels(userID)...)
 		defer pubsub.Close()
 
 		// Channel for WebSocket messages
@@ -248,8 +250,9 @@ func (h *WebSocketHandler) HandleWebSocket() fiber.Handler {
 	})
 }
 
-// getUserChannels returns the Redis pub/sub channels for a user
-func (h *WebSocketHandler) getUserChannels(userID uuid.UUID) []string {
+// GetUserChannels returns the Redis pub/sub channels for a user
+// Exported for testing
+func (h *WebSocketHandler) GetUserChannels(userID uuid.UUID) []string {
 	return []string{
 		"user:" + userID.String() + ":jobs",
 		"user:" + userID.String() + ":events",
