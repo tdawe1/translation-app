@@ -111,44 +111,45 @@ func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
 	updates := make(map[string]interface{})
 
 	if req.RSSFeedURL != "" {
-		updates["rss_feed_url"] = req.RSSFeedURL
+		updates["RSSFeedURL"] = req.RSSFeedURL
 	}
 	if req.WebSocketEnabled != nil {
-		updates["websocket_enabled"] = *req.WebSocketEnabled
+		updates["WebSocketEnabled"] = *req.WebSocketEnabled
 	}
 	if req.GengoUserID != "" {
-		updates["gengo_user_id"] = req.GengoUserID
+		updates["GengoUserID"] = req.GengoUserID
 	}
 	if req.MinReward != nil {
-		updates["min_reward"] = *req.MinReward
+		updates["MinReward"] = *req.MinReward
 	}
 	if req.MaxReward != nil {
-		updates["max_reward"] = *req.MaxReward
+		updates["MaxReward"] = *req.MaxReward
 	}
 	if req.IncludedLanguagePairs != nil {
 		// Convert to JSON string for storage
-		updates["included_language_pairs"] = req.IncludedLanguagePairs
+		jsonPairs, _ := json.Marshal(req.IncludedLanguagePairs)
+		updates["IncludedLanguagePairs"] = string(jsonPairs)
 	}
 	if req.EnableDesktopNotifs != nil {
-		updates["enable_desktop_notifs"] = *req.EnableDesktopNotifs
+		updates["EnableDesktopNotifs"] = *req.EnableDesktopNotifs
 	}
 	if req.EnableSoundNotifs != nil {
-		updates["enable_sound_notifs"] = *req.EnableSoundNotifs
+		updates["EnableSoundNotifs"] = *req.EnableSoundNotifs
 	}
 	if req.EnableEmailNotifs != nil {
-		updates["enable_email_notifs"] = *req.EnableEmailNotifs
+		updates["EnableEmailNotifs"] = *req.EnableEmailNotifs
 	}
 	if req.NotificationEmail != "" {
-		updates["notification_email"] = req.NotificationEmail
+		updates["NotificationEmail"] = req.NotificationEmail
 	}
 	if req.AutoAcceptEnabled != nil {
-		updates["auto_accept_enabled"] = *req.AutoAcceptEnabled
+		updates["AutoAcceptEnabled"] = *req.AutoAcceptEnabled
 	}
 	if req.AutoAcceptMinReward != nil {
-		updates["auto_accept_min_reward"] = *req.AutoAcceptMinReward
+		updates["AutoAcceptMinReward"] = *req.AutoAcceptMinReward
 	}
 	if req.AutoAcceptMaxReward != nil {
-		updates["auto_accept_max_reward"] = *req.AutoAcceptMaxReward
+		updates["AutoAcceptMaxReward"] = *req.AutoAcceptMaxReward
 	}
 
 	// Apply updates

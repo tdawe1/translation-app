@@ -2,11 +2,13 @@ package watcher
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sync"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 
 	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/models"
@@ -14,7 +16,8 @@ import (
 
 // NewTestManager creates a watcher manager for testing
 // This is a test-only constructor that doesn't start background goroutines
-func NewTestManager(t interface{}) *UserWatcherManager {
+// Pass a test database if you need real DB operations; otherwise uses a no-op stub
+func NewTestManager(db database.Database) *UserWatcherManager {
 	// Create a mock Redis client for testing (using miniredis would be better)
 	// For now, we'll use a real Redis client pointing to test DB
 	redisClient := redis.NewClient(&redis.Options{
@@ -23,15 +26,17 @@ func NewTestManager(t interface{}) *UserWatcherManager {
 		DB:       15, // Test database
 	})
 
-	// Create a minimal database wrapper
-	minimalDB := &minimalTestDB{}
+	// Use provided DB or minimal stub
+	if db == nil {
+		db = &minimalTestDB{}
+	}
 
 	return &UserWatcherManager{
-		db:            minimalDB,
+		db:            db,
 		redis:         redisClient,
 		watchers:      make(map[uuid.UUID]*WatcherInstance),
-		stateManager:  NewStateManager(minimalDB),
-		jobProcessor:  NewJobProcessor(minimalDB, redisClient),
+		stateManager:  NewStateManager(db),
+		jobProcessor:  NewJobProcessor(db, redisClient),
 	}
 }
 
@@ -42,7 +47,7 @@ func (m *minimalTestDB) Create(value interface{}) *gorm.DB { return nil }
 func (m *minimalTestDB) First(dest interface{}, conds ...interface{}) *gorm.DB { return nil }
 func (m *minimalTestDB) Where(query interface{}, args ...interface{}) *gorm.DB { return nil }
 func (m *minimalTestDB) Model(value interface{}) *gorm.DB { return nil }
-func (m *minimalTestDB) Begin(opts ...interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Begin(opts ...*sql.TxOptions) *gorm.DB { return nil }
 func (m *minimalTestDB) Exec(sql string, values ...interface{}) *gorm.DB { return nil }
 func (m *minimalTestDB) Save(value interface{}) *gorm.DB { return nil }
 func (m *minimalTestDB) Updates(values interface{}) *gorm.DB { return nil }
