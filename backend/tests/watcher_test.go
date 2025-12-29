@@ -2,26 +2,29 @@ package tests
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
-	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/handlers"
 	"github.com/tdawe1/translation-app/internal/middleware"
-	"github.com/tdawe1/translation-app/internal/models"
 	"github.com/tdawe1/translation-app/internal/watcher"
 )
 
 // TestWatcher_CompleteFlow tests the full watcher lifecycle
 func TestWatcher_CompleteFlow(t *testing.T) {
 	db := TestDB(t)
-	manager := watcher.NewTestManager(t)
+
+	// Wrap DB to implement database.Database interface
+	wrappedDB := &databaseWrapper{db: db}
+
+	manager := watcher.NewTestManager(wrappedDB)
 
 	// Create test app
 	app := fiber.New(fiber.Config{
@@ -36,15 +39,17 @@ func TestWatcher_CompleteFlow(t *testing.T) {
 		},
 	})
 
-	// Wrap DB to implement database.Database interface
-	wrappedDB := &databaseWrapper{db: db}
-
 	watcherHandler := handlers.NewWatcherHandler(manager, wrappedDB)
-	app.Get("/api/v1/watcher/config", watcherHandler.GetConfig)
-	app.Put("/api/v1/watcher/config", watcherHandler.UpdateConfig)
-	app.Get("/api/v1/watcher/state", watcherHandler.GetState)
-	app.Post("/api/v1/watcher/start", watcherHandler.StartWatcher)
-	app.Post("/api/v1/watcher/stop", watcherHandler.StopWatcher)
+
+	// Create JWT config for testing (uses JWT_SECRET from env)
+	jwtCfg := middleware.NewJWTConfig()
+
+	// Register routes with JWT middleware
+	app.Get("/api/v1/watcher/config", middleware.JWTValidator(jwtCfg), watcherHandler.GetConfig)
+	app.Put("/api/v1/watcher/config", middleware.JWTValidator(jwtCfg), watcherHandler.UpdateConfig)
+	app.Get("/api/v1/watcher/state", middleware.JWTValidator(jwtCfg), watcherHandler.GetState)
+	app.Post("/api/v1/watcher/start", middleware.JWTValidator(jwtCfg), watcherHandler.StartWatcher)
+	app.Post("/api/v1/watcher/stop", middleware.JWTValidator(jwtCfg), watcherHandler.StopWatcher)
 
 	// Create test user
 	user := CreateTestUser(t, db, "test-watcher@example.com")
@@ -166,16 +171,20 @@ func TestWatcher_CompleteFlow(t *testing.T) {
 // TestWatcher_UnauthorizedAccess rejects requests without auth
 func TestWatcher_UnauthorizedAccess(t *testing.T) {
 	db := TestDB(t)
-	manager := watcher.NewTestManager(t)
+	wrappedDB := &databaseWrapper{db: db}
+	manager := watcher.NewTestManager(wrappedDB)
 
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 	})
 
-	wrappedDB := &databaseWrapper{db: db}
 	watcherHandler := handlers.NewWatcherHandler(manager, wrappedDB)
-	app.Get("/api/v1/watcher/config", watcherHandler.GetConfig)
-	app.Post("/api/v1/watcher/start", watcherHandler.StartWatcher)
+
+	// Create JWT config for testing
+	jwtCfg := middleware.NewJWTConfig()
+
+	app.Get("/api/v1/watcher/config", middleware.JWTValidator(jwtCfg), watcherHandler.GetConfig)
+	app.Post("/api/v1/watcher/start", middleware.JWTValidator(jwtCfg), watcherHandler.StartWatcher)
 
 	t.Run("GetConfig without token returns 401", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/v1/watcher/config", nil)
@@ -197,15 +206,19 @@ func TestWatcher_UnauthorizedAccess(t *testing.T) {
 // TestWatcher_ConcurrentStart ensures only one watcher runs per user
 func TestWatcher_ConcurrentStart(t *testing.T) {
 	db := TestDB(t)
-	manager := watcher.NewTestManager(t)
+	wrappedDB := &databaseWrapper{db: db}
+	manager := watcher.NewTestManager(wrappedDB)
 
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 	})
 
-	wrappedDB := &databaseWrapper{db: db}
 	watcherHandler := handlers.NewWatcherHandler(manager, wrappedDB)
-	app.Post("/api/v1/watcher/start", watcherHandler.StartWatcher)
+
+	// Create JWT config for testing
+	jwtCfg := middleware.NewJWTConfig()
+
+	app.Post("/api/v1/watcher/start", middleware.JWTValidator(jwtCfg), watcherHandler.StartWatcher)
 
 	user := CreateTestUser(t, db, "test-concurrent@example.com")
 	authHeader := "Bearer " + GenerateTestToken(t, user.ID)
@@ -238,8 +251,9 @@ func TestWatcher_ConcurrentStart(t *testing.T) {
 		}
 	}
 
-	// All requests should succeed (manager handles this gracefully)
-	assert.Equal(t, 10, successCount, "All start requests should succeed")
+	// Only the first start should succeed; subsequent starts fail because
+	// the watcher is already running. This is the correct behavior.
+	assert.Equal(t, 1, successCount, "Only one start should succeed, others should fail")
 }
 
 // databaseWrapper wraps gorm.DB to implement database.Database
@@ -263,7 +277,7 @@ func (w *databaseWrapper) Model(value interface{}) *gorm.DB {
 	return w.db.Model(value)
 }
 
-func (w *databaseWrapper) Begin(opts ...interface{}) *gorm.DB {
+func (w *databaseWrapper) Begin(opts ...*sql.TxOptions) *gorm.DB {
 	return w.db.Begin(opts...)
 }
 
