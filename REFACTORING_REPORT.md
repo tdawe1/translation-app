@@ -430,10 +430,86 @@ backend/
 5. **Add structured logging** throughout
 6. **Create response middleware** for consistent error handling
 
+## Post-Refactoring Fixes
+
+### Compilation Issues Resolved
+
+Three compilation errors were discovered and fixed after the initial refactoring:
+
+#### 1. WebSocket Timeout Detection (websocket.go:179)
+
+**Issue**: `websocket.IsTimeout()` does not exist in gorilla/websocket
+
+**Fix**: Use standard Go interface check for timeout errors
+```go
+// Before (broken)
+if websocket.IsTimeout(err) {
+    continue
+}
+
+// After (working)
+if netErr, ok := err.(interface{ Timeout() bool }); ok && netErr.Timeout() {
+    continue
+}
+```
+
+#### 2. WebSocketMonitor Constructor Call (manager.go:85)
+
+**Issue**: Argument order mismatch when calling `NewWebSocketMonitor`
+
+**Fix**: Corrected to match signature `(userID uuid.UUID, userSession, userKey, gengoUserID string)`
+```go
+ws := NewWebSocketMonitor(userID, config.GengoSessionToken, "", config.GengoUserID)
+```
+
+#### 3. Start() Return Value (manager.go:176)
+
+**Issue**: `WebSocketMonitor.Start()` returns `void` but caller expected `error`
+
+**Fix**: Removed error handling since Start() runs its own error loop via goroutine
+
+### Build Verification
+
+```bash
+cd backend && go build ./cmd/server
+# ✅ BUILD SUCCESS
+```
+
+---
+
+## Additional DI Fix (Post-Review)
+
+### Issue: Mixed Dependency Injection
+
+The original refactoring left `UserWatcherManager` and its dependencies using raw `*gorm.DB` instead of the `database.Database` interface, creating inconsistency.
+
+**Files Updated**:
+- `internal/database/database.go` - Added `Save()`, `Updates()`, `UpdateColumn()`, `Update()` methods to interface
+- `internal/watcher/state_manager.go` - Changed from `*gorm.DB` to `database.Database`
+- `internal/watcher/job_processor.go` - Changed from `*gorm.DB` to `database.Database`
+- `internal/watcher/manager.go` - Changed from `*gorm.DB` to `database.Database`
+- `cmd/server/main.go` - Pass `db` (interface) instead of `gormDB` to watcher manager
+
+**Before**:
+```go
+type UserWatcherManager struct {
+    db *gorm.DB  // Direct GORM dependency
+}
+```
+
+**After**:
+```go
+type UserWatcherManager struct {
+    db database.Database  // Abstracted dependency
+}
+```
+
 ---
 
 `★ Insight ─────────────────────────────────────`
 **Incremental Architecture**: This refactoring followed the "Strangler Fig" pattern—new services grew alongside old code, and the handler gradually became a thin wrapper. This allowed the refactoring to be done without breaking existing functionality.
 
 **Testing Readiness**: The key enabler for future testability is the `Database` interface. With this abstraction, we can now create `MockDatabase` for unit tests, eliminating the need for real database connections during testing.
+
+**Type Assertions in Go**: The timeout fix demonstrates Go's approach to optional interface methods. Rather than importing a package-specific function, Go uses type assertions with interface checks—this pattern works with any error type that implements `Timeout() bool`, including `*net.OpError`.
 `─────────────────────────────────────────────────`
