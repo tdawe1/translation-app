@@ -55,13 +55,28 @@ func (m *RSSMonitor) SetMaxReward(max float64) {
 	m.MaxReward = max
 }
 
+// GetFeedURL returns the RSS feed URL
+func (m *RSSMonitor) GetFeedURL() string {
+	return m.FeedURL
+}
+
+// GetUserID returns the user ID
+func (m *RSSMonitor) GetUserID() uuid.UUID {
+	return m.UserID
+}
+
+// GetMinReward returns the minimum reward filter
+func (m *RSSMonitor) GetMinReward() float64 {
+	return m.MinReward
+}
+
 // Start begins monitoring the RSS feed
 func (m *RSSMonitor) Start(ctx context.Context, jobChan chan<- Job) error {
 	ticker := time.NewTicker(30 * time.Second) // Poll every 30 seconds
 	defer ticker.Stop()
 
 	// Initial fetch
-	if err := m.fetch(ctx, jobChan); err != nil {
+	if err := m.Fetch(ctx, jobChan); err != nil {
 		log.Printf("[RSS] Initial fetch error for user %s: %v", m.UserID, err)
 	}
 
@@ -71,15 +86,15 @@ func (m *RSSMonitor) Start(ctx context.Context, jobChan chan<- Job) error {
 			log.Printf("[RSS] Monitor stopped for user %s", m.UserID)
 			return nil
 		case <-ticker.C:
-			if err := m.fetch(ctx, jobChan); err != nil {
+			if err := m.Fetch(ctx, jobChan); err != nil {
 				log.Printf("[RSS] Fetch error for user %s: %v", m.UserID, err)
 			}
 		}
 	}
 }
 
-// fetch fetches and parses the RSS feed
-func (m *RSSMonitor) fetch(ctx context.Context, jobChan chan<- Job) error {
+// Fetch fetches and parses the RSS feed (exported for testing)
+func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
 	// Create HTTP client with timeout
 	client := &http.Client{
 		Timeout: 15 * time.Second,
