@@ -203,6 +203,9 @@ export const authApi = {
     client.post<void>("/api/v1/auth/logout"),
 
   me: (): Promise<User> => client.get<User>("/api/v1/me"),
+
+  getWSTicket: (): Promise<{ ticket: string; expires_at: number }> =>
+    client.post<{ ticket: string; expires_at: number }>("/api/v1/auth/ws-ticket"),
 };
 
 // ============================================================

@@ -3,7 +3,7 @@
  *
  * Features:
  * - Automatic reconnection with exponential backoff
- * - JWT authentication via query parameter
+ * - Ticket-based authentication (short-lived UUID tickets)
  * - Handles job, event, and error messages
  * - Updates Zustand store with received data
  */
@@ -11,6 +11,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useWatcherStore } from "@/store/watcher";
 import { useJobsStore } from "@/store/jobs";
+import { authApi } from "@/lib/api";
 import type { WatcherState } from "@/lib/api";
 import type { Job } from "@/store/jobs";
 
@@ -99,21 +100,30 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   }, []);
 
   // Connect to WebSocket
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!enabled) return;
 
-    // Get access token for authentication
-    const token = sessionStorage.getItem("access_token");
-    if (!token) {
-      console.warn("[WS] No access token found, skipping WebSocket connection");
+    // Fetch a one-time-use ticket for WebSocket authentication
+    let wsUrl = WS_URL;
+    try {
+      const ticketResp = await authApi.getWSTicket();
+      wsUrl = `${WS_URL}?ticket=${ticketResp.ticket}`;
+      console.log("[WS] Got ticket, connecting...");
+    } catch (err) {
+      console.error("[WS] Failed to get WebSocket ticket:", err);
+      // Schedule retry with exponential backoff
+      if (enabled && reconnectAttemptsRef.current < RECONNECT_DELAYS.length) {
+        const delay = RECONNECT_DELAYS[reconnectAttemptsRef.current];
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          reconnectAttemptsRef.current++;
+          void connect();
+        }, delay);
+      }
       return;
     }
 
-    // Build WebSocket URL with token as query parameter
-    const url = `${WS_URL}?token=Bearer%20${encodeURIComponent(token)}`;
-
     try {
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
