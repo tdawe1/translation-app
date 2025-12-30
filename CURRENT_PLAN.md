@@ -1,6 +1,6 @@
 # GengoWatcher SaaS - Current Implementation Plan
 
-**Status**: Sprint 1 Complete | Sprint 1 Testing Planned
+**Status**: Sprint 1 Complete | Sprint 2 Complete | Backend Testing Complete | Frontend Testing Pending
 **Tech Stack**: Go 1.23 + Fiber 3.x + GORM + Next.js 16 + React 19
 **Repository**: https://github.com/tdawe1/translation-app
 
@@ -295,25 +295,21 @@ make test-coverage     # Run with coverage report
 
 ### Pending Tests
 
-#### Backend Tests (~150 LOC)
+#### Backend Tests ✅ (COMPLETED 2025-12-30)
 
-**`tests/websocket_test.go`** (NOT YET IMPLEMENTED)
-```go
-func TestWebSocket_Authentication(t *testing.T) {
-    // Tests: missing token, invalid token, valid token
-}
-func TestWebSocket_ReceivesJobNotification(t *testing.T) {
-    // Tests: Redis publish → WebSocket receives
-}
-func TestWebSocket_ReceivesEventNotification(t *testing.T) {
-    // Tests: watcher.started, watcher.stopped events
-}
-func TestWebSocket_HandlesDisconnect(t *testing.T) {
-    // Tests: graceful cleanup
-}
-```
+**`tests/websocket_test.go`** - 10 test groups covering:
+- `TestWebSocket_Authentication` (4 subtests) - missing, invalid, valid ticket, one-time use
+- `TestWebSocket_ReceivesJobNotification` - Redis pub/sub → receives job
+- `TestWebSocket_ReceivesEventNotification` (3 subtests) - watcher events
+- `TestWebSocket_HandlesDisconnect` - graceful cleanup
+- `TestWebSocket_GetUserChannels` - channel name generation
+- `TestWebSocket_ValidateOrigin` (3 subtests) - origin validation
+- `TestWebSocket_PublishError` - error notifications
+- `TestWebSocket_TicketExpiry` - ticket expiration
+- `TestWebSocket_ConcurrentConnections` - concurrent access
+- `TestWebSocket_ErrorChannel` - multiple error messages
 
-#### Frontend Tests (~150 LOC)
+#### Frontend Tests (PENDING)
 
 **`tests/dashboard.test.tsx`**
 ```typescript
@@ -361,77 +357,43 @@ describe('Dashboard Flow', () => {
 
 ## In Progress 🚧
 
-### Sprint 1 Testing Implementation
-- Setting up test infrastructure
-- Writing unit tests for critical paths
-- Writing integration tests for complete flows
+### Frontend Dashboard Tests
+
+Creating `tests/dashboard.test.tsx` for dashboard flow testing.
 
 ---
 
-## Pending Tasks 📋
+## Sprint 2: RSS & WebSocket Monitoring ✅
 
-### High Priority
+**Completed 2025-12-30**
 
-1. **Complete npm install and verify build**
-   ```bash
-   cd frontend && npm install
-   npm run build
-   ```
+### Backend (Go)
 
-2. **Add Watcher API endpoints in backend**
-   - `GET /api/v1/watcher/config` - Get user's watcher config
-   - `PUT /api/v1/watcher/config` - Update config
-   - `GET /api/v1/watcher/state` - Get watcher state
-   - `POST /api/v1/watcher/start` - Start watcher
-   - `POST /api/v1/watcher/stop` - Stop watcher
-   - Protected by JWT middleware
+**File: `backend/internal/watcher/rss.go`** (FULLY IMPLEMENTED)
+- RSS feed parsing using `github.com/mmcdole/gofeed`
+- Reward extraction from multiple formats ($5.00, 5.00 USD, etc.)
+- Language pair extraction (EN → JP, etc.)
+- Deduplication via `seenIDs` map
+- Exported `Fetch()` method for testing
 
-3. **Implement RSS feed parsing**
-   - Use `github.com/mmcdole/gofeed` for RSS parsing
-   - Extract reward from Gengo job titles
-   - Implement `extractReward()` and `fetch()` methods
+**File: `backend/internal/watcher/websocket.go`** (FULLY IMPLEMENTED)
+- Gengo WebSocket connection via `github.com/gorilla/websocket`
+- Authentication payload generation
+- Message type handling
+- Reconnection logic
+- Ping latency tracking
 
-4. **Implement Gengo WebSocket connection**
-   - Connect to Gengo's WebSocket endpoint
-   - Authenticate with session token
-   - Parse job notifications
+**File: `backend/tests/rss_test.go`** (CREATED)
+- 5 test groups, 12 subtests
+- Tests: monitor creation, reward extraction (12 formats), fetch integration, reward filtering, deduplication, error handling
 
-5. **Dashboard watcher controls**
-   - Start/Stop buttons
-   - Real-time status display
-   - Job list with filtering
+**File: `backend/tests/websocket_monitor_test.go`** (CREATED)
+- 10 test groups, 3 subtests
+- Tests: WebSocket monitor creation, status tracking, auth payload, job messages, deduplication
 
-### Medium Priority
-
-6. **WebSocket for real-time updates**
-   - Server-side: `/ws` endpoint with auth
-   - Client-side: WebSocket + Redis pub/sub listener
-   - Display new jobs in real-time
-
-7. **LemonSqueezy integration**
-   - Create checkout sessions
-   - Handle subscription webhooks
-   - Update user subscription status
-
-8. **OAuth (Google/GitHub)**
-   - Backend: OAuth flow handlers
-   - Frontend: "Continue with..." buttons
-
-### Low Priority
-
-9. **Email notifications**
-   - Resend for transactional emails
-   - Email verification
-   - Password reset
-
-10. **API key management**
-    - Generate/revoke API keys
-    - Scoped permissions
-
-11. **Deployment**
-    - Docker build
-    - Railway/Fly.io deployment
-    - Environment variables
+**File: `backend/tests/websocket_test.go`** (COMPLETED 2025-12-30)
+- 10 test groups covering WebSocket handler functionality
+- Tests: ticket authentication, job/event notifications, origin validation, error publishing, concurrent connections
 
 ---
 
