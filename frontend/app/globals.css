@@ -24,6 +24,7 @@ body {
   border: 1px solid rgb(229, 229, 229);
   border-radius: 0;
   transition: border-color 0.15s ease;
+  animation: fade-in 0.2s ease-out;
 }
 
 .bento-card:hover {
@@ -47,9 +48,6 @@ body {
 }
 
 /* Staggered animation delays for dashboard cards */
-.bento-card {
-  animation: fade-in 0.2s ease-out;
-}
 
 .bento-card:nth-child(1) {
   animation-delay: 0ms;

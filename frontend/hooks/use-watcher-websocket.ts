@@ -99,6 +99,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   const [connectionStartTime, setConnectionStartTime] = useState<number | null>(null);
   const [messagesReceived, setMessagesReceived] = useState(0);
   const [lastMessageTime, setLastMessageTime] = useState<number | null>(null);
+  const [, forceUpdate] = useState(0);
 
   const setState = useWatcherStore((state) => state.setState);
   const addJob = useJobsStore((state) => state.addJob);
@@ -107,16 +108,16 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   const uptime = useMemo(() => {
     if (!connectionStartTime) return 0;
     return Math.floor((Date.now() - connectionStartTime) / 1000);
-  }, [connectionStartTime]);
+  }, [connectionStartTime, forceUpdate]);
 
   // Update uptime every second when connected
   useEffect(() => {
     if (!connectionStartTime) return;
     const interval = setInterval(() => {
-      // Force re-render by updating a dummy state or using a ref
+      forceUpdate((prev) => prev + 1);
     }, 1000);
     return () => clearInterval(interval);
-  }, [connectionStartTime]);
+  }, [connectionStartTime, forceUpdate]);
 
   // Clean up connection
   const cleanup = useCallback(() => {

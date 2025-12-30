@@ -9,9 +9,11 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
 import DashboardPage from '@/app/dashboard/page';
+import { ErrorBoundary } from '@/components/error-boundary';
 
 // Mock the modules
 vi.mock('@/store/auth', () => ({
@@ -449,6 +451,78 @@ describe('Dashboard Flow', () => {
       render(<DashboardPage />);
 
       expect(screen.getByText('Failed to load configuration')).toBeInTheDocument();
+    });
+  });
+
+  describe('Error Boundary', () => {
+    // Component that throws an error on button click
+    function ThrowOnClickComponent() {
+      const [shouldThrow, setShouldThrow] = React.useState(false);
+
+      if (shouldThrow) {
+        throw new Error('Test error from component');
+      }
+
+      return (
+        <div>
+          <div data-testid="safe-content">Safe content</div>
+          <button onClick={() => setShouldThrow(true)}>Trigger Error</button>
+        </div>
+      );
+    }
+
+    it('catches errors and displays fallback UI', () => {
+      const onError = vi.fn();
+      const { getByTestId, getByRole } = render(
+        <ErrorBoundary onError={onError}>
+          <ThrowOnClickComponent />
+        </ErrorBoundary>,
+      );
+
+      expect(getByTestId('safe-content')).toBeInTheDocument();
+
+      // Click button to trigger error
+      act(() => {
+        getByRole('button').click();
+      });
+
+      // ErrorBoundary catches the error and shows fallback
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      expect(onError).toHaveBeenCalled();
+    });
+
+    it('displays custom fallback when provided', () => {
+      const customFallback = <div data-testid="custom-fallback">Custom Error UI</div>;
+
+      const { getByRole } = render(
+        <ErrorBoundary fallback={customFallback}>
+          <ThrowOnClickComponent />
+        </ErrorBoundary>,
+      );
+
+      // Click button to trigger error
+      act(() => {
+        getByRole('button').click();
+      });
+
+      expect(screen.getByTestId('custom-fallback')).toBeInTheDocument();
+    });
+
+    it('displays error message in fallback UI', () => {
+      const onError = vi.fn();
+
+      const { getByRole } = render(
+        <ErrorBoundary onError={onError}>
+          <ThrowOnClickComponent />
+        </ErrorBoundary>,
+      );
+
+      // Click button to trigger error
+      act(() => {
+        getByRole('button').click();
+      });
+
+      expect(screen.getByText('Test error from component')).toBeInTheDocument();
     });
   });
 });
