@@ -68,20 +68,36 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
     }));
   };
 
+  const errorId = "config-form-error";
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4" aria-labelledby="config-form-title">
+      {/* Hidden title for screen readers */}
+      <h2 id="config-form-title" className="sr-only">
+        Watcher Configuration
+      </h2>
+
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div
+          id={errorId}
+          className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm"
+          role="alert"
+          aria-live="assertive"
+        >
           {error}
         </div>
       )}
 
       {/* RSS Feed URL */}
       <div>
-        <label className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
+        <label
+          htmlFor="rss-feed-url"
+          className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1"
+        >
           RSS Feed URL
         </label>
         <input
+          id="rss-feed-url"
           type="url"
           name="rss_feed_url"
           value={formData.rss_feed_url || ""}
@@ -89,16 +105,21 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
           required
           className="w-full px-3 py-2 border border-neutral-200 focus:border-blue-600 focus:outline-none text-sm font-mono"
           placeholder="https://example.com/feed.xml"
+          aria-describedby={error ? errorId : undefined}
         />
       </div>
 
       {/* Reward Range */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
+          <label
+            htmlFor="min-reward"
+            className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1"
+          >
             Min Reward ($)
           </label>
           <input
+            id="min-reward"
             type="number"
             name="min_reward"
             value={formData.min_reward || 0}
@@ -107,13 +128,18 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
             step="0.01"
             required
             className="w-full px-3 py-2 border border-neutral-200 focus:border-blue-600 focus:outline-none text-sm font-mono"
+            aria-describedby={error ? errorId : undefined}
           />
         </div>
         <div>
-          <label className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
+          <label
+            htmlFor="max-reward"
+            className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1"
+          >
             Max Reward ($)
           </label>
           <input
+            id="max-reward"
             type="number"
             name="max_reward"
             value={formData.max_reward || 999}
@@ -122,12 +148,13 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
             step="0.01"
             required
             className="w-full px-3 py-2 border border-neutral-200 focus:border-blue-600 focus:outline-none text-sm font-mono"
+            aria-describedby={error ? errorId : undefined}
           />
         </div>
       </div>
 
       {/* Toggles */}
-      <div className="space-y-3 pt-2">
+      <div className="space-y-3 pt-2" role="group" aria-label="Notification settings">
         {/* WebSocket Monitoring */}
         <label className="flex items-center justify-between cursor-pointer">
           <span className="text-sm">Enable WebSocket Monitoring</span>
@@ -135,6 +162,7 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
             <input
               type="checkbox"
               name="websocket_enabled"
+              id="websocket-enabled"
               checked={formData.websocket_enabled || false}
               onChange={handleChange}
               className="sr-only peer"
@@ -150,6 +178,7 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
             <input
               type="checkbox"
               name="auto_accept_enabled"
+              id="auto-accept-enabled"
               checked={formData.auto_accept_enabled || false}
               onChange={handleChange}
               className="sr-only peer"
@@ -165,6 +194,7 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
             <input
               type="checkbox"
               name="enable_desktop_notifications"
+              id="desktop-notifications"
               checked={formData.enable_desktop_notifications || false}
               onChange={handleChange}
               className="sr-only peer"
@@ -180,6 +210,7 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
             <input
               type="checkbox"
               name="enable_sound_notifications"
+              id="sound-notifications"
               checked={formData.enable_sound_notifications || false}
               onChange={handleChange}
               className="sr-only peer"
@@ -195,6 +226,7 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
             <input
               type="checkbox"
               name="enable_email_notifications"
+              id="email-notifications"
               checked={formData.enable_email_notifications || false}
               onChange={handleChange}
               className="sr-only peer"
@@ -210,6 +242,7 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
           type="submit"
           disabled={submitting || configLoading}
           className="flex-1 py-2 bg-neutral-900 text-white text-sm transition-colors duration-150 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-describedby={error ? errorId : undefined}
         >
           {submitting ? "Saving..." : "Save Configuration"}
         </button>

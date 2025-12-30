@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/modal";
 import { WatcherConfigForm } from "@/components/watcher/config-form";
 import { JobList } from "@/components/watcher/job-list";
 import { authApi } from "@/lib/api";
+import { toast } from "@/store/toast";
 import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
@@ -57,16 +58,20 @@ export default function DashboardPage() {
   const handleStart = async () => {
     try {
       await startWatcher();
+      toast.success("Watcher started successfully");
     } catch (err) {
-      console.error("Failed to start watcher:", err);
+      const message = err instanceof Error ? err.message : "Failed to start watcher";
+      toast.error(message);
     }
   };
 
   const handleStop = async () => {
     try {
       await stopWatcher();
+      toast.success("Watcher stopped successfully");
     } catch (err) {
-      console.error("Failed to stop watcher:", err);
+      const message = err instanceof Error ? err.message : "Failed to stop watcher";
+      toast.error(message);
     }
   };
 

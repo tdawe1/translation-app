@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import type { WatcherConfig, WatcherState } from "@/lib/api";
 import { watcherApi } from "@/lib/api";
+import { toast } from "./toast";
 
 interface WatcherStoreState {
   // Configuration
@@ -46,6 +47,7 @@ export const useWatcherStore = create<WatcherStoreState>()((set, get) => ({
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch config";
       set({ configError: message, configLoading: false });
+      toast.error(message);
     }
   },
 
@@ -55,9 +57,11 @@ export const useWatcherStore = create<WatcherStoreState>()((set, get) => ({
     try {
       const config = await watcherApi.updateConfig(data);
       set({ config, configLoading: false });
+      toast.success("Configuration saved");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to update config";
       set({ configError: message, configLoading: false });
+      toast.error(message);
       throw error;
     }
   },
@@ -71,6 +75,7 @@ export const useWatcherStore = create<WatcherStoreState>()((set, get) => ({
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch state";
       set({ stateError: message, stateLoading: false });
+      toast.error(message);
     }
   },
 
