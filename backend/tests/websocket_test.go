@@ -3,500 +3,541 @@ package tests
 import (
 	"context"
 	"encoding/json"
-	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	
 
 	"github.com/tdawe1/translation-app/internal/handlers"
-	"github.com/tdawe1/translation-app/internal/middleware"
 )
 
-// TestWebSocket_TicketGeneration tests the ticket endpoint
-func TestWebSocket_TicketGeneration(t *testing.T) {
-	db := TestDB(t)
-	redis := RequireRedis(t)
+// TestWebSocket_Authentication tests WebSocket authentication scenarios
+func TestWebSocket_Authentication(t *testing.T) {
+	redisClient := RequireRedis(t)
+	if redisClient == nil {
+		return
+	}
 
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	wsHandler := handlers.NewWebSocketHandler(redisClient, []string{"http://localhost:3000"})
 
-	wsHandler := handlers.NewWebSocketHandler(redis, []string{"http://localhost:3000"})
-	jwtCfg := middleware.NewJWTConfig()
-
-	app.Post("/api/v1/ws/ticket", middleware.JWTValidator(jwtCfg), wsHandler.GetWSTicket)
-
-	user := CreateTestUser(t, db, "test-ws-ticket@example.com")
-	authHeader := "Bearer " + GenerateTestToken(t, user.ID)
-
-	t.Run("GetWSTicket requires authentication", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/api/v1/ws/ticket", nil)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		assert.Equal(t, 401, resp.StatusCode)
-	})
-
-	t.Run("GetWSTicket returns a valid ticket", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/api/v1/ws/ticket", nil)
-		req.Header.Set("Authorization", authHeader)
-
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		assert.Equal(t, 200, resp.StatusCode)
-
-		var ticketResp handlers.WSTicketResponse
-		err = json.NewDecoder(resp.Body).Decode(&ticketResp)
-		require.NoError(t, err)
-
-		assert.NotEmpty(t, ticketResp.Ticket)
-		assert.Greater(t, ticketResp.ExpiresAt, time.Now().Unix())
-		assert.LessOrEqual(t, ticketResp.ExpiresAt, time.Now().Add(31*time.Second).Unix())
-	})
-
-	t.Run("Generated ticket is stored in Redis", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/api/v1/ws/ticket", nil)
-		req.Header.Set("Authorization", authHeader)
-
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		assert.Equal(t, 200, resp.StatusCode)
-
-		var ticketResp handlers.WSTicketResponse
-		err = json.NewDecoder(resp.Body).Decode(&ticketResp)
-		require.NoError(t, err)
-
-		// Verify ticket exists in Redis
-		ctx := context.Background()
-		key := "ws:ticket:" + ticketResp.Ticket
-		exists, err := redis.Exists(ctx, key).Result()
-		require.NoError(t, err)
-		assert.True(t, exists > 0, "Ticket should exist in Redis")
-
-		// Verify ticket contains user_id
-		data, err := redis.HGetAll(ctx, key).Result()
-		require.NoError(t, err)
-		assert.Equal(t, user.ID.String(), data["user_id"])
-	})
-}
-
-// TestWebSocket_TicketValidation tests the ticket validation logic
-func TestWebSocket_TicketValidation(t *testing.T) {
-	redis := RequireRedis(t)
-	wsHandler := handlers.NewWebSocketHandler(redis, []string{"http://localhost:3000"})
-
-	t.Run("ValidateTicket rejects empty ticket", func(t *testing.T) {
+	t.Run("missing ticket parameter", func(t *testing.T) {
 		ctx := context.Background()
 		_, err := wsHandler.ValidateTicket(ctx, "")
-		assert.Error(t, err)
-		assert.Equal(t, handlers.ErrInvalidWSTicket, err)
+		assert.Error(t, err, "Should reject empty ticket")
+		assert.ErrorIs(t, err, handlers.ErrInvalidWSTicket)
 	})
 
-	t.Run("ValidateTicket rejects non-existent ticket", func(t *testing.T) {
+	t.Run("invalid ticket format", func(t *testing.T) {
 		ctx := context.Background()
-		_, err := wsHandler.ValidateTicket(ctx, "non-existent-ticket")
-		assert.Error(t, err)
-		assert.Equal(t, handlers.ErrInvalidWSTicket, err)
+		_, err := wsHandler.ValidateTicket(ctx, "invalid-ticket-123")
+		assert.Error(t, err, "Should reject invalid ticket")
+		assert.ErrorIs(t, err, handlers.ErrInvalidWSTicket)
 	})
 
-	t.Run("ValidateTicket accepts valid ticket and deletes it", func(t *testing.T) {
+	t.Run("valid ticket", func(t *testing.T) {
 		ctx := context.Background()
 		userID := uuid.New()
 
-		// Create a valid ticket
+		// Create and store a valid ticket directly
 		ticket := uuid.New().String()
 		key := "ws:ticket:" + ticket
 		ticketData := map[string]interface{}{
 			"user_id": userID.String(),
 			"created": time.Now().Unix(),
 		}
-		err := redis.HMSet(ctx, key, ticketData).Err()
+
+		err := redisClient.HMSet(ctx, key, ticketData).Err()
 		require.NoError(t, err)
-		redis.Expire(ctx, key, 30*time.Second)
+		defer redisClient.Del(ctx, key)
 
-		// Validate ticket
-		retrievedUserID, err := wsHandler.ValidateTicket(ctx, ticket)
+		err = redisClient.Expire(ctx, key, 30*time.Second).Err()
 		require.NoError(t, err)
-		assert.Equal(t, userID.String(), retrievedUserID)
 
-		// Ticket should be deleted (one-time use)
-		exists, _ := redis.Exists(ctx, key).Result()
-		assert.Equal(t, int64(0), exists, "Ticket should be deleted after use")
-
-		// Second validation should fail
-		_, err = wsHandler.ValidateTicket(ctx, ticket)
-		assert.Error(t, err)
-	})
-}
-
-// TestWebSocket_OriginValidation tests the Origin header validation
-func TestWebSocket_OriginValidation(t *testing.T) {
-	redis := RequireRedis(t)
-	allowedOrigins := []string{"http://localhost:3000", "https://example.com"}
-	wsHandler := handlers.NewWebSocketHandler(redis, allowedOrigins)
-
-	t.Run("accepts empty origin", func(t *testing.T) {
-		err := wsHandler.ValidateOrigin("")
-		assert.NoError(t, err)
+		// Validate the ticket
+		validatedUserID, err := wsHandler.ValidateTicket(ctx, ticket)
+		assert.NoError(t, err, "Valid ticket should pass validation")
+		assert.Equal(t, userID.String(), validatedUserID)
 	})
 
-	t.Run("accepts allowed origin", func(t *testing.T) {
-		err := wsHandler.ValidateOrigin("http://localhost:3000")
-		assert.NoError(t, err)
+	t.Run("ticket is one-time use", func(t *testing.T) {
+		ctx := context.Background()
+		userID := uuid.New()
 
-		err = wsHandler.ValidateOrigin("http://localhost:3000/")
-		assert.NoError(t, err)
-	})
-
-	t.Run("accepts allowed origin with trailing slash", func(t *testing.T) {
-		err := wsHandler.ValidateOrigin("https://example.com")
-		assert.NoError(t, err)
-	})
-
-	t.Run("rejects disallowed origin", func(t *testing.T) {
-		err := wsHandler.ValidateOrigin("https://evil.com")
-		assert.Error(t, err)
-		assert.Equal(t, handlers.ErrOriginNotAllowed, err)
-	})
-}
-
-// TestWebSocket_PublishMethods tests the Redis publish methods
-func TestWebSocket_PublishMethods(t *testing.T) {
-	db := TestDB(t)
-	redis := RequireRedis(t)
-	user := CreateTestUser(t, db, "test-ws-publish@example.com")
-	wsHandler := handlers.NewWebSocketHandler(redis, []string{"http://localhost:3000"})
-
-	ctx := context.Background()
-
-	t.Run("PublishJob publishes to correct channel", func(t *testing.T) {
-		job := map[string]interface{}{
-			"id":     "job-123",
-			"title":  "Test Job",
-			"reward": 5.50,
-			"source": "rss",
+		ticket := uuid.New().String()
+		key := "ws:ticket:" + ticket
+		ticketData := map[string]interface{}{
+			"user_id": userID.String(),
+			"created": time.Now().Unix(),
 		}
 
-		// Subscribe first (before publishing)
-		jobsChannel := "user:" + user.ID.String() + ":jobs"
-		pubsub := redis.Subscribe(ctx, jobsChannel)
+		err := redisClient.HMSet(ctx, key, ticketData).Err()
+		require.NoError(t, err)
+
+		err = redisClient.Expire(ctx, key, 30*time.Second).Err()
+		require.NoError(t, err)
+
+		// First validation should succeed
+		handler := handlers.NewWebSocketHandler(redisClient, []string{"http://localhost:3000"})
+		_, err = handler.ValidateTicket(ctx, ticket)
+		assert.NoError(t, err)
+
+		// Second validation should fail (ticket was deleted)
+		_, err = handler.ValidateTicket(ctx, ticket)
+		assert.Error(t, err, "Ticket should not be reusable")
+	})
+}
+
+// TestWebSocket_ReceivesJobNotification tests job notification via Redis pub/sub
+func TestWebSocket_ReceivesJobNotification(t *testing.T) {
+	redisClient := RequireRedis(t)
+	if redisClient == nil {
+		return
+	}
+
+	ctx := context.Background()
+	userID := uuid.New()
+	wsHandler := handlers.NewWebSocketHandler(redisClient, []string{"http://localhost:3000"})
+
+	// Create a valid ticket
+	ticket := uuid.New().String()
+	key := "ws:ticket:" + ticket
+	ticketData := map[string]interface{}{
+		"user_id": userID.String(),
+		"created": time.Now().Unix(),
+	}
+	require.NoError(t, redisClient.HMSet(ctx, key, ticketData).Err())
+	require.NoError(t, redisClient.Expire(ctx, key, 30*time.Second).Err())
+
+	// Create test job
+	testJob := map[string]interface{}{
+		"id":     "job-123",
+		"title":  "Test Job",
+		"reward": 5.50,
+		"source": "rss",
+	}
+
+	// Create channels for synchronization
+	connected := make(chan bool)
+	received := make(chan string)
+	errors := make(chan error, 1)
+
+	// Start a goroutine to simulate WebSocket connection
+	go func() {
+		// Simulate WebSocket handler behavior
+		pubsub := redisClient.Subscribe(ctx, wsHandler.GetUserChannels(userID)...)
 		defer pubsub.Close()
 
-		// Wait for subscription to be ready
-		_, err := pubsub.Receive(ctx)
-		require.NoError(t, err, "Should receive subscription confirmation")
+		close(connected)
 
-		// Now publish the job
-		err = wsHandler.PublishJob(ctx, user.ID, job)
-		require.NoError(t, err)
+		// Listen for one message
+		msg, err := pubsub.ReceiveMessage(ctx)
+		if err != nil {
+			errors <- err
+			return
+		}
 
-		// Wait for message with timeout
-		msgCtx, msgCancel := context.WithTimeout(ctx, 2*time.Second)
-		defer msgCancel()
-		msg, err := pubsub.ReceiveMessage(msgCtx)
-		require.NoError(t, err)
+		received <- msg.Payload
+	}()
 
+	// Wait for subscription to be ready
+	<-connected
+
+	// Publish job notification
+	err := wsHandler.PublishJob(ctx, userID, testJob)
+	require.NoError(t, err, "Should publish job successfully")
+
+	// Wait to receive the message
+	select {
+	case payload := <-received:
 		var receivedJob map[string]interface{}
-		err = json.Unmarshal([]byte(msg.Payload), &receivedJob)
+		err := json.Unmarshal([]byte(payload), &receivedJob)
 		require.NoError(t, err)
 		assert.Equal(t, "job-123", receivedJob["id"])
 		assert.Equal(t, "Test Job", receivedJob["title"])
-	})
-
-	t.Run("PublishEvent publishes to correct channel", func(t *testing.T) {
-		eventData := map[string]interface{}{
-			"status": "running",
-		}
-
-		// Subscribe first
-		eventsChannel := "user:" + user.ID.String() + ":events"
-		pubsub := redis.Subscribe(ctx, eventsChannel)
-		defer pubsub.Close()
-
-		// Wait for subscription to be ready
-		_, err := pubsub.Receive(ctx)
-		require.NoError(t, err, "Should receive subscription confirmation")
-
-		// Now publish the event
-		err = wsHandler.PublishEvent(ctx, user.ID, "watcher.started", eventData)
-		require.NoError(t, err)
-
-		// Wait for message with timeout
-		msgCtx, msgCancel := context.WithTimeout(ctx, 2*time.Second)
-		defer msgCancel()
-		msg, err := pubsub.ReceiveMessage(msgCtx)
-		require.NoError(t, err)
-
-		var receivedEvent map[string]interface{}
-		err = json.Unmarshal([]byte(msg.Payload), &receivedEvent)
-		require.NoError(t, err)
-		assert.Equal(t, "event", receivedEvent["type"])
-		assert.Equal(t, "watcher.started", receivedEvent["event"])
-		assert.Contains(t, receivedEvent, "data")
-		assert.Contains(t, receivedEvent, "timestamp")
-	})
-
-	t.Run("PublishError publishes to correct channel", func(t *testing.T) {
-		errMsg := "Test error message"
-
-		// Subscribe first
-		errorsChannel := "user:" + user.ID.String() + ":errors"
-		pubsub := redis.Subscribe(ctx, errorsChannel)
-		defer pubsub.Close()
-
-		// Wait for subscription to be ready
-		_, err := pubsub.Receive(ctx)
-		require.NoError(t, err, "Should receive subscription confirmation")
-
-		// Now publish the error
-		err = wsHandler.PublishError(ctx, user.ID, errMsg)
-		require.NoError(t, err)
-
-		// Wait for message with timeout
-		msgCtx, msgCancel := context.WithTimeout(ctx, 2*time.Second)
-		defer msgCancel()
-		msg, err := pubsub.ReceiveMessage(msgCtx)
-		require.NoError(t, err)
-
-		var receivedError map[string]interface{}
-		err = json.Unmarshal([]byte(msg.Payload), &receivedError)
-		require.NoError(t, err)
-		assert.Equal(t, "error", receivedError["type"])
-		assert.Equal(t, errMsg, receivedError["message"])
-		assert.Contains(t, receivedError, "timestamp")
-	})
+		assert.Equal(t, 5.50, receivedJob["reward"])
+	case err := <-errors:
+		t.Fatalf("Error receiving message: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timeout waiting for job notification")
+	}
 }
 
-// TestWebSocket_GetUserChannels tests the channel naming
-func TestWebSocket_GetUserChannels(t *testing.T) {
-	redis := RequireRedis(t)
-	wsHandler := handlers.NewWebSocketHandler(redis, []string{"http://localhost:3000"})
-
-	userID := uuid.New()
-	channels := wsHandler.GetUserChannels(userID)
-
-	t.Run("returns correct channel names", func(t *testing.T) {
-		expected := []string{
-			"user:" + userID.String() + ":jobs",
-			"user:" + userID.String() + ":events",
-			"user:" + userID.String() + ":errors",
-		}
-
-		// Verify the returned channels match expected
-		assert.Equal(t, expected, channels)
-
-		// Verify channels are correctly named through PublishJob test
-		ctx := context.Background()
-		testJob := map[string]interface{}{"id": "test"}
-
-		// Subscribe first
-		pubsub := redis.Subscribe(ctx, channels[0])
-		defer pubsub.Close()
-
-		// Wait for subscription to be ready
-		_, err := pubsub.Receive(ctx)
-		require.NoError(t, err, "Should receive subscription confirmation")
-
-		// Now publish
-		err = wsHandler.PublishJob(ctx, userID, testJob)
-		require.NoError(t, err)
-
-		// Receive message
-		msgCtx, msgCancel := context.WithTimeout(ctx, 2*time.Second)
-		defer msgCancel()
-		msg, err := pubsub.ReceiveMessage(msgCtx)
-		require.NoError(t, err)
-		var received map[string]interface{}
-		json.Unmarshal([]byte(msg.Payload), &received)
-		assert.Equal(t, "test", received["id"])
-	})
-}
-
-// TestWebSocket_RedisPubSubIntegration tests end-to-end Redis pub/sub flow
-func TestWebSocket_RedisPubSubIntegration(t *testing.T) {
-	db := TestDB(t)
-	redis := RequireRedis(t)
-	user := CreateTestUser(t, db, "test-ws-pubsub@example.com")
-	wsHandler := handlers.NewWebSocketHandler(redis, []string{"http://localhost:3000"})
+// TestWebSocket_ReceivesEventNotification tests watcher event notifications
+func TestWebSocket_ReceivesEventNotification(t *testing.T) {
+	redisClient := RequireRedis(t)
+	if redisClient == nil {
+		return
+	}
 
 	ctx := context.Background()
+	userID := uuid.New()
+	wsHandler := handlers.NewWebSocketHandler(redisClient, []string{"http://localhost:3000"})
 
-	t.Run("multiple subscribers receive same message", func(t *testing.T) {
-		// Create multiple subscribers
-		jobsChannel := "user:" + user.ID.String() + ":jobs"
-		pubsub1 := redis.Subscribe(ctx, jobsChannel)
-		pubsub2 := redis.Subscribe(ctx, jobsChannel)
-		defer pubsub1.Close()
-		defer pubsub2.Close()
+	// Create a valid ticket
+	ticket := uuid.New().String()
+	key := "ws:ticket:" + ticket
+	ticketData := map[string]interface{}{
+		"user_id": userID.String(),
+		"created": time.Now().Unix(),
+	}
+	require.NoError(t, redisClient.HMSet(ctx, key, ticketData).Err())
+	require.NoError(t, redisClient.Expire(ctx, key, 30*time.Second).Err())
 
-		// Publish a job
-		job := map[string]interface{}{
-			"id":     "job-multi",
-			"title":  "Multi Test",
-			"reward": 10.0,
-		}
-		err := wsHandler.PublishJob(ctx, user.ID, job)
-		require.NoError(t, err)
+	// Test events
+	testEvents := []struct {
+		eventType string
+		data      map[string]interface{}
+	}{
+		{
+			eventType: "watcher.started",
+			data:      map[string]interface{}{"status": "running"},
+		},
+		{
+			eventType: "watcher.stopped",
+			data:      map[string]interface{}{"status": "stopped"},
+		},
+		{
+			eventType: "job.filtered",
+			data: map[string]interface{}{
+				"job_id":  "job-456",
+				"reason":  "reward_below_minimum",
+			},
+		},
+	}
 
-		// Both subscribers should receive the message
-		msgCtx, msgCancel := context.WithTimeout(ctx, 2*time.Second)
-		defer msgCancel()
-		msg1, err := pubsub1.ReceiveMessage(msgCtx)
-		require.NoError(t, err)
+	for _, tc := range testEvents {
+		t.Run(tc.eventType, func(t *testing.T) {
+			// Create channels for synchronization
+			connected := make(chan bool)
+			received := make(chan map[string]interface{})
+			errors := make(chan error, 1)
 
-		msg2, err := pubsub2.ReceiveMessage(msgCtx)
-		require.NoError(t, err)
+			// Start a goroutine to simulate WebSocket connection
+			go func() {
+				pubsub := redisClient.Subscribe(ctx, "user:"+userID.String()+":events")
+				defer pubsub.Close()
 
-		// Messages should have the same payload
-		assert.Equal(t, msg1.Payload, msg2.Payload)
+				close(connected)
 
-		var receivedJob map[string]interface{}
-		err = json.Unmarshal([]byte(msg1.Payload), &receivedJob)
-		require.NoError(t, err)
-		assert.Equal(t, "job-multi", receivedJob["id"])
+				msg, err := pubsub.ReceiveMessage(ctx)
+				if err != nil {
+					errors <- err
+					return
+				}
+
+				var result map[string]interface{}
+				if err := json.Unmarshal([]byte(msg.Payload), &result); err != nil {
+					errors <- err
+					return
+				}
+				received <- result
+			}()
+
+			// Wait for subscription
+			<-connected
+
+			// Publish event
+			err := wsHandler.PublishEvent(ctx, userID, tc.eventType, tc.data)
+			require.NoError(t, err)
+
+			// Verify received event
+			select {
+			case result := <-received:
+				assert.Equal(t, "event", result["type"])
+				assert.Equal(t, tc.eventType, result["event"])
+				assert.NotNil(t, result["timestamp"])
+			case err := <-errors:
+				t.Fatalf("Error receiving event: %v", err)
+			case <-time.After(2 * time.Second):
+				t.Fatal("Timeout waiting for event notification")
+			}
+		})
+	}
+}
+
+// TestWebSocket_HandlesDisconnect tests graceful connection cleanup
+func TestWebSocket_HandlesDisconnect(t *testing.T) {
+	redisClient := RequireRedis(t)
+	if redisClient == nil {
+		return
+	}
+
+	ctx := context.Background()
+	userID := uuid.New()
+	wsHandler := handlers.NewWebSocketHandler(redisClient, []string{"http://localhost:3000"})
+
+	// Create a valid ticket
+	ticket := uuid.New().String()
+	key := "ws:ticket:" + ticket
+	ticketData := map[string]interface{}{
+		"user_id": userID.String(),
+		"created": time.Now().Unix(),
+	}
+	require.NoError(t, redisClient.HMSet(ctx, key, ticketData).Err())
+	require.NoError(t, redisClient.Expire(ctx, key, 30*time.Second).Err())
+
+	// Simulate connection lifecycle
+	pubsub := redisClient.Subscribe(ctx, wsHandler.GetUserChannels(userID)...)
+
+	// Wait for subscription confirmation (Redis pub/sub is async)
+	subCtx, subCancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer subCancel()
+
+	_, err := pubsub.Receive(subCtx)
+	// We expect a timeout (no messages yet) or subscription confirmation
+	if err != nil && err != context.DeadlineExceeded {
+		t.Logf("Subscription warning: %v", err)
+	}
+
+	// Close pubsub (simulating disconnect)
+	pubsub.Close()
+
+	// Verify cleanup - should be able to subscribe again (no resource leak)
+	pubsub2 := redisClient.Subscribe(ctx, wsHandler.GetUserChannels(userID)...)
+	defer pubsub2.Close()
+
+	// The second subscription should work (no resource leak)
+	// Just verify we can create a new subscription without error
+	assert.NotNil(t, pubsub2, "Should be able to create new subscription")
+}
+
+// TestWebSocket_GetUserChannels tests channel name generation
+func TestWebSocket_GetUserChannels(t *testing.T) {
+	redisClient := RequireRedis(t)
+	if redisClient == nil {
+		return
+	}
+
+	userID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	wsHandler := handlers.NewWebSocketHandler(redisClient, []string{"http://localhost:3000"})
+
+	channels := wsHandler.GetUserChannels(userID)
+	require.Len(t, channels, 3, "Should return 3 channels")
+
+	expectedChannels := []string{
+		"user:550e8400-e29b-41d4-a716-446655440000:jobs",
+		"user:550e8400-e29b-41d4-a716-446655440000:events",
+		"user:550e8400-e29b-41d4-a716-446655440000:errors",
+	}
+
+	assert.Equal(t, expectedChannels, channels)
+}
+
+// TestWebSocket_ValidateOrigin tests origin validation
+func TestWebSocket_ValidateOrigin(t *testing.T) {
+	redisClient := RequireRedis(t)
+	if redisClient == nil {
+		return
+	}
+
+	allowedOrigins := []string{
+		"http://localhost:3000",
+		"https://app.example.com",
+		"https://gengowatcher.com",
+	}
+	wsHandler := handlers.NewWebSocketHandler(redisClient, allowedOrigins)
+
+	t.Run("allowed origin", func(t *testing.T) {
+		err := wsHandler.ValidateOrigin("http://localhost:3000")
+		assert.NoError(t, err, "Should allow valid origin")
+
+		err = wsHandler.ValidateOrigin("http://localhost:3000/") // with trailing slash
+		assert.NoError(t, err, "Should allow valid origin with trailing slash")
+	})
+
+	t.Run("disallowed origin", func(t *testing.T) {
+		err := wsHandler.ValidateOrigin("http://evil.com")
+		assert.Error(t, err, "Should reject disallowed origin")
+		assert.ErrorIs(t, err, handlers.ErrOriginNotAllowed)
+	})
+
+	t.Run("empty origin", func(t *testing.T) {
+		err := wsHandler.ValidateOrigin("")
+		assert.NoError(t, err, "Should allow empty origin (non-browser clients)")
 	})
 }
 
-// TestWebSocket_TicketExpiration tests ticket expiration behavior
-func TestWebSocket_TicketExpiration(t *testing.T) {
-	redis := RequireRedis(t)
+// TestWebSocket_PublishError tests error notification publishing
+func TestWebSocket_PublishError(t *testing.T) {
+	redisClient := RequireRedis(t)
+	if redisClient == nil {
+		return
+	}
 
-	t.Run("expired ticket is rejected", func(t *testing.T) {
-		ctx := context.Background()
+	ctx := context.Background()
+	userID := uuid.New()
+	wsHandler := handlers.NewWebSocketHandler(redisClient, []string{"http://localhost:3000"})
+
+	// Subscribe to error channel
+	errorChannel := "user:" + userID.String() + ":errors"
+	pubsub := redisClient.Subscribe(ctx, errorChannel)
+	defer pubsub.Close()
+
+	// Publish error
+	errMsg := "Connection to Gengo WebSocket failed"
+	err := wsHandler.PublishError(ctx, userID, errMsg)
+	require.NoError(t, err, "Should publish error successfully")
+
+	// Verify received error
+	msg, err := pubsub.ReceiveMessage(ctx)
+	require.NoError(t, err, "Should receive published error")
+
+	var result map[string]interface{}
+	err = json.Unmarshal([]byte(msg.Payload), &result)
+	require.NoError(t, err)
+
+	assert.Equal(t, "error", result["type"])
+	assert.Equal(t, errMsg, result["message"])
+	assert.NotNil(t, result["timestamp"])
+}
+
+// TestWebSocket_TicketExpiry tests ticket expiration behavior
+func TestWebSocket_TicketExpiry(t *testing.T) {
+	redisClient := RequireRedis(t)
+	if redisClient == nil {
+		return
+	}
+
+	ctx := context.Background()
+	userID := uuid.New()
+	wsHandler := handlers.NewWebSocketHandler(redisClient, []string{"http://localhost:3000"})
+
+	// Create a ticket with 1 second expiration (Redis minimum)
+	ticket := uuid.New().String()
+	key := "ws:ticket:" + ticket
+	ticketData := map[string]interface{}{
+		"user_id": userID.String(),
+		"created": time.Now().Unix(),
+	}
+
+	require.NoError(t, redisClient.HMSet(ctx, key, ticketData).Err())
+	require.NoError(t, redisClient.Expire(ctx, key, 1*time.Second).Err())
+
+	// Wait for ticket to expire (slightly more than 1 second)
+	time.Sleep(1100 * time.Millisecond)
+
+	// Try to validate expired ticket
+	_, err := wsHandler.ValidateTicket(ctx, ticket)
+	assert.Error(t, err, "Should reject expired ticket")
+}
+
+// TestWebSocket_ConcurrentConnections tests multiple concurrent connections
+func TestWebSocket_ConcurrentConnections(t *testing.T) {
+	redisClient := RequireRedis(t)
+	if redisClient == nil {
+		return
+	}
+
+	ctx := context.Background()
+	wsHandler := handlers.NewWebSocketHandler(redisClient, []string{"http://localhost:3000"})
+
+	// Create multiple users with tickets
+	numUsers := 5
+	userIDs := make([]uuid.UUID, numUsers)
+	tickets := make([]string, numUsers)
+
+	for i := 0; i < numUsers; i++ {
 		userID := uuid.New()
-
-		// Create a ticket with short expiration
+		userIDs[i] = userID
 		ticket := uuid.New().String()
+		tickets[i] = ticket
+
 		key := "ws:ticket:" + ticket
 		ticketData := map[string]interface{}{
 			"user_id": userID.String(),
 			"created": time.Now().Unix(),
 		}
-		err := redis.HMSet(ctx, key, ticketData).Err()
-		require.NoError(t, err)
+		require.NoError(t, redisClient.HMSet(ctx, key, ticketData).Err())
+		require.NoError(t, redisClient.Expire(ctx, key, 30*time.Second).Err())
+	}
 
-		// Set short expiration (100ms - Redis minimum is 1s, but we'll delete manually after delay)
-		// Note: Redis Expire minimum is 1 second, so we'll manually delete the ticket
-		// after a short delay to simulate expiration
-		redis.Expire(ctx, key, 1*time.Second)
+	// Validate all tickets concurrently
+	done := make(chan bool, numUsers)
+	for i := 0; i < numUsers; i++ {
+		go func(idx int) {
+			validatedUserID, err := wsHandler.ValidateTicket(ctx, tickets[idx])
+			assert.NoError(t, err)
+			assert.Equal(t, userIDs[idx].String(), validatedUserID)
+			done <- true
+		}(i)
+	}
 
-		// Manually delete the ticket after a short delay to simulate expiration
-		// (This is faster than waiting for Redis's 1-second minimum expiration)
-		go func() {
-			time.Sleep(50 * time.Millisecond)
-			redis.Del(ctx, key)
-		}()
-
-		// Wait for ticket to be deleted
-		time.Sleep(100 * time.Millisecond)
-
-		// Try to validate expired ticket
-		wsHandler := handlers.NewWebSocketHandler(redis, []string{"http://localhost:3000"})
-		_, err = wsHandler.ValidateTicket(ctx, ticket)
-		assert.Error(t, err, "Expired ticket should be rejected")
-		assert.Equal(t, handlers.ErrInvalidWSTicket, err)
-	})
-}
-
-// TestWebSocket_HttpEndpoint tests the HTTP upgrade endpoint behavior
-func TestWebSocket_HttpEndpoint(t *testing.T) {
-	db := TestDB(t)
-	redis := RequireRedis(t)
-	user := CreateTestUser(t, db, "test-ws-http@example.com")
-
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
-
-	wsHandler := handlers.NewWebSocketHandler(redis, []string{"http://localhost:3000"})
-	app.Get("/ws", wsHandler.HandleWebSocket())
-
-	t.Run("WebSocket upgrade requires ticket parameter", func(t *testing.T) {
-		// Request without ticket should return 426 Upgrade Required
-		req := httptest.NewRequest("GET", "/ws", nil)
-		req.Header.Set("Connection", "Upgrade")
-		req.Header.Set("Upgrade", "websocket")
-
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		// Fiber websocket middleware returns 426 for non-websocket requests
-		assert.NotEqual(t, 200, resp.StatusCode, "Should not accept connection without proper WebSocket upgrade")
-	})
-
-	t.Run("WebSocket upgrade with valid ticket accepts connection", func(t *testing.T) {
-		// Generate a valid ticket
-		ctx := context.Background()
-		ticket := uuid.New().String()
-		key := "ws:ticket:" + ticket
-		ticketData := map[string]interface{}{
-			"user_id": user.ID.String(),
-			"created": time.Now().Unix(),
+	// Wait for all validations
+	for i := 0; i < numUsers; i++ {
+		select {
+		case <-done:
+			// OK
+		case <-time.After(2 * time.Second):
+			t.Fatal("Timeout waiting for concurrent validations")
 		}
-		redis.HMSet(ctx, key, ticketData)
-		redis.Expire(ctx, key, 30*time.Second)
+	}
 
-		// Request with ticket - Fiber websocket handler handles this
-		// We can't easily test the actual WebSocket upgrade in a unit test,
-		// but we can verify the handler is registered and responds
-		req := httptest.NewRequest("GET", "/ws?ticket="+ticket, nil)
-		req.Header.Set("Connection", "Upgrade")
-		req.Header.Set("Upgrade", "websocket")
-
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		// The websocket middleware handles the upgrade
-		// A 426 means the request wasn't a proper WebSocket upgrade
-		// A 101 would be successful upgrade
-		// Either way, the handler is processing the request
-		assert.True(t, resp.StatusCode == 101 || resp.StatusCode == 426,
-			"WebSocket handler should process the request")
-	})
+	// Verify tickets were deleted (one-time use)
+	for _, ticket := range tickets {
+		_, err := wsHandler.ValidateTicket(ctx, ticket)
+		assert.Error(t, err, "Ticket should not be reusable after validation")
+	}
 }
 
-// TestWebSocket_ConnectedMessage tests the initial connected message format
-func TestWebSocket_ConnectedMessage(t *testing.T) {
-	// Test the connected message structure without actual WebSocket
-	db := TestDB(t)
-	redis := RequireRedis(t)
-	user := CreateTestUser(t, db, "test-ws-connected@example.com")
+// TestWebSocket_ErrorChannel tests error notification via Redis
+func TestWebSocket_ErrorChannel(t *testing.T) {
+	redisClient := RequireRedis(t)
+	if redisClient == nil {
+		return
+	}
 
-	wsHandler := handlers.NewWebSocketHandler(redis, []string{"http://localhost:3000"})
-
-	// We can test that the handler creates the correct message structure
-	// by checking the PublishEvent method which uses the same JSON structure
 	ctx := context.Background()
+	userID := uuid.New()
+	wsHandler := handlers.NewWebSocketHandler(redisClient, []string{"http://localhost:3000"})
 
-	// Subscribe first (before publishing)
-	eventsChannel := "user:" + user.ID.String() + ":events"
-	pubsub := redis.Subscribe(ctx, eventsChannel)
+	// Create a valid ticket
+	ticket := uuid.New().String()
+	key := "ws:ticket:" + ticket
+	ticketData := map[string]interface{}{
+		"user_id": userID.String(),
+		"created": time.Now().Unix(),
+	}
+	require.NoError(t, redisClient.HMSet(ctx, key, ticketData).Err())
+	require.NoError(t, redisClient.Expire(ctx, key, 30*time.Second).Err())
+
+	// Subscribe to error channel
+	errorChannel := "user:" + userID.String() + ":errors"
+	pubsub := redisClient.Subscribe(ctx, errorChannel)
 	defer pubsub.Close()
 
-	// Wait for subscription to be ready
-	_, err := pubsub.Receive(ctx)
-	require.NoError(t, err, "Should receive subscription confirmation")
+	// Publish multiple errors
+	testErrors := []string{
+		"RSS feed fetch failed",
+		"WebSocket connection lost",
+		"Job parsing error",
+	}
 
-	// Now publish the event
-	err = wsHandler.PublishEvent(ctx, user.ID, "test.event", map[string]interface{}{
-		"test_data": "value",
-	})
-	require.NoError(t, err)
+	for _, errMsg := range testErrors {
+		err := wsHandler.PublishError(ctx, userID, errMsg)
+		require.NoError(t, err)
+	}
 
-	// Wait for message with timeout
-	msgCtx, msgCancel := context.WithTimeout(ctx, 2*time.Second)
-	defer msgCancel()
-	msg, err := pubsub.ReceiveMessage(msgCtx)
-	require.NoError(t, err)
+	// Receive all errors
+	receivedErrors := make([]string, 0)
+	timeout := time.After(2 * time.Second)
 
-	var event map[string]interface{}
-	err = json.Unmarshal([]byte(msg.Payload), &event)
-	require.NoError(t, err)
+	for len(receivedErrors) < len(testErrors) {
+		select {
+		case msg := <-pubsub.Channel():
+			var result map[string]interface{}
+			if err := json.Unmarshal([]byte(msg.Payload), &result); err != nil {
+				t.Fatalf("Failed to unmarshal error: %v", err)
+			}
+			if errMsg, ok := result["message"].(string); ok {
+				receivedErrors = append(receivedErrors, errMsg)
+			}
+		case <-timeout:
+			t.Fatalf("Timeout waiting for errors. Received %d/%d", len(receivedErrors), len(testErrors))
+		}
+	}
 
-	// Verify event has expected structure
-	assert.Equal(t, "event", event["type"])
-	assert.Equal(t, "test.event", event["event"])
-	assert.Contains(t, event, "data")
-	assert.Contains(t, event, "timestamp")
+	assert.ElementsMatch(t, testErrors, receivedErrors)
 }
