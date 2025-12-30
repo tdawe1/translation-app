@@ -94,11 +94,13 @@ export class ApiErrorClass extends Error {
 // ============================================================
 
 /**
- * HTTP client with interceptors for auth
+ * HTTP client with interceptors for auth and request deduplication
  */
 class HttpClient {
   private baseUrl: string;
   private defaultHeaders: Record<string, string>;
+  // In-flight request deduplication: cache of pending requests
+  private pendingRequests = new Map<string, Promise<unknown>>();
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
@@ -107,11 +109,32 @@ class HttpClient {
     };
   }
 
+  /**
+   * Generate a cache key for deduplication
+   * Based on method, path, and request body
+   */
+  private getCacheKey(
+    method: string,
+    path: string,
+    body?: string
+  ): string {
+    return `${method}:${path}${body ? `:${body}` : ""}`;
+  }
+
   private async request<T>(
     path: string,
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
+    const method = options.method || "GET";
+    const body = options.body as string | undefined;
+
+    // Check for in-flight request (deduplication)
+    const cacheKey = this.getCacheKey(method, path, body);
+    const existingRequest = this.pendingRequests.get(cacheKey) as Promise<T> | undefined;
+    if (existingRequest) {
+      return existingRequest;
+    }
 
     // Add access token from sessionStorage if available
     const token = sessionStorage.getItem("access_token");
@@ -124,32 +147,45 @@ class HttpClient {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      credentials: "include", // Send httpOnly cookies
+    // Create the request promise and store it for deduplication
+    const requestPromise = (async () => {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        credentials: "include", // Send httpOnly cookies
+      });
+
+      // Handle 401 Unauthorized - redirect to login
+      if (response.status === 401) {
+        sessionStorage.removeItem("access_token");
+        if (typeof window !== "undefined") {
+          window.location.href = "/auth/login";
+        }
+        throw new ApiErrorClass("Unauthorized", "UNAUTHORIZED");
+      }
+
+      // Handle other errors
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new ApiErrorClass(
+          (data.error as string) || response.statusText,
+          (data.code as string) || "UNKNOWN_ERROR",
+          data.details as Record<string, unknown> | undefined
+        );
+      }
+
+      return response.json() as Promise<T>;
+    })();
+
+    // Store the promise for deduplication
+    this.pendingRequests.set(cacheKey, requestPromise);
+
+    // Clean up after request completes (success or failure)
+    requestPromise.finally(() => {
+      this.pendingRequests.delete(cacheKey);
     });
 
-    // Handle 401 Unauthorized - redirect to login
-    if (response.status === 401) {
-      sessionStorage.removeItem("access_token");
-      if (typeof window !== "undefined") {
-        window.location.href = "/auth/login";
-      }
-      throw new ApiErrorClass("Unauthorized", "UNAUTHORIZED");
-    }
-
-    // Handle other errors
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new ApiErrorClass(
-        (data.error as string) || response.statusText,
-        (data.code as string) || "UNKNOWN_ERROR",
-        data.details as Record<string, unknown> | undefined
-      );
-    }
-
-    return response.json() as Promise<T>;
+    return requestPromise;
   }
 
   get<T>(path: string): Promise<T> {

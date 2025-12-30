@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import React from "react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -20,7 +21,12 @@ interface ModalProps {
   children: React.ReactNode;
 }
 
-export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+export const Modal = React.memo(function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+}: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const titleId = useRef<string>(`modal-title-${Math.random().toString(36).slice(2)}`);
@@ -93,4 +99,4 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
       </div>
     </div>
   );
-}
+});

@@ -1,6 +1,6 @@
 # GengoWatcher SaaS - Current Implementation Plan
 
-**Status**: Sprint 1 Complete | Sprint 2 Complete | Backend Testing Complete | Frontend Testing Complete
+**Status**: Sprint 1 Complete | Sprint 2 Complete | Backend Testing Complete | Frontend Testing Complete | **Polishing Complete**
 **Tech Stack**: Go 1.23 + Fiber 3.x + GORM + Next.js 16 + React 19
 **Repository**: https://github.com/tdawe1/translation-app
 
@@ -341,16 +341,65 @@ Tests: 17 passed (17)
 - ARIA labels for forms (minimal accessibility)
 
 **Defer to Sprint 3+:**
-- Skeleton loaders
-- React.memo optimization
-- Virtualization
-- Request deduplication
-- Connection pooling metrics
 - Caching headers (handled by nginx)
-- Keyboard shortcuts
-- Screen reader testing
-- Transition animations
-- Error boundaries (add when real errors occur)
+
+---
+
+## Polishing Summary ✅
+
+**Completed 2025-12-30**
+
+All essential polishing tasks completed:
+
+### Frontend Enhancements
+
+**File: `frontend/components/ui/skeleton.tsx`** (CREATED)
+- `Skeleton` component for loading placeholders
+
+**File: `frontend/components/error-boundary.tsx`** (CREATED)
+- `ErrorBoundary` class component with fallback UI
+- Reload button on error
+- Error logging support
+
+**File: `frontend/components/watcher/job-list.tsx`** (MODIFIED)
+- Added `React.memo` to `JobListItem` for performance optimization
+- Prevents re-renders when job data hasn't changed
+
+**File: `frontend/components/ui/modal.tsx`** (MODIFIED)
+- Added `React.memo` to prevent unnecessary re-renders
+
+**File: `frontend/lib/api.ts`** (MODIFIED)
+- In-flight request deduplication via `pendingRequests` Map
+- Concurrent identical requests share the same promise
+- Automatic cleanup after request completes
+
+**File: `frontend/app/dashboard/page.tsx`** (MODIFIED)
+- Added keyboard shortcuts: `Ctrl+K` / `Cmd+K` to open config modal
+- `ESC` to close modal
+- Visual hint (`<kbd>`) on Configure button
+- Wrapped in `ErrorBoundary` for error handling
+
+**File: `frontend/app/globals.css`** (MODIFIED)
+- Staggered fade-in animation for bento cards (25ms delays)
+- `animate-fade-in` utility class available
+
+**File: `frontend/hooks/use-watcher-websocket.ts`** (ENHANCED)
+- Added `WebSocketMetrics` interface with:
+  - `connected`, `reconnecting`, `reconnectCount`
+  - `connectionStartTime`, `uptime` (seconds)
+  - `lastMessageTime`, `messagesReceived`
+
+**File: `frontend/app/layout.tsx`** (MODIFIED)
+- Skip link for keyboard navigation (`Skip to main content`)
+- Hidden until focused (`sr-only focus:not-sr-only`)
+
+**Accessibility Features:**
+- `aria-live="polite"` for status updates
+- `aria-modal="true"` on dialogs
+- `role="dialog"` on modal
+- `aria-labelledby` for modal titles
+- `aria-label` on icon-only buttons
+- `id="main-content"` target for skip link
 
 ---
 

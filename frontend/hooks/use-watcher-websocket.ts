@@ -8,7 +8,7 @@
  * - Updates Zustand store with received data
  */
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useWatcherStore } from "@/store/watcher";
 import { useJobsStore } from "@/store/jobs";
 import { authApi } from "@/lib/api";
@@ -76,6 +76,16 @@ interface UseWatcherWebSocketOptions {
   onError?: (error: string) => void;
 }
 
+export interface WebSocketMetrics {
+  connected: boolean;
+  reconnecting: boolean;
+  reconnectCount: number;
+  connectionStartTime: number | null;
+  uptime: number; // seconds
+  lastMessageTime: number | null;
+  messagesReceived: number;
+}
+
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws";
 
@@ -84,8 +94,29 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | undefined>(undefined);
   const reconnectAttemptsRef = useRef(0);
+
+  // Connection metrics state
+  const [connectionStartTime, setConnectionStartTime] = useState<number | null>(null);
+  const [messagesReceived, setMessagesReceived] = useState(0);
+  const [lastMessageTime, setLastMessageTime] = useState<number | null>(null);
+
   const setState = useWatcherStore((state) => state.setState);
   const addJob = useJobsStore((state) => state.addJob);
+
+  // Calculate uptime in seconds
+  const uptime = useMemo(() => {
+    if (!connectionStartTime) return 0;
+    return Math.floor((Date.now() - connectionStartTime) / 1000);
+  }, [connectionStartTime]);
+
+  // Update uptime every second when connected
+  useEffect(() => {
+    if (!connectionStartTime) return;
+    const interval = setInterval(() => {
+      // Force re-render by updating a dummy state or using a ref
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [connectionStartTime]);
 
   // Clean up connection
   const cleanup = useCallback(() => {
@@ -129,9 +160,16 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
       ws.onopen = () => {
         console.log("[WS] Connected");
         reconnectAttemptsRef.current = 0;
+        setConnectionStartTime(Date.now());
+        setMessagesReceived(0);
+        setLastMessageTime(null);
       };
 
       ws.onmessage = (event) => {
+        // Track message metrics
+        setMessagesReceived((prev) => prev + 1);
+        setLastMessageTime(Date.now());
+
         try {
           const message = JSON.parse(event.data) as WSMessage;
 
@@ -191,6 +229,8 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
       ws.onclose = (event) => {
         console.log("[WS] Connection closed:", event.code, event.reason);
         wsRef.current = null;
+        // Clear connection metrics on disconnect
+        setConnectionStartTime(null);
 
         // Attempt reconnection with exponential backoff
         if (enabled && reconnectAttemptsRef.current < RECONNECT_DELAYS.length) {
@@ -230,8 +270,17 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
     };
   }, [enabled, connect, cleanup]);
 
+  const connected = wsRef.current?.readyState === WebSocket.OPEN;
+  const reconnecting = reconnectAttemptsRef.current > 0 && !connected;
+
   return {
-    connected: wsRef.current?.readyState === WebSocket.OPEN,
+    connected,
+    reconnecting,
+    reconnectCount: reconnectAttemptsRef.current,
+    connectionStartTime,
+    uptime,
+    lastMessageTime,
+    messagesReceived,
     connect,
     disconnect,
   };

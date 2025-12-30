@@ -31,6 +31,13 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${ibmPlexSans.variable} ${ibmPlexMono.variable}`}>
       <body className="antialiased">
+        {/* Skip to main content link for keyboard navigation */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-neutral-900 focus:text-white focus:font-mono focus:text-xs focus:uppercase focus:tracking-widest"
+        >
+          Skip to main content
+        </a>
         <AuthProvider>{children}</AuthProvider>
         <Toaster />
       </body>

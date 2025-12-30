@@ -11,6 +11,7 @@ import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Modal } from "@/components/ui/modal";
 import { WatcherConfigForm } from "@/components/watcher/config-form";
 import { JobList } from "@/components/watcher/job-list";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { authApi } from "@/lib/api";
 import { toast } from "@/store/toast";
 import { useEffect, useState } from "react";
@@ -42,6 +43,25 @@ export default function DashboardPage() {
     fetchConfig();
     fetchState();
   }, [fetchConfig, fetchState]);
+
+  // Keyboard shortcuts: Ctrl+K to open config, ESC to close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+K or Cmd+K to open config modal
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setConfigModalOpen(true);
+        return;
+      }
+      // ESC to close modal (already handled by Modal component, but here for global context)
+      if (e.key === "Escape" && configModalOpen) {
+        setConfigModalOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [configModalOpen]);
 
   // Set up WebSocket for real-time updates
   const { connected } = useWatcherWebSocket({
@@ -97,7 +117,8 @@ export default function DashboardPage() {
 
   return (
     <ProtectedRoute>
-      <main className="min-h-screen bg-neutral-50">
+      <ErrorBoundary>
+        <main id="main-content" className="min-h-screen bg-neutral-50">
         {/* Header */}
         <header className="bg-white border-b border-neutral-200">
           <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -247,9 +268,13 @@ export default function DashboardPage() {
                 </button>
                 <button
                   onClick={() => setConfigModalOpen(true)}
-                  className="w-full py-3 border border-neutral-300 text-sm transition-colors duration-150 hover:border-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full py-3 border border-neutral-300 text-sm transition-colors duration-150 hover:border-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  title="Keyboard shortcut: Ctrl+K"
                 >
                   Configure
+                  <kbd className="font-mono text-[10px] px-1.5 py-0.5 bg-neutral-100 rounded text-neutral-500">
+                    Ctrl+K
+                  </kbd>
                 </button>
               </div>
             </div>
@@ -279,6 +304,7 @@ export default function DashboardPage() {
           <WatcherConfigForm onClose={() => setConfigModalOpen(false)} />
         </Modal>
       </main>
+      </ErrorBoundary>
     </ProtectedRoute>
   );
 }

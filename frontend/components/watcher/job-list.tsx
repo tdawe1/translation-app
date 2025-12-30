@@ -3,6 +3,7 @@
  */
 
 import { useState, useMemo } from "react";
+import React from "react";
 import { useJobsStore } from "@/store/jobs";
 import type { Job } from "@/store/jobs";
 
@@ -146,7 +147,7 @@ export function JobList() {
   );
 }
 
-function JobListItem({ job }: { job: Job }) {
+const JobListItem = React.memo(function JobListItem({ job }: { job: Job }) {
   const getRewardColor = (reward: number) => {
     if (reward >= 10) return "text-green-600";
     if (reward >= 5) return "text-yellow-600";
@@ -190,4 +191,4 @@ function JobListItem({ job }: { job: Job }) {
       </div>
     </div>
   );
-}
+});
