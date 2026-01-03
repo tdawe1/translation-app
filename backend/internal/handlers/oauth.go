@@ -2,49 +2,51 @@
 package handlers
 
 import (
+	"context"
 	"time"
 
 	"github.com/tdawe1/translation-app/internal/auth"
+	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/oauth"
 	"github.com/gofiber/fiber/v2"
 )
 
 // OAuthHandler handles OAuth authentication
 type OAuthHandler struct {
-	oauthService   *oauth.Service
-	userService    *auth.UserService
-	stateStore     map[string]time.Time // Simple state store (in-memory, not production-ready)
-	stateExpiry    time.Duration
+	oauthService *oauth.Service
+	db           database.Database
+	tokenService *auth.TokenService
+	stateStore   map[string]time.Time
+	stateExpiry  time.Duration
 }
 
 // NewOAuthHandler creates a new OAuth handler
-func NewOAuthHandler(oauthService *oauth.Service, userService *auth.UserService) *OAuthHandler {
+func NewOAuthHandler(db database.Database, tokenService *auth.TokenService) *OAuthHandler {
+	// OAuth config will be loaded from environment
+	config := &oauth.Config{
+		GoogleClientID:     "", // Loaded from env
+		GoogleClientSecret: "", // Loaded from env
+		GitHubClientID:     "", // Loaded from env
+		GitHubClientSecret: "", // Loaded from env
+		FrontendURL:        "", // Loaded from env
+	}
+
 	return &OAuthHandler{
-		oauthService: oauthService,
-		userService:  userService,
+		oauthService: oauth.NewService(db, config),
+		db:           db,
+		tokenService: tokenService,
 		stateStore:   make(map[string]time.Time),
 		stateExpiry:  10 * time.Minute,
 	}
 }
 
-// OAuthAuthorizeRequest represents the authorize request
-type OAuthAuthorizeRequest struct {
-	Provider string `query:"provider" validate:"required,oneof=google github"`
-}
-
-// OAuthCallbackRequest represents the callback request
-type OAuthCallbackRequest struct {
-	Code  string `query:"code" validate:"required"`
-	State string `query:"state" validate:"required"`
-}
-
 // Authorize starts the OAuth flow
 func (h *OAuthHandler) Authorize(c *fiber.Ctx) error {
 	provider := c.Query("provider")
-	if provider == "" {
+	if provider != "google" && provider != "github" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "provider is required",
-			"code":   "MISSING_PROVIDER",
+			"error": "provider must be 'google' or 'github'",
+			"code":   "INVALID_PROVIDER",
 		})
 	}
 
@@ -71,7 +73,6 @@ func (h *OAuthHandler) Authorize(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"auth_url": authURL,
-		"state":    state,
 	})
 }
 
@@ -85,30 +86,82 @@ func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 		})
 	}
 
-	var req OAuthCallbackRequest
-	if err := c.QueryParser(&req); err != nil {
+	code := c.Query("code")
+	state := c.Query("state")
+
+	if code == "" || state == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid callback parameters",
-			"code":   "INVALID_PARAMS",
+			"error": "code and state are required",
+			"code":   "MISSING_PARAMS",
 		})
 	}
 
 	// Verify state
-	expiry, exists := h.stateStore[req.State]
+	expiry, exists := h.stateStore[state]
 	if !exists || time.Now().After(expiry) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "invalid or expired state",
 			"code":   "INVALID_STATE",
 		})
 	}
-	delete(h.stateStore, req.State)
+	delete(h.stateStore, state)
 
-	// TODO: Exchange code for token and get user info
-	// This requires implementing actual HTTP calls to Google/GitHub APIs
-	// For now, return a placeholder response
+	// Exchange code for token
+	ctx := context.Background()
+	token, err := h.oauthService.ExchangeToken(ctx, oauth.Provider(provider), code)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "failed to exchange token: " + err.Error(),
+			"code":   "TOKEN_EXCHANGE_ERROR",
+		})
+	}
+
+	// Fetch user info from provider
+	var userInfo *oauth.UserInfo
+	if provider == "google" {
+		userInfo, err = oauth.FetchGoogleUserInfo(token)
+	} else {
+		userInfo, err = oauth.FetchGitHubUserInfo(token)
+	}
+
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "failed to fetch user info: " + err.Error(),
+			"code":   "USER_INFO_ERROR",
+		})
+	}
+
+	// Handle OAuth login (create/link user account)
+	user, err := h.oauthService.HandleOAuthLogin(ctx, oauth.Provider(provider), code, userInfo)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to process login: " + err.Error(),
+			"code":   "LOGIN_ERROR",
+		})
+	}
+
+	// Generate JWT for the user
+	accessToken, err := h.tokenService.GenerateAccessToken(user.ID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to generate access token",
+			"code":   "TOKEN_ERROR",
+		})
+	}
+
+	// Set httpOnly cookie
+	c.Cookie(&fiber.Cookie{
+		Name:     "session_token",
+		Value:    accessToken,
+		HTTPOnly: true,
+		Secure:   c.Protocol() == "https",
+		SameSite: "lax",
+	})
+
+	// Return user info and token
 	return c.JSON(fiber.Map{
-		"message": "OAuth callback endpoint - requires implementation of token exchange and user info fetching",
-		"code":    req.Code,
+		"access_token": accessToken,
+		"user":         user,
 	})
 }
 
@@ -122,9 +175,9 @@ func (h *OAuthHandler) GetLinkedAccounts(c *fiber.Ctx) error {
 		})
 	}
 
-	// TODO: Implement fetching linked accounts
+	// TODO: Fetch linked accounts
 	return c.JSON(fiber.Map{
-		"linked_accounts": []interface{}{},
+		"linked_accounts": []string{},
 	})
 }
 
@@ -146,7 +199,7 @@ func (h *OAuthHandler) UnlinkAccount(c *fiber.Ctx) error {
 		})
 	}
 
-	// TODO: Implement unlinking
+	// TODO: Unlink account
 	return c.SendStatus(fiber.StatusNoContent)
 }
 

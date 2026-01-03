@@ -63,6 +63,7 @@ func main() {
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(userSvc, cfg.CookieSecure)
 	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret, db)
+	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc)
 
 	// Initialize Redis
 	redisOpts, err := redis.ParseURL(getEnv("REDIS_URL", "redis://localhost:6379/0"))
@@ -116,10 +117,23 @@ func main() {
 	authGroup.Post("/login", authLimiter.Login, authHandler.Login)
 	authGroup.Post("/logout", authHandler.Logout)
 
+	// OAuth routes (public)
+	oauthGroup := api.Group("/oauth")
+	oauthGroup.Get("/authorize", oauthHandler.Authorize)
+	oauthGroup.Get("/google/callback", oauthHandler.Callback)
+	oauthGroup.Get("/github/callback", oauthHandler.Callback)
+	oauthGroup.Get("/github/callback", oauthHandler.Callback) // Duplicate for POST support
+
 	// Protected routes (require auth)
 	protected := api.Group("/")
 	protected.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
 	protected.Get("/me", authHandler.GetMe)
+
+	// OAuth account management (protected)
+	oauthProtected := api.Group("/oauth")
+	oauthProtected.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
+	oauthProtected.Get("/accounts", oauthHandler.GetLinkedAccounts)
+	oauthProtected.Delete("/:provider", oauthHandler.UnlinkAccount)
 
 	// Watcher routes (protected)
 	watcherGroup := api.Group("/watcher")

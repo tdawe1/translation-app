@@ -5,9 +5,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
 	"fmt"
 
+	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/models"
 	"github.com/tdawe1/translation-app/internal/password"
 	"golang.org/x/oauth2"
@@ -27,7 +27,7 @@ const (
 
 // Service handles OAuth operations
 type Service struct {
-	db     *gorm.DB
+	db     database.Database
 	config *Config
 }
 
@@ -49,7 +49,7 @@ type UserInfo struct {
 }
 
 // NewService creates a new OAuth service
-func NewService(db *gorm.DB, config *Config) *Service {
+func NewService(db database.Database, config *Config) *Service {
 	return &Service{
 		db:     db,
 		config: config,
@@ -142,7 +142,7 @@ func (s *Service) HandleOAuthLogin(ctx context.Context, provider Provider, code 
 		return &user, nil
 	}
 
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != gorm.ErrRecordNotFound {
 		return nil, err
 	}
 
@@ -163,7 +163,7 @@ func (s *Service) HandleOAuthLogin(ctx context.Context, provider Provider, code 
 		return &user, nil
 	}
 
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != gorm.ErrRecordNotFound {
 		return nil, err
 	}
 
@@ -187,15 +187,14 @@ func (s *Service) HandleOAuthLogin(ctx context.Context, provider Provider, code 
 
 	// Start transaction
 	tx := s.db.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
 
+	// Create user
 	if err := tx.Create(&user).Error; err != nil {
 		tx.Rollback()
-		return nil, err
+		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
 	// Create OAuth account
@@ -206,25 +205,28 @@ func (s *Service) HandleOAuthLogin(ctx context.Context, provider Provider, code 
 	}
 	if err := tx.Create(&oauthAccount).Error; err != nil {
 		tx.Rollback()
-		return nil, err
+		return nil, fmt.Errorf("failed to create oauth account: %w", err)
 	}
 
 	// Create watcher config
 	config := models.WatcherConfig{UserID: user.ID}
 	if err := tx.Create(&config).Error; err != nil {
 		tx.Rollback()
-		return nil, err
+		return nil, fmt.Errorf("failed to create watcher config: %w", err)
 	}
 
 	// Create watcher state
-	watcherState := models.WatcherState{UserID: user.ID}
+	watcherState := models.WatcherState{
+		UserID:        user.ID,
+		WatcherStatus: "stopped",
+	}
 	if err := tx.Create(&watcherState).Error; err != nil {
 		tx.Rollback()
-		return nil, err
+		return nil, fmt.Errorf("failed to create watcher state: %w", err)
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return &user, nil
@@ -233,8 +235,11 @@ func (s *Service) HandleOAuthLogin(ctx context.Context, provider Provider, code 
 // GetLinkedAccounts returns all linked OAuth accounts for a user
 func (s *Service) GetLinkedAccounts(userID uuid.UUID) ([]models.OAuthAccount, error) {
 	var accounts []models.OAuthAccount
-	err := s.db.Where("user_id = ?", userID).Find(&accounts).Error
-	return accounts, err
+	result := s.db.Where("user_id = ?", userID).Find(&accounts)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return accounts, nil
 }
 
 // UnlinkOAuthAccount unlinks an OAuth account from a user
