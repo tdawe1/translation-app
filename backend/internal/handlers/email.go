@@ -32,8 +32,8 @@ func NewEmailHandler(db database.Database, tokenService *auth.TokenService, emai
 	}
 }
 
-// generateSecureToken generates a secure random token
-func generateSecureToken() (string, error) {
+// generateEmailSecureToken generates a secure random token for email verification
+func generateEmailSecureToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -81,7 +81,7 @@ func (h *EmailHandler) SendVerificationEmail(c *fiber.Ctx) error {
 	}
 
 	// Generate token
-	token, err := generateSecureToken()
+	token, err := generateEmailSecureToken()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate token",
@@ -105,14 +105,20 @@ func (h *EmailHandler) SendVerificationEmail(c *fiber.Ctx) error {
 		})
 	}
 
-	// Send email
+	// Send email (#014 fix - return error instead of silent failure)
 	if err := h.emailService.SendVerificationEmail(req.Email, token); err != nil {
 		fmt.Printf("Failed to send verification email: %v\n", err)
-		// Don't fail the request if email fails in dev
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to send verification email. Please try again.",
+			"code":  "EMAIL_SEND_FAILED",
+		})
 	}
 
+	// #023 fix - Return expiration info
 	return c.JSON(fiber.Map{
-		"message": "Verification email sent",
+		"message":            "Verification email sent",
+		"expires_at":         verificationToken.ExpiresAt.Format(time.RFC3339),
+		"expires_in_minutes": int(time.Until(verificationToken.ExpiresAt).Minutes()),
 	})
 }
 
@@ -208,7 +214,7 @@ func (h *EmailHandler) SendMagicLink(c *fiber.Ctx) error {
 	}
 
 	// Generate token
-	token, err := generateSecureToken()
+	token, err := generateEmailSecureToken()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate token",
@@ -232,14 +238,20 @@ func (h *EmailHandler) SendMagicLink(c *fiber.Ctx) error {
 		})
 	}
 
-	// Send email
+	// Send email (#014 fix - return error instead of silent failure)
 	if err := h.emailService.SendMagicLinkEmail(req.Email, token); err != nil {
 		fmt.Printf("Failed to send magic link email: %v\n", err)
-		// Don't fail the request if email fails in dev
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to send magic link email. Please try again.",
+			"code":  "EMAIL_SEND_FAILED",
+		})
 	}
 
+	// #023 fix - Return expiration info
 	return c.JSON(fiber.Map{
-		"message": "Magic link sent to your email",
+		"message":            "Magic link sent to your email",
+		"expires_at":         magicLinkToken.ExpiresAt.Format(time.RFC3339),
+		"expires_in_minutes": int(time.Until(magicLinkToken.ExpiresAt).Minutes()),
 	})
 }
 
@@ -301,14 +313,8 @@ func (h *EmailHandler) VerifyMagicLink(c *fiber.Ctx) error {
 				"code":  "USER_CREATION_FAILED",
 			})
 		}
-		// Create watcher config and state
-		config := models.WatcherConfig{UserID: user.ID}
-		h.db.Create(&config)
-		watcherState := models.WatcherState{
-			UserID:        user.ID,
-			WatcherStatus: "stopped",
-		}
-		h.db.Create(&watcherState)
+		// #017 fix - Don't create watcher config in auth flow
+		// Watcher resources will be created lazily on first access
 	} else if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Database error",
@@ -373,7 +379,7 @@ func (h *EmailHandler) SendPasswordReset(c *fiber.Ctx) error {
 	}
 
 	// Generate token
-	token, err := generateSecureToken()
+	token, err := generateEmailSecureToken()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate token",
@@ -397,10 +403,13 @@ func (h *EmailHandler) SendPasswordReset(c *fiber.Ctx) error {
 		})
 	}
 
-	// Send email
+	// Send email (#014 fix - return error instead of silent failure)
 	if err := h.emailService.SendPasswordResetEmail(req.Email, token); err != nil {
 		fmt.Printf("Failed to send reset email: %v\n", err)
-		// Don't fail the request if email fails in dev
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to send password reset email. Please try again.",
+			"code":  "EMAIL_SEND_FAILED",
+		})
 	}
 
 	return c.JSON(fiber.Map{

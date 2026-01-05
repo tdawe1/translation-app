@@ -1,0 +1,206 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gengowatcher-backend
+  namespace: gengowatcher
+  labels:
+    app: gengowatcher
+    component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gengowatcher
+      component: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: gengowatcher
+        component: backend
+    spec:
+      containers:
+        - name: backend
+          image: gengowatcher/backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: ENV
+              value: "production"
+            - name: PORT
+              value: "8000"
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: DB_PORT
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: DB_NAME
+            - name: DB_SSLMODE
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: DB_SSLMODE
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: REDIS_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: JWT_SECRET
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: RESEND_API_KEY
+            - name: FROM_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: FROM_EMAIL
+            - name: FROM_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: FROM_NAME
+            - name: ALLOWED_ORIGINS
+              value: "https://app.gengowatcher.com"
+            - name: OAUTH_REDIRECT_URL
+              value: "https://api.gengowatcher.com"
+            - name: GOOGLE_OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: GOOGLE_OAUTH_CLIENT_ID
+            - name: GOOGLE_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: GOOGLE_OAUTH_CLIENT_SECRET
+            - name: GITHUB_OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: GITHUB_OAUTH_CLIENT_ID
+            - name: GITHUB_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: GITHUB_OAUTH_CLIENT_SECRET
+            - name: LEMONSQUEEZY_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gengowatcher-secrets
+                  key: LEMONSQUEEZY_WEBHOOK_SECRET
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: gengowatcher
+                    component: backend
+                topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gengowatcher-backend
+  namespace: gengowatcher
+  labels:
+    app: gengowatcher
+    component: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: gengowatcher
+    component: backend
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gengowatcher-backend-hpa
+  namespace: gengowatcher
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gengowatcher-backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

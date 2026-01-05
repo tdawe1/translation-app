@@ -6,14 +6,15 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/models"
 	"github.com/tdawe1/translation-app/internal/password"
 	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2/github"
-	"github.com/google/uuid"
+	"golang.org/x/oauth2/google"
 	"gorm.io/gorm"
 )
 
@@ -167,7 +168,7 @@ func (s *Service) HandleOAuthLogin(ctx context.Context, provider Provider, code 
 		return nil, err
 	}
 
-	// Create new user
+	// Create new user (#015 fix - handle race condition with unique constraint)
 	user = models.User{
 		Email:         userInfo.Email,
 		EmailVerified: userInfo.Verified,
@@ -191,9 +192,29 @@ func (s *Service) HandleOAuthLogin(ctx context.Context, provider Provider, code 
 		return nil, tx.Error
 	}
 
-	// Create user
+	// Create user - handle race condition with unique email constraint
 	if err := tx.Create(&user).Error; err != nil {
 		tx.Rollback()
+		// Check if it's a duplicate key error (race condition)
+		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "UNIQUE constraint") {
+			// Another request created the user - fetch and return it
+			if fetchErr := s.db.Where("email = ?", userInfo.Email).First(&user).Error; fetchErr != nil {
+				return nil, fmt.Errorf("failed to fetch user after race: %w", fetchErr)
+			}
+			// Link OAuth account to existing user
+			oauthAccount = models.OAuthAccount{
+				UserID:         user.ID,
+				Provider:       string(provider),
+				ProviderUserID: userInfo.ID,
+			}
+			if createErr := s.db.Create(&oauthAccount).Error; createErr != nil {
+				// Ignore if OAuth account also already exists
+				if !strings.Contains(createErr.Error(), "duplicate") && !strings.Contains(createErr.Error(), "unique") {
+					return nil, fmt.Errorf("failed to link oauth account: %w", createErr)
+				}
+			}
+			return &user, nil
+		}
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
@@ -208,22 +229,8 @@ func (s *Service) HandleOAuthLogin(ctx context.Context, provider Provider, code 
 		return nil, fmt.Errorf("failed to create oauth account: %w", err)
 	}
 
-	// Create watcher config
-	config := models.WatcherConfig{UserID: user.ID}
-	if err := tx.Create(&config).Error; err != nil {
-		tx.Rollback()
-		return nil, fmt.Errorf("failed to create watcher config: %w", err)
-	}
-
-	// Create watcher state
-	watcherState := models.WatcherState{
-		UserID:        user.ID,
-		WatcherStatus: "stopped",
-	}
-	if err := tx.Create(&watcherState).Error; err != nil {
-		tx.Rollback()
-		return nil, fmt.Errorf("failed to create watcher state: %w", err)
-	}
+	// #017 fix - Don't create watcher config in auth flow
+	// Watcher resources will be created lazily on first access
 
 	if err := tx.Commit().Error; err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)

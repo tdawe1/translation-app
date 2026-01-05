@@ -20,6 +20,7 @@ const (
 	ErrUserExists    ErrorCode = "USER_EXISTS"
 	ErrUserNotFound  ErrorCode = "USER_NOT_FOUND"
 	ErrCreateError   ErrorCode = "CREATE_ERROR"
+	ErrUpdateError   ErrorCode = "UPDATE_ERROR"
 	ErrConfigError   ErrorCode = "CONFIG_ERROR"
 	ErrStateError    ErrorCode = "STATE_ERROR"
 

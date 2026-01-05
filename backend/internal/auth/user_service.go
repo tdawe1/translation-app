@@ -158,7 +158,7 @@ func (s *UserService) Login(req LoginRequest) (*AuthResult, error) {
 // GetUserByID retrieves a user by ID
 func (s *UserService) GetUserByID(userID uuid.UUID) (*models.User, error) {
 	var user models.User
-	err := s.db.Where("id = ?", userID).First(&user).Error
+	err := s.db.Where("id = ?", userID).Preload("OAuthAccounts").First(&user).Error
 	if err != nil {
 		return nil, apperrors.New(apperrors.ErrUserNotFound, "User not found")
 	}
@@ -188,4 +188,127 @@ func (s *UserService) HashPassword(password string) (string, error) {
 		return "", err
 	}
 	return string(hashedPassword), nil
+}
+
+// ChangePasswordRequest represents password change input
+type ChangePasswordRequest struct {
+	UserID      uuid.UUID
+	OldPassword string
+	NewPassword string
+}
+
+// ChangePassword updates a user's password after verifying the old password
+func (s *UserService) ChangePassword(req ChangePasswordRequest) error {
+	// Fetch user with password hash
+	var user models.User
+	err := s.db.Where("id = ?", req.UserID).First(&user).Error
+	if err != nil {
+		return apperrors.New(apperrors.ErrUserNotFound, "User not found")
+	}
+
+	// Check if user has a password (OAuth users might not)
+	if user.PasswordHash == "" {
+		return apperrors.New(apperrors.ErrInvalidRequest, "Account uses OAuth sign-in. Set a password first.")
+	}
+
+	// Verify old password
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.OldPassword)); err != nil {
+		return apperrors.New(apperrors.ErrInvalidCredentials, "Current password is incorrect")
+	}
+
+	// Validate new password
+	if len(req.NewPassword) < minPasswordLength {
+		return ErrWeakPassword
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return apperrors.New(apperrors.ErrPasswordError, "Failed to process password")
+	}
+
+	// Update password
+	user.PasswordHash = string(hashedPassword)
+	if err := s.db.Save(&user).Error; err != nil {
+		return apperrors.New(apperrors.ErrUpdateError, "Failed to update password")
+	}
+
+	return nil
+}
+
+// OAuthUserInfo represents user info from OAuth providers
+type OAuthUserInfo struct {
+	Name    string
+	Email   string
+	Picture string
+}
+
+// FindOrCreateByOAuth finds a user by OAuth provider info or creates a new one
+func (s *UserService) FindOrCreateByOAuth(provider, providerID, email string, info OAuthUserInfo) (*models.User, error) {
+	// First, try to find existing user by provider + provider_id
+	var existingUser models.User
+	result := s.db.Where("provider = ? AND provider_id = ?", provider, providerID).First(&existingUser)
+	if result.Error == nil {
+		// User exists, update email if changed
+		if existingUser.Email != email {
+			existingUser.Email = email
+			s.db.Save(&existingUser)
+		}
+		return &existingUser, nil
+	}
+
+	// Check if email is already used by a different auth method
+	result = s.db.Where("email = ?", email).First(&existingUser)
+	if result.Error == nil {
+		// Email exists but with different provider - link the OAuth account
+		existingUser.Provider = provider
+		existingUser.ProviderID = providerID
+		s.db.Save(&existingUser)
+		return &existingUser, nil
+	}
+
+	// Create new user from OAuth
+	user := models.User{
+		Email:        email,
+		EmailVerified: true, // OAuth providers verify emails
+		IsActive:     true,
+		Provider:     provider,
+		ProviderID:   providerID,
+	}
+
+	tx := s.db.Begin()
+	if tx.Error != nil {
+		return nil, apperrors.New(apperrors.ErrDatabase, "Database error")
+	}
+
+	// Create user
+	if err := tx.Create(&user).Error; err != nil {
+		tx.Rollback()
+		return nil, apperrors.New(apperrors.ErrCreateError, "Failed to create user")
+	}
+
+	// Create default watcher config
+	config := models.WatcherConfig{
+		UserID: user.ID,
+	}
+	if err := tx.Create(&config).Error; err != nil {
+		tx.Rollback()
+		return nil, apperrors.New(apperrors.ErrConfigError, "Failed to create watcher config")
+	}
+
+	// Create default watcher state
+	state := models.WatcherState{
+		UserID:        user.ID,
+		WatcherStatus: "stopped",
+	}
+	if err := tx.Create(&state).Error; err != nil {
+		tx.Rollback()
+		return nil, apperrors.New(apperrors.ErrStateError, "Failed to create watcher state")
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return nil, apperrors.New(apperrors.ErrCommitError, "Failed to commit transaction")
+	}
+
+	return &user, nil
 }

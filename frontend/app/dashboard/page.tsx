@@ -4,6 +4,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
 import { useWatcherStore } from "@/store/watcher";
 import { useWatcherWebSocket } from "@/hooks/use-watcher-websocket";
@@ -129,6 +130,12 @@ export default function DashboardPage() {
               <span className="font-mono text-xs text-neutral-500 uppercase tracking-widest">
                 {user?.email}
               </span>
+              <Link
+                href="/settings"
+                className="font-mono text-xs text-neutral-500 uppercase tracking-widest hover:text-blue-600"
+              >
+                Settings
+              </Link>
               <button
                 onClick={logout}
                 className="font-mono text-xs text-neutral-900 uppercase tracking-widest hover:text-blue-600"

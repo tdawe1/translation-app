@@ -11,10 +11,11 @@ import (
 
 // Service handles email operations
 type Service struct {
-	apiKey    string
-	fromEmail string
-	fromName  string
-	baseURL   string // Frontend URL for verification links
+	apiKey     string
+	fromEmail  string
+	fromName   string
+	baseURL    string // Frontend URL for verification links
+	httpClient *http.Client
 }
 
 // Config holds email configuration
@@ -25,13 +26,44 @@ type Config struct {
 	BaseURL   string
 }
 
-// NewService creates a new email service
+// NewService creates a new email service with connection pooling (#005 fix)
 func NewService(cfg *Config) *Service {
 	return &Service{
 		apiKey:    cfg.APIKey,
 		fromEmail: cfg.FromEmail,
 		fromName:  cfg.FromName,
 		baseURL:   cfg.BaseURL,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
+			},
+		},
+	}
+}
+
+// IsEnabled returns true if the email service is configured
+func (s *Service) IsEnabled() bool {
+	return s.apiKey != ""
+}
+
+// SendMagicLink sends a magic link email (alias for SendMagicLinkEmail)
+func (s *Service) SendMagicLink(email, token string) error {
+	return s.SendMagicLinkEmail(email, token)
+}
+
+// NewTestService creates a test email service that logs instead of sending
+func NewTestService(cfg *Config) *Service {
+	return &Service{
+		apiKey:    "", // Empty key = logging only
+		fromEmail: cfg.FromEmail,
+		fromName:  cfg.FromName,
+		baseURL:   cfg.BaseURL,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 }
 
@@ -76,8 +108,7 @@ func (s *Service) SendEmail(to, subject, htmlContent string) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.apiKey)
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send email: %w", err)
 	}

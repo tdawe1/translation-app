@@ -26,12 +26,20 @@ type ErrorResponse struct {
 	Details map[string]interface{} `json:"details,omitempty"`
 }
 
+// OAuthAccountResponse represents a linked OAuth account
+type OAuthAccountResponse struct {
+	Provider  string `json:"provider"`           // 'google', 'github'
+	CreatedAt string `json:"created_at"`         // When the account was linked
+}
+
 // UserResponse represents user data in API responses
 type UserResponse struct {
-	ID            string `json:"id"`
-	Email         string `json:"email"`
-	EmailVerified bool   `json:"email_verified"`
-	IsActive      bool   `json:"is_active"`
+	ID            string                 `json:"id"`
+	Email         string                 `json:"email"`
+	EmailVerified bool                   `json:"email_verified"`
+	IsActive      bool                   `json:"is_active"`
+	Provider      string                 `json:"provider,omitempty"`      // 'google', 'github', or empty
+	OAuthAccounts []OAuthAccountResponse `json:"oauth_accounts,omitempty"` // Linked OAuth accounts
 }
 
 // AuthResponse represents a successful authentication response
@@ -77,11 +85,22 @@ func ClearSessionCookie(c *fiber.Ctx) {
 
 // UserToResponse converts a User model to UserResponse
 func UserToResponse(user *models.User) UserResponse {
+	// Convert OAuth accounts to response format
+	oauthAccounts := make([]OAuthAccountResponse, len(user.OAuthAccounts))
+	for i, oa := range user.OAuthAccounts {
+		oauthAccounts[i] = OAuthAccountResponse{
+			Provider:  oa.Provider,
+			CreatedAt: oa.CreatedAt.Format(time.RFC3339),
+		}
+	}
+
 	return UserResponse{
 		ID:            user.ID.String(),
 		Email:         user.Email,
 		EmailVerified: user.EmailVerified,
 		IsActive:      user.IsActive,
+		Provider:      user.Provider,
+		OAuthAccounts: oauthAccounts,
 	}
 }
 

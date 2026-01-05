@@ -30,6 +30,11 @@ type User struct {
 	PasswordHash   string         `gorm:"size:255" json:"-"` // Don't serialize in JSON
 	IsActive       bool           `gorm:"default:true" json:"is_active"`
 
+	// OAuth provider (simplified - no token storage)
+	// Provider: "google", "github", or empty for email/password
+	Provider     string `gorm:"size:20;index:idx_provider,priority:1" json:"provider,omitempty"`
+	ProviderID   string `gorm:"size:255;index:idx_provider,priority:2" json:"provider_id,omitempty"` // Unique ID from provider
+
 	// Relationships
 	OAuthAccounts   []OAuthAccount   `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"oauth_accounts,omitempty"`
 	APIKeys         []APIKey         `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"api_keys,omitempty"`

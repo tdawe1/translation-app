@@ -46,10 +46,14 @@ func (h *WatcherHandler) GetConfig(c *fiber.Ctx) error {
 
 	var config models.WatcherConfig
 	if err := h.db.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Watcher config not found",
-			"code":  "CONFIG_NOT_FOUND",
-		})
+		// #017 fix - Lazy initialization of watcher config
+		config = models.WatcherConfig{UserID: userUUID}
+		if createErr := h.db.Create(&config).Error; createErr != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to create watcher config",
+				"code":  "CONFIG_CREATE_FAILED",
+			})
+		}
 	}
 
 	return c.JSON(configToResponse(&config))
@@ -57,19 +61,19 @@ func (h *WatcherHandler) GetConfig(c *fiber.Ctx) error {
 
 // UpdateConfigRequest represents config update input
 type UpdateConfigRequest struct {
-	RSSFeedURL               string   `json:"rss_feed_url,omitempty"`
-	WebSocketEnabled         *bool    `json:"websocket_enabled,omitempty"`
-	GengoUserID              string   `json:"gengo_user_id,omitempty"`
-	MinReward                *float64 `json:"min_reward,omitempty"`
-	MaxReward                *float64 `json:"max_reward,omitempty"`
-	IncludedLanguagePairs   []string `json:"included_language_pairs,omitempty"`
-	EnableDesktopNotifs      *bool    `json:"enable_desktop_notifications,omitempty"`
-	EnableSoundNotifs        *bool    `json:"enable_sound_notifications,omitempty"`
-	EnableEmailNotifs        *bool    `json:"enable_email_notifications,omitempty"`
-	NotificationEmail        string   `json:"notification_email,omitempty"`
-	AutoAcceptEnabled        *bool    `json:"auto_accept_enabled,omitempty"`
-	AutoAcceptMinReward      *float64 `json:"auto_accept_min_reward,omitempty"`
-	AutoAcceptMaxReward      *float64 `json:"auto_accept_max_reward,omitempty"`
+	RSSFeedURL            string   `json:"rss_feed_url,omitempty"`
+	WebSocketEnabled      *bool    `json:"websocket_enabled,omitempty"`
+	GengoUserID           string   `json:"gengo_user_id,omitempty"`
+	MinReward             *float64 `json:"min_reward,omitempty"`
+	MaxReward             *float64 `json:"max_reward,omitempty"`
+	IncludedLanguagePairs []string `json:"included_language_pairs,omitempty"`
+	EnableDesktopNotifs   *bool    `json:"enable_desktop_notifications,omitempty"`
+	EnableSoundNotifs     *bool    `json:"enable_sound_notifications,omitempty"`
+	EnableEmailNotifs     *bool    `json:"enable_email_notifications,omitempty"`
+	NotificationEmail     string   `json:"notification_email,omitempty"`
+	AutoAcceptEnabled     *bool    `json:"auto_accept_enabled,omitempty"`
+	AutoAcceptMinReward   *float64 `json:"auto_accept_min_reward,omitempty"`
+	AutoAcceptMaxReward   *float64 `json:"auto_accept_max_reward,omitempty"`
 }
 
 // UpdateConfig updates the user's watcher configuration
@@ -191,10 +195,17 @@ func (h *WatcherHandler) GetState(c *fiber.Ctx) error {
 
 	var state models.WatcherState
 	if err := h.db.Where("user_id = ?", userUUID).First(&state).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Watcher state not found",
-			"code":  "STATE_NOT_FOUND",
-		})
+		// #017 fix - Lazy initialization of watcher state
+		state = models.WatcherState{
+			UserID:        userUUID,
+			WatcherStatus: "stopped",
+		}
+		if createErr := h.db.Create(&state).Error; createErr != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to create watcher state",
+				"code":  "STATE_CREATE_FAILED",
+			})
+		}
 	}
 
 	// Get live status from manager if available
@@ -299,12 +310,12 @@ func configToResponse(config *models.WatcherConfig) map[string]interface{} {
 // stateToResponse converts WatcherState model to API response
 func stateToResponse(state *models.WatcherState) map[string]interface{} {
 	return map[string]interface{}{
-		"user_id":            state.UserID.String(),
-		"watcher_status":     state.WatcherStatus,
-		"total_jobs_found":   state.TotalJobsFound,
+		"user_id":             state.UserID.String(),
+		"watcher_status":      state.WatcherStatus,
+		"total_jobs_found":    state.TotalJobsFound,
 		"total_jobs_accepted": state.TotalJobsAccepted,
-		"total_earnings":     state.TotalEarnings,
-		"last_activity":      state.LastActivity,
-		"updated_at":         state.UpdatedAt,
+		"total_earnings":      state.TotalEarnings,
+		"last_activity":       state.LastActivity,
+		"updated_at":          state.UpdatedAt,
 	}
 }

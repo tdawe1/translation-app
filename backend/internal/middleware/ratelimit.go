@@ -73,3 +73,63 @@ func AuthLimiters() struct {
 		Register: registerLimiter,
 	}
 }
+
+// EmailLimiters returns rate limiters for email endpoints (#009 fix)
+func EmailLimiters() struct {
+	SendVerification  fiber.Handler
+	SendMagicLink     fiber.Handler
+	SendPasswordReset fiber.Handler
+} {
+	// 3 emails per hour per email address (keyed by IP for simplicity)
+	sendVerificationLimiter := limiter.New(limiter.Config{
+		Max:        3,
+		Expiration: 1 * time.Hour,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return "verify:" + getClientIP(c)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{
+				"error": "Too many verification emails requested. Please try again later.",
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+
+	sendMagicLinkLimiter := limiter.New(limiter.Config{
+		Max:        3,
+		Expiration: 1 * time.Hour,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return "magic:" + getClientIP(c)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{
+				"error": "Too many magic link requests. Please try again later.",
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+
+	sendPasswordResetLimiter := limiter.New(limiter.Config{
+		Max:        3,
+		Expiration: 1 * time.Hour,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return "reset:" + getClientIP(c)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{
+				"error": "Too many password reset requests. Please try again later.",
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+
+	return struct {
+		SendVerification  fiber.Handler
+		SendMagicLink     fiber.Handler
+		SendPasswordReset fiber.Handler
+	}{
+		SendVerification:  sendVerificationLimiter,
+		SendMagicLink:     sendMagicLinkLimiter,
+		SendPasswordReset: sendPasswordResetLimiter,
+	}
+}

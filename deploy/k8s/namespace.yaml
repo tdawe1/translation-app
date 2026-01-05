@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gengowatcher
+  labels:
+    app.kubernetes.io/name: gengowatcher
+    app.kubernetes.io/part-of: gengowatcher

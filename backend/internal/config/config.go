@@ -22,13 +22,20 @@ type Config struct {
 	DBSSLMode  string
 
 	// Security
-	JWTSecret               string
+	JWTSecret                string
 	LemonSqueezyWebhookSecret string
 
-	// Email
-	ResendAPIKey  string
-	EmailFrom     string
-	EmailFromName string
+	// Email (Resend)
+	ResendAPIKey string
+	FromEmail    string
+	FromName     string
+
+	// OAuth
+	GoogleOAuthClientID     string
+	GoogleOAuthClientSecret string
+	GitHubOAuthClientID     string
+	GitHubOAuthClientSecret string
+	OAuthRedirectURL       string // Base URL for OAuth callbacks
 
 	// CORS
 	AllowedOrigins string // Comma-separated list
@@ -41,21 +48,26 @@ type Config struct {
 // It will panic if required values are missing in production
 func Load() *Config {
 	cfg := &Config{
-		Port:                 getEnv("PORT", "8000"),
-		Env:                  getEnv("ENV", "development"),
-		DBHost:               getEnv("DB_HOST", "localhost"),
-		DBPort:               getEnv("DB_PORT", "5433"),
-		DBUser:               getEnv("DB_USER", "gengo"),
-		DBPassword:           getEnv("DB_PASSWORD", "devpass"),
-		DBName:               getEnv("DB_NAME", "gengowatcher"),
-		DBSSLMode:            getEnv("DB_SSLMODE", "disable"),
-		JWTSecret:            getEnv("JWT_SECRET", ""),
-		LemonSqueezyWebhookSecret: getEnv("LEMONSQUEEZY_WEBHOOK_SECRET", ""),
-		ResendAPIKey:         getEnv("RESEND_API_KEY", ""),
-		EmailFrom:            getEnv("EMAIL_FROM", "noreply@gengowatcher.example.com"),
-		EmailFromName:        getEnv("EMAIL_FROM_NAME", "GengoWatcher"),
-		AllowedOrigins:       getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001"),
-		CookieSecure:         getEnv("ENV", "development") == "production",
+		Port:                      getEnv("PORT", "8000"),
+		Env:                       getEnv("ENV", "development"),
+		DBHost:                    getEnv("DB_HOST", "localhost"),
+		DBPort:                    getEnv("DB_PORT", "5433"),
+		DBUser:                    getEnv("DB_USER", "gengo"),
+		DBPassword:                getEnv("DB_PASSWORD", "devpass"),
+		DBName:                    getEnv("DB_NAME", "gengowatcher"),
+		DBSSLMode:                 getEnv("DB_SSLMODE", "disable"),
+		JWTSecret:                 getEnv("JWT_SECRET", ""),
+		LemonSqueezyWebhookSecret: getEnv("LEMONSQUEZY_WEBHOOK_SECRET", ""),
+		ResendAPIKey:              getEnv("RESEND_API_KEY", ""),
+		FromEmail:                 getEnv("FROM_EMAIL", "noreply@gengowatcher.example"),
+		FromName:                  getEnv("FROM_NAME", "GengoWatcher"),
+		GoogleOAuthClientID:       getEnv("GOOGLE_OAUTH_CLIENT_ID", ""),
+		GoogleOAuthClientSecret:   getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+		GitHubOAuthClientID:       getEnv("GITHUB_OAUTH_CLIENT_ID", ""),
+		GitHubOAuthClientSecret:   getEnv("GITHUB_OAUTH_CLIENT_SECRET", ""),
+		OAuthRedirectURL:         getEnv("OAUTH_REDIRECT_URL", "http://localhost:3000"),
+		AllowedOrigins:            getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001"),
+		CookieSecure:              getEnv("ENV", "development") == "production",
 	}
 
 	// Validate required secrets in production

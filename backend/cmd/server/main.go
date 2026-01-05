@@ -60,24 +60,6 @@ func main() {
 	sqlDB, _ := gormDB.DB()
 	defer sqlDB.Close()
 
-	// Initialize services
-	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
-	userSvc := auth.NewUserService(db, tokenSvc)
-
-	// Initialize email service
-	emailSvc := email.NewService(&email.Config{
-		APIKey:    cfg.ResendAPIKey,
-		FromEmail: cfg.EmailFrom,
-		FromName:  cfg.EmailFromName,
-		BaseURL:   getEnv("FRONTEND_URL", "http://localhost:3000"),
-	})
-
-	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(userSvc, cfg.CookieSecure)
-	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret, db)
-	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc)
-	emailHandler := handlers.NewEmailHandler(db, tokenSvc, emailSvc)
-
 	// Initialize Redis
 	redisOpts, err := redis.ParseURL(getEnv("REDIS_URL", "redis://localhost:6379/0"))
 	if err != nil {
@@ -89,6 +71,22 @@ func main() {
 	if _, err := redisClient.Ping(context.Background()).Result(); err != nil {
 		log.Printf("Warning: Redis connection failed: %v", err)
 	}
+
+	// Initialize services
+	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
+	userSvc := auth.NewUserService(db, tokenSvc)
+	emailSvc := email.NewService(&email.Config{
+		APIKey:    cfg.ResendAPIKey,
+		FromEmail: cfg.FromEmail,
+		FromName:  cfg.FromName,
+		BaseURL:   cfg.OAuthRedirectURL, // Frontend URL
+	})
+
+	// Initialize handlers
+	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, cfg.CookieSecure)
+	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc)
+	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret, db)
+	emailHandler := handlers.NewEmailHandler(db, tokenSvc, emailSvc)
 
 	// Initialize watcher manager
 	watcherManager := watcher.NewUserWatcherManager(db, redisClient)
@@ -130,12 +128,13 @@ func main() {
 	authGroup.Post("/login", authLimiter.Login, authHandler.Login)
 	authGroup.Post("/logout", authHandler.Logout)
 
-	// Email verification routes (public)
-	authGroup.Post("/verify-email/send", emailHandler.SendVerificationEmail)
+	// Email verification routes (public) with rate limiting (#009 fix)
+	emailLimiter := middleware.EmailLimiters()
+	authGroup.Post("/verify-email/send", emailLimiter.SendVerification, emailHandler.SendVerificationEmail)
 	authGroup.Post("/verify-email", emailHandler.VerifyEmail)
-	authGroup.Post("/magic-link/send", emailHandler.SendMagicLink)
+	authGroup.Post("/magic-link/send", emailLimiter.SendMagicLink, emailHandler.SendMagicLink)
 	authGroup.Post("/magic-link/verify", emailHandler.VerifyMagicLink)
-	authGroup.Post("/password-reset/send", emailHandler.SendPasswordReset)
+	authGroup.Post("/password-reset/send", emailLimiter.SendPasswordReset, emailHandler.SendPasswordReset)
 	authGroup.Post("/password-reset", emailHandler.ResetPassword)
 
 	// OAuth routes (public)
@@ -143,12 +142,12 @@ func main() {
 	oauthGroup.Get("/authorize", oauthHandler.Authorize)
 	oauthGroup.Get("/google/callback", oauthHandler.Callback)
 	oauthGroup.Get("/github/callback", oauthHandler.Callback)
-	oauthGroup.Get("/github/callback", oauthHandler.Callback) // Duplicate for POST support
 
 	// Protected routes (require auth)
 	protected := api.Group("/")
 	protected.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
 	protected.Get("/me", authHandler.GetMe)
+	protected.Put("/me/password", authHandler.ChangePassword)
 
 	// OAuth account management (protected)
 	oauthProtected := api.Group("/oauth")

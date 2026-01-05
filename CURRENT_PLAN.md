@@ -1,6 +1,6 @@
 # GengoWatcher SaaS - Current Implementation Plan
 
-**Status**: Sprint 1 Complete | Sprint 2 Complete | Backend Testing Complete | Frontend Testing Complete | **Polishing Complete**
+**Status**: Sprint 1 Complete | Sprint 2 Complete | Backend Testing Complete | Frontend Testing Complete | Polishing Complete | **Sprint 3 Planning**
 **Tech Stack**: Go 1.23 + Fiber 3.x + GORM + Next.js 16 + React 19
 **Repository**: https://github.com/tdawe1/translation-app
 
@@ -449,6 +449,65 @@ All Sprint 1 testing complete as of 2025-12-30:
 **File: `backend/tests/websocket_test.go`** (COMPLETED 2025-12-30)
 - 10 test groups covering WebSocket handler functionality
 - Tests: ticket authentication, job/event notifications, origin validation, error publishing, concurrent connections
+
+---
+
+## Sprint 3: Advanced Features & Security Hardening 📋
+
+**Status**: Planning | **Est. Duration**: 6 days
+**Detailed Plan**: See `SPRINT_3_PLAN.md`
+
+### Sprint 3 Goals
+
+1. **Security Hardening** - Resolve P1 technical debt items
+2. **OAuth Integration** - Google + GitHub authentication
+3. **API Key Management** - Programmatic access for users
+4. **Email Service** - Magic links and job notifications
+5. **Settings Page** - Account management UI
+
+### Task Breakdown
+
+| ID | Task | Priority | Effort |
+|----|------|----------|--------|
+| 3.1.1 | JWT Secret Validation | P1 | 0.5 day |
+| 3.1.2 | WebSocket Origin Validation | P1 | 0.5 day |
+| 3.1.3 | Rate Limiting Middleware | P1 | 1 day |
+| 3.2.1 | OAuth Models & Storage | P2 | 0.5 day |
+| 3.2.2 | OAuth Handlers (Google/GitHub) | P2 | 1 day |
+| 3.2.3 | Frontend OAuth Buttons | P2 | 0.5 day |
+| 3.3.1 | API Key Models | P2 | 0.5 day |
+| 3.3.2 | API Key Handlers | P2 | 0.5 day |
+| 3.3.3 | API Key Middleware | P2 | 0.5 day |
+| 3.3.4 | API Key UI | P2 | 0.5 day |
+| 3.4.1 | Email Service (Resend) | P2 | 0.5 day |
+| 3.4.2 | Magic Link Authentication | P2 | 0.5 day |
+| 3.5.1 | Settings Page | P3 | 0.5 day |
+
+### Technical Debt to Resolve
+
+From `todos/` directory:
+- `001-pending-p1-jwt-default-secret-security.md` - JWT secret validation
+- `002-pending-p1-websocket-security-validation.md` - Origin validation
+- `007-pending-p2-missing-rate-limiting.md` - Rate limiting
+
+### New Files to Create
+
+**Backend:**
+- `backend/internal/models/oauth.go` - OAuth account storage
+- `backend/internal/models/apikey.go` - API key storage
+- `backend/internal/handlers/oauth.go` - OAuth flow endpoints
+- `backend/internal/handlers/apikey.go` - API key CRUD
+- `backend/internal/middleware/apikey.go` - API key auth
+- `backend/internal/middleware/ratelimit.go` - Rate limiting
+- `backend/internal/email/service.go` - Email service
+- `backend/tests/middleware_jwt_test.go`
+- `backend/tests/middleware_ratelimit_test.go`
+- `backend/tests/oauth_test.go`
+
+**Frontend:**
+- `frontend/app/settings/page.tsx` - Settings page
+- `frontend/components/settings/api-keys.tsx` - API key management
+- `frontend/components/settings/connected-accounts.tsx` - OAuth accounts
 
 ---
 

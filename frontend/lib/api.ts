@@ -23,6 +23,13 @@ export interface User {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  provider?: string;                    // 'google', 'github', or undefined
+  oauth_accounts?: OAuthAccount[];
+}
+
+export interface OAuthAccount {
+  provider: string;    // 'google', 'github'
+  created_at: string;  // ISO 8601 timestamp
 }
 
 export interface AuthResponse {
@@ -40,31 +47,9 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface OAuthAuthorizeResponse {
-  auth_url: string;
-}
-
-export type OAuthProvider = "google" | "github";
-
-export interface EmailVerificationRequest {
-  email: string;
-}
-
-export interface VerifyEmailRequest {
-  token: string;
-}
-
-export interface MagicLinkRequest {
-  email: string;
-}
-
-export interface PasswordResetRequest {
-  email: string;
-}
-
-export interface ResetPasswordRequest {
-  token: string;
-  password: string;
+export interface ChangePasswordRequest {
+  old_password: string;
+  new_password: string;
 }
 
 export interface WatcherConfig {
@@ -145,14 +130,14 @@ class HttpClient {
     path: string,
     body?: string
   ): string {
-    return method + ":" + path + (body ? ":" + body : "");
+    return `${method}:${path}${body ? `:${body}` : ""}`;
   }
 
   private async request<T>(
     path: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = this.baseUrl + path;
+    const url = `${this.baseUrl}${path}`;
     const method = options.method || "GET";
     const body = options.body as string | undefined;
 
@@ -171,7 +156,7 @@ class HttpClient {
       ...(options.headers as Record<string, string>),
     };
     if (token) {
-      headers["Authorization"] = "Bearer " + token;
+      headers["Authorization"] = `Bearer ${token}`;
     }
 
     // Create the request promise and store it for deduplication
@@ -267,72 +252,11 @@ export const authApi = {
 
   me: (): Promise<User> => client.get<User>("/api/v1/me"),
 
+  changePassword: (data: ChangePasswordRequest): Promise<{ message: string }> =>
+    client.put<{ message: string }>("/api/v1/me/password", data),
+
   getWSTicket: (): Promise<{ ticket: string; expires_at: number }> =>
     client.post<{ ticket: string; expires_at: number }>("/api/v1/auth/ws-ticket"),
-};
-
-// ============================================================
-// OAuth API
-// ============================================================
-
-export const oauthApi = {
-  /**
-   * Get OAuth authorization URL for a provider
-   * Opens popup or redirects to provider's OAuth consent page
-   */
-  getAuthUrl: (provider: OAuthProvider): Promise<OAuthAuthorizeResponse> =>
-    client.get<OAuthAuthorizeResponse>("/api/v1/oauth/authorize?provider=" + provider),
-
-  /**
-   * Initiate OAuth flow by redirecting to provider
-   * This function will navigate the browser to the OAuth provider
-   */
-  authorize: (provider: OAuthProvider) => {
-    const apiUrl = API_URL + "/api/v1/oauth/authorize?provider=" + provider;
-    window.location.href = apiUrl;
-  },
-};
-
-// ============================================================
-// Email Verification API
-// ============================================================
-
-export const emailApi = {
-  /**
-   * Send a verification email to the user
-   */
-  sendVerification: (data: EmailVerificationRequest): Promise<{ message: string }> =>
-    client.post<{ message: string }>("/api/v1/auth/verify-email/send", data),
-
-  /**
-   * Verify email using a token
-   */
-  verifyEmail: (data: VerifyEmailRequest): Promise<{ message: string }> =>
-    client.post<{ message: string }>("/api/v1/auth/verify-email", data),
-
-  /**
-   * Send a magic link for passwordless authentication
-   */
-  sendMagicLink: (data: MagicLinkRequest): Promise<{ message: string }> =>
-    client.post<{ message: string }>("/api/v1/auth/magic-link/send", data),
-
-  /**
-   * Verify magic link and create session
-   */
-  verifyMagicLink: (data: VerifyEmailRequest): Promise<AuthResponse> =>
-    client.post<AuthResponse>("/api/v1/auth/magic-link/verify", data),
-
-  /**
-   * Send a password reset email
-   */
-  sendPasswordReset: (data: PasswordResetRequest): Promise<{ message: string }> =>
-    client.post<{ message: string }>("/api/v1/auth/password-reset/send", data),
-
-  /**
-   * Reset password using a token
-   */
-  resetPassword: (data: ResetPasswordRequest): Promise<{ message: string }> =>
-    client.post<{ message: string }>("/api/v1/auth/password-reset", data),
 };
 
 // ============================================================
@@ -354,6 +278,21 @@ export const watcherApi = {
 
   stop: (): Promise<{ status: string }> =>
     client.post<{ status: string }>("/api/v1/watcher/stop"),
+};
+
+// ============================================================
+// OAuth API
+// ============================================================
+
+export const oauthApi = {
+  authorize: (provider: "google" | "github"): Promise<{ auth_url: string }> =>
+    client.get<{ auth_url: string }>(`/api/v1/oauth/authorize?provider=${provider}`),
+
+  getLinkedAccounts: (): Promise<{ linked_accounts: OAuthAccount[] }> =>
+    client.get<{ linked_accounts: OAuthAccount[] }>("/api/v1/oauth/accounts"),
+
+  unlinkAccount: (provider: "google" | "github"): Promise<void> =>
+    client.delete<void>(`/api/v1/oauth/${provider}`),
 };
 
 // ============================================================

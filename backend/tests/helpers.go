@@ -98,7 +98,7 @@ func TestRedis(t *testing.T) *redis.Client {
 func CreateTestUser(t *testing.T, db *gorm.DB, email string) *models.User {
 	t.Helper()
 
-	hashedPassword := "$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj9SjKE2FqW" // "password123"
+	hashedPassword := "$2a$10$uvmy6V0Jm.l3g5jK1TeLoeCAldIB0Q6NW6tnii7tI2z.WwIcIe3m2" // "password123"
 
 	user := &models.User{
 		Email:        email,

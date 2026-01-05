@@ -1,10 +1,20 @@
 package handlers
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"log"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/redis/go-redis/v9"
+	"github.com/google/uuid"
 
 	"github.com/tdawe1/translation-app/internal/auth"
 	apperrors "github.com/tdawe1/translation-app/internal/errors"
+	"github.com/tdawe1/translation-app/internal/email"
 	"github.com/tdawe1/translation-app/internal/middleware"
 )
 
@@ -23,14 +33,20 @@ func getAPIError(err error) *apperrors.APIError {
 
 // AuthHandler handles authentication endpoints
 type AuthHandler struct {
-	userService *auth.UserService
+	userService  *auth.UserService
+	tokenService *auth.TokenService
+	emailService *email.Service
+	redis        *redis.Client
 	secureCookie bool
 }
 
 // NewAuthHandler creates a new auth handler
-func NewAuthHandler(userService *auth.UserService, secureCookie bool) *AuthHandler {
+func NewAuthHandler(userService *auth.UserService, tokenService *auth.TokenService, emailService *email.Service, redis *redis.Client, secureCookie bool) *AuthHandler {
 	return &AuthHandler{
 		userService:  userService,
+		tokenService: tokenService,
+		emailService: emailService,
+		redis:        redis,
 		secureCookie: secureCookie,
 	}
 }
@@ -45,6 +61,11 @@ type RegisterRequest struct {
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+// MagicLinkRequest represents magic link input
+type MagicLinkRequest struct {
+	Email string `json:"email"`
 }
 
 // Register handles user registration
@@ -160,3 +181,153 @@ func (h *AuthHandler) statusCodeForError(code apperrors.ErrorCode) int {
 		return fiber.StatusInternalServerError
 	}
 }
+
+// RequestMagicLink initiates magic link authentication
+// POST /api/v1/auth/magic-link
+func (h *AuthHandler) RequestMagicLink(c *fiber.Ctx) error {
+	var req MagicLinkRequest
+	if err := c.BodyParser(&req); err != nil {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
+	}
+
+	// Validate email
+	if req.Email == "" {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Email is required")
+	}
+
+	// Check if email service is configured
+	if !h.emailService.IsEnabled() {
+		return RespondWithError(c, fiber.StatusServiceUnavailable, apperrors.ErrInternal, "Email service not available")
+	}
+
+	// Check if user exists (don't reveal if user doesn't exist for security)
+	_, apiErr := h.userService.GetUserByEmail(req.Email)
+	if apiErr != nil {
+		// Don't reveal whether user exists - always return success
+		log.Printf("Magic link requested for non-existent email: %s", req.Email)
+		return c.JSON(fiber.Map{"message": "If an account exists, a magic link has been sent"})
+	}
+
+	// Generate secure token
+	token := generateSecureToken()
+
+	// Store token in Redis with 15-minute expiry
+	ctx := context.Background()
+	key := fmt.Sprintf("magiclink:%s", token)
+	if err := h.redis.Set(ctx, key, req.Email, 15*time.Minute).Err(); err != nil {
+		log.Printf("Failed to store magic link token: %v", err)
+		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Failed to generate magic link")
+	}
+
+	// Send email
+	if err := h.emailService.SendMagicLink(req.Email, token); err != nil {
+		log.Printf("Failed to send magic link email: %v", err)
+		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Failed to send email")
+	}
+
+	return c.JSON(fiber.Map{"message": "If an account exists, a magic link has been sent"})
+}
+
+// VerifyMagicLink verifies a magic link token and creates a session
+// GET /api/v1/auth/verify?token=xxx
+func (h *AuthHandler) VerifyMagicLink(c *fiber.Ctx) error {
+	token := c.Query("token")
+	if token == "" {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Token is required")
+	}
+
+	ctx := context.Background()
+	key := fmt.Sprintf("magiclink:%s", token)
+
+	// Atomic validate and consume token (GETDEL prevents reuse)
+	email, err := h.redis.GetDel(ctx, key).Result()
+	if err == redis.Nil {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidCredentials, "Invalid or expired token")
+	} else if err != nil {
+		log.Printf("Failed to verify magic link: %v", err)
+		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Failed to verify token")
+	}
+
+	// Get user by email
+	user, apiErr := h.userService.GetUserByEmail(email)
+	if apiErr != nil {
+		errObj := getAPIError(apiErr)
+		if errObj == nil {
+			return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Internal error")
+		}
+		status := h.statusCodeForError(errObj.Code)
+		return RespondWithAPIError(c, status, errObj)
+	}
+
+	// Generate session token
+	accessToken, err := h.tokenService.GenerateAccessToken(user.ID)
+	if err != nil {
+		log.Printf("Failed to generate token: %v", err)
+		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrTokenError, "Failed to create session")
+	}
+
+	// Set session cookie
+	SetSessionCookie(c, accessToken, h.secureCookie)
+
+	// Redirect to dashboard
+	return c.Redirect("/dashboard", fiber.StatusTemporaryRedirect)
+}
+
+// ChangePasswordRequest represents password change input
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
+// ChangePassword handles password changes for authenticated users
+// PUT /api/v1/me/password
+func (h *AuthHandler) ChangePassword(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Not authenticated")
+	}
+
+	userUUID, err := ParseUserID(userID)
+	if err != nil {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidUserID, "Invalid user ID")
+	}
+
+	var req ChangePasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
+	}
+
+	// Validate new password length
+	if len(req.NewPassword) < 8 {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrWeakPassword, "Password must be at least 8 characters")
+	}
+
+	// Change password via service
+	apiErr := h.userService.ChangePassword(auth.ChangePasswordRequest{
+		UserID:      userUUID,
+		OldPassword: req.OldPassword,
+		NewPassword: req.NewPassword,
+	})
+
+	if apiErr != nil {
+		errObj := getAPIError(apiErr)
+		if errObj == nil {
+			return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Internal error")
+		}
+		status := h.statusCodeForError(errObj.Code)
+		return RespondWithAPIError(c, status, errObj)
+	}
+
+	return c.JSON(fiber.Map{"message": "Password updated successfully"})
+}
+
+// generateSecureToken creates a cryptographically random token
+func generateSecureToken() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to UUID if crypto rand fails
+		return uuid.New().String()
+	}
+	return base64.URLEncoding.EncodeToString(b)
+}
+
