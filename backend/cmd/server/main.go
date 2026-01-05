@@ -14,6 +14,7 @@ import (
 	"github.com/tdawe1/translation-app/internal/auth"
 	"github.com/tdawe1/translation-app/internal/config"
 	"github.com/tdawe1/translation-app/internal/database"
+	"github.com/tdawe1/translation-app/internal/email"
 	"github.com/tdawe1/translation-app/internal/handlers"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/models"
@@ -48,6 +49,9 @@ func main() {
 		&models.Subscription{},
 		&models.BillingEvent{},
 		&models.AuditLog{},
+		&models.EmailVerificationToken{},
+		&models.MagicLinkToken{},
+		&models.PasswordResetToken{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -60,10 +64,19 @@ func main() {
 	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
 	userSvc := auth.NewUserService(db, tokenSvc)
 
+	// Initialize email service
+	emailSvc := email.NewService(&email.Config{
+		APIKey:    cfg.ResendAPIKey,
+		FromEmail: cfg.EmailFrom,
+		FromName:  cfg.EmailFromName,
+		BaseURL:   getEnv("FRONTEND_URL", "http://localhost:3000"),
+	})
+
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(userSvc, cfg.CookieSecure)
 	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret, db)
 	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc)
+	emailHandler := handlers.NewEmailHandler(db, tokenSvc, emailSvc)
 
 	// Initialize Redis
 	redisOpts, err := redis.ParseURL(getEnv("REDIS_URL", "redis://localhost:6379/0"))
@@ -116,6 +129,14 @@ func main() {
 	authGroup.Post("/register", authLimiter.Register, authHandler.Register)
 	authGroup.Post("/login", authLimiter.Login, authHandler.Login)
 	authGroup.Post("/logout", authHandler.Logout)
+
+	// Email verification routes (public)
+	authGroup.Post("/verify-email/send", emailHandler.SendVerificationEmail)
+	authGroup.Post("/verify-email", emailHandler.VerifyEmail)
+	authGroup.Post("/magic-link/send", emailHandler.SendMagicLink)
+	authGroup.Post("/magic-link/verify", emailHandler.VerifyMagicLink)
+	authGroup.Post("/password-reset/send", emailHandler.SendPasswordReset)
+	authGroup.Post("/password-reset", emailHandler.ResetPassword)
 
 	// OAuth routes (public)
 	oauthGroup := api.Group("/oauth")

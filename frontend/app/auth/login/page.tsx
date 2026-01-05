@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
-import { authApi, ApiErrorClass } from "@/lib/api";
+import { authApi, oauthApi, ApiErrorClass } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -42,6 +42,10 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleOAuthLogin = (provider: "google" | "github") => {
+    oauthApi.authorize(provider);
   };
 
   return (
@@ -122,19 +126,19 @@ export default function LoginPage() {
             <div className="flex-1 h-px bg-neutral-200" />
           </div>
 
-          {/* OAuth Options (future) */}
+          {/* OAuth Options */}
           <div className="space-y-3">
             <button
               type="button"
-              disabled
-              className="w-full py-3 bg-white border border-neutral-200 text-sm text-neutral-600 transition-colors duration-150 hover:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => handleOAuthLogin("google")}
+              className="w-full py-3 bg-white border border-neutral-200 text-sm text-neutral-600 transition-colors duration-150 hover:border-blue-500"
             >
               Continue with Google
             </button>
             <button
               type="button"
-              disabled
-              className="w-full py-3 bg-white border border-neutral-200 text-sm text-neutral-600 transition-colors duration-150 hover:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => handleOAuthLogin("github")}
+              className="w-full py-3 bg-white border border-neutral-200 text-sm text-neutral-600 transition-colors duration-150 hover:border-blue-500"
             >
               Continue with GitHub
             </button>

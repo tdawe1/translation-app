@@ -22,8 +22,13 @@ type Config struct {
 	DBSSLMode  string
 
 	// Security
-	JWTSecret             string
+	JWTSecret               string
 	LemonSqueezyWebhookSecret string
+
+	// Email
+	ResendAPIKey  string
+	EmailFrom     string
+	EmailFromName string
 
 	// CORS
 	AllowedOrigins string // Comma-separated list
@@ -45,7 +50,10 @@ func Load() *Config {
 		DBName:               getEnv("DB_NAME", "gengowatcher"),
 		DBSSLMode:            getEnv("DB_SSLMODE", "disable"),
 		JWTSecret:            getEnv("JWT_SECRET", ""),
-		LemonSqueezyWebhookSecret: getEnv("LEMONSQUEZY_WEBHOOK_SECRET", ""),
+		LemonSqueezyWebhookSecret: getEnv("LEMONSQUEEZY_WEBHOOK_SECRET", ""),
+		ResendAPIKey:         getEnv("RESEND_API_KEY", ""),
+		EmailFrom:            getEnv("EMAIL_FROM", "noreply@gengowatcher.example.com"),
+		EmailFromName:        getEnv("EMAIL_FROM_NAME", "GengoWatcher"),
 		AllowedOrigins:       getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001"),
 		CookieSecure:         getEnv("ENV", "development") == "production",
 	}
