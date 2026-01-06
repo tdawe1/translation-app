@@ -3,7 +3,6 @@ package handlers
 
 import (
 	"context"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/tdawe1/translation-app/internal/auth"
+	"github.com/tdawe1/translation-app/internal/config"
 	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/oauth"
 )
@@ -36,30 +36,32 @@ type OAuthHandler struct {
 var statePattern = regexp.MustCompile(`^[a-zA-Z0-9]{32,64}$`)
 
 // NewOAuthHandler creates a new OAuth handler
-func NewOAuthHandler(db database.Database, tokenService *auth.TokenService) *OAuthHandler {
+// Receives config to ensure OAuth credentials are loaded from centralized configuration
+func NewOAuthHandler(db database.Database, tokenService *auth.TokenService, cfg *config.Config) *OAuthHandler {
 	// Backend URL for OAuth callbacks (where GitHub sends the code)
-	backendURL := os.Getenv("BACKEND_URL")
+	backendURL := cfg.OAuthRedirectURL
 	if backendURL == "" {
 		backendURL = "http://localhost:8001"
 	}
 
 	// Frontend URL for redirecting users after successful login
-	frontendURL := os.Getenv("FRONTEND_URL")
+	// Use OAuthRedirectURL (frontend) from config, fallback to default
+	frontendURL := cfg.OAuthRedirectURL
 	if frontendURL == "" {
 		frontendURL = "http://localhost:3000"
 	}
 
-	// Load OAuth config from environment variables
-	config := &oauth.Config{
-		GoogleClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
-		GoogleClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
-		GitHubClientID:     os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
-		GitHubClientSecret: os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
+	// Load OAuth config from centralized config
+	oauthConfig := &oauth.Config{
+		GoogleClientID:     cfg.GoogleOAuthClientID,
+		GoogleClientSecret: cfg.GoogleOAuthClientSecret,
+		GitHubClientID:     cfg.GitHubOAuthClientID,
+		GitHubClientSecret: cfg.GitHubOAuthClientSecret,
 		FrontendURL:        backendURL, // This is used for callback URLs
 	}
 
 	h := &OAuthHandler{
-		oauthService:     oauth.NewService(db, config),
+		oauthService:     oauth.NewService(db, oauthConfig),
 		db:               db,
 		tokenService:     tokenService,
 		frontendRedirect: frontendURL,

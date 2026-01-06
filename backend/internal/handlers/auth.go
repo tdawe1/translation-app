@@ -134,11 +134,39 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 }
 
 // GetMe returns current user info
+// NOTE: This route is already wrapped with JWTValidator middleware in main.go,
+// so we directly extract the user ID from context rather than using RequireAuth.
 func (h *AuthHandler) GetMe(c *fiber.Ctx) error {
-	return middleware.RequireAuth(h.getMeLogic)(c)
+	// Extract user ID from JWT claims (set by JWTValidator middleware)
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return RespondWithError(c, fiber.StatusUnauthorized,
+			apperrors.ErrNotAuthenticated, "Not authenticated")
+	}
+
+	// Parse UUID
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return RespondWithError(c, fiber.StatusBadRequest,
+			apperrors.ErrInvalidUserID, "Invalid user ID")
+	}
+
+	// Original getMeLogic logic
+	user, apiErr := h.userService.GetUserByID(userUUID)
+	if apiErr != nil {
+		errObj := getAPIError(apiErr)
+		if errObj == nil {
+			return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Internal error")
+		}
+		status := h.statusCodeForError(errObj.Code)
+		return RespondWithAPIError(c, status, errObj)
+	}
+
+	return c.JSON(UserToResponse(user))
 }
 
 // getMeLogic contains the actual GetMe logic after auth is verified
+// DEPRECATED: Logic moved into GetMe since JWTValidator is applied at route level
 func (h *AuthHandler) getMeLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	user, apiErr := h.userService.GetUserByID(userUUID)
 	if apiErr != nil {
@@ -276,12 +304,24 @@ type ChangePasswordRequest struct {
 
 // ChangePassword handles password changes for authenticated users
 // PUT /api/v1/me/password
+// NOTE: This route is already wrapped with JWTValidator middleware in main.go,
+// so we directly extract the user ID from context rather than using RequireAuth.
 func (h *AuthHandler) ChangePassword(c *fiber.Ctx) error {
-	return middleware.RequireAuth(h.changePasswordLogic)(c)
-}
+	// Extract user ID from JWT claims (set by JWTValidator middleware)
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return RespondWithError(c, fiber.StatusUnauthorized,
+			apperrors.ErrNotAuthenticated, "Not authenticated")
+	}
 
-// changePasswordLogic contains the actual ChangePassword logic after auth is verified
-func (h *AuthHandler) changePasswordLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
+	// Parse UUID
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return RespondWithError(c, fiber.StatusBadRequest,
+			apperrors.ErrInvalidUserID, "Invalid user ID")
+	}
+
+	// Parse request body
 	var req ChangePasswordRequest
 	if err := c.BodyParser(&req); err != nil {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
