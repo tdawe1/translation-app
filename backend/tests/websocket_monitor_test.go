@@ -22,7 +22,7 @@ func TestWebSocketMonitor_NewWebSocketMonitor(t *testing.T) {
 	userKey := "test-key"
 	gengoUserID := "gengo-123"
 
-	monitor := watcher.NewWebSocketMonitor(userID, userSession, userKey, gengoUserID)
+	monitor := watcher.NewWebSocketMonitor(userID, userSession, userKey, gengoUserID, false)
 
 	assert.NotNil(t, monitor)
 	assert.Equal(t, "disconnected", monitor.GetStatus())
@@ -31,7 +31,7 @@ func TestWebSocketMonitor_NewWebSocketMonitor(t *testing.T) {
 // TestWebSocketMonitor_StatusTracking tests status changes during lifecycle
 func TestWebSocketMonitor_StatusTracking(t *testing.T) {
 	userID := uuid.New()
-	monitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id")
+	monitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", false)
 
 	assert.Equal(t, "disconnected", monitor.GetStatus())
 
@@ -184,7 +184,7 @@ func TestWebSocketMonitor_Deduplication(t *testing.T) {
 // TestWebSocketMonitor_GetStatus tests status getter
 func TestWebSocketMonitor_GetStatus(t *testing.T) {
 	userID := uuid.New()
-	monitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id")
+	monitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", false)
 
 	// Initial status should be disconnected
 	assert.Equal(t, "disconnected", monitor.GetStatus())
@@ -197,7 +197,7 @@ func TestWebSocketMonitor_GetStatus(t *testing.T) {
 // TestWebSocketMonitor_GetPingLatency tests ping latency getter
 func TestWebSocketMonitor_GetPingLatency(t *testing.T) {
 	userID := uuid.New()
-	monitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id")
+	monitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", false)
 
 	// Initial latency should be 0
 	assert.Equal(t, time.Duration(0), monitor.GetPingLatency())
@@ -285,7 +285,7 @@ func TestWebSocketMonitor_MessageParsing(t *testing.T) {
 // TestWebSocketMonitor_ConnectionLifecycle tests connection state transitions
 func TestWebSocketMonitor_ConnectionLifecycle(t *testing.T) {
 	userID := uuid.New()
-	monitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id")
+	monitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", false)
 
 	// Test: disconnected -> connecting -> authenticating -> live -> stopped
 	statuses := []string{
@@ -311,7 +311,7 @@ func TestWebSocketMonitor_ConnectionLifecycle(t *testing.T) {
 // TestWebSocketMonitor_ConcurrentAccess tests thread safety of status access
 func TestWebSocketMonitor_ConcurrentAccess(t *testing.T) {
 	userID := uuid.New()
-	monitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id")
+	monitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", false)
 
 	// Concurrent reads
 	done := make(chan bool)
@@ -332,4 +332,68 @@ func TestWebSocketMonitor_ConcurrentAccess(t *testing.T) {
 
 	// Should complete without race or panic
 	assert.Equal(t, "disconnected", monitor.GetStatus())
+}
+
+// TestWebSocketMonitor_AdminHeartbeatInterval tests that admin users get faster heartbeats
+func TestWebSocketMonitor_AdminHeartbeatInterval(t *testing.T) {
+	userID := uuid.New()
+	userSession := "test-session"
+	userKey := "test-key"
+	gengoUserID := "gengo-123"
+
+	// Test admin user (isAdmin = true)
+	adminMonitor := watcher.NewWebSocketMonitor(userID, userSession, userKey, gengoUserID, true)
+
+	assert.NotNil(t, adminMonitor)
+	// Admin users should have 1s heartbeat for fastest detection
+	assert.Equal(t, 1*time.Second, adminMonitor.HeartbeatInterval)
+	assert.Equal(t, 2*time.Second, adminMonitor.PongWait)
+}
+
+// TestWebSocketMonitor_HeartbeatIntervalComparison compares admin vs regular user intervals
+func TestWebSocketMonitor_HeartbeatIntervalComparison(t *testing.T) {
+	userID := uuid.New()
+
+	regularMonitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", false)
+	adminMonitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", true)
+
+	// Admin heartbeat should be 10x faster
+	assert.Equal(t, regularMonitor.HeartbeatInterval/time.Duration(10), adminMonitor.HeartbeatInterval)
+	assert.Equal(t, regularMonitor.PongWait/time.Duration(10), adminMonitor.PongWait)
+
+	// Verify exact values
+	assert.Equal(t, 10*time.Second, regularMonitor.HeartbeatInterval, "Regular user heartbeat should be 10s")
+	assert.Equal(t, 1*time.Second, adminMonitor.HeartbeatInterval, "Admin heartbeat should be 1s")
+}
+
+// TestWebSocketMonitor_EmptyUserKey tests that empty userKey is handled gracefully
+func TestWebSocketMonitor_EmptyUserKey(t *testing.T) {
+	userID := uuid.New()
+
+	// Empty userKey should not panic - it's optional but authentication may fail upstream
+	monitor := watcher.NewWebSocketMonitor(userID, "session", "", "gengo-id", false)
+
+	assert.NotNil(t, monitor)
+	assert.Equal(t, "disconnected", monitor.GetStatus())
+	// Note: UserKey is not exported, so we can't directly check it
+	// But we verify the monitor was created successfully
+}
+
+// TestWebSocketMonitor_SignatureMismatchPrevention prevents signature mismatches at compile time
+func TestWebSocketMonitor_SignatureMismatchPrevention(t *testing.T) {
+	userID := uuid.New()
+
+	// This test ensures the function signature is correctly used
+	// If the signature changes, this test will fail to compile
+
+	// Correct usage with all 5 parameters
+	_ = watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", false)
+	_ = watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", true)
+
+	// Test with actual values
+	regularUser := watcher.NewWebSocketMonitor(uuid.New(), "session123", "key456", "gengo789", false)
+	adminUser := watcher.NewWebSocketMonitor(uuid.New(), "session123", "key456", "gengo789", true)
+
+	assert.Equal(t, 10*time.Second, regularUser.HeartbeatInterval)
+	assert.Equal(t, 1*time.Second, adminUser.HeartbeatInterval)
 }

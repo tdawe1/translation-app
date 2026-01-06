@@ -131,7 +131,7 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 
 	// Create monitors
 	rss := NewRSSMonitor(config.RSSFeedURL, userID, config.MinReward)
-	ws := NewWebSocketMonitor(userID, config.GengoSessionToken, config.GengoUserID)
+	ws := NewWebSocketMonitor(userID, config.GengoSessionToken, config.GengoUserKey, config.GengoUserID, user.IsAdmin())
 
 	instance := &WatcherInstance{
 		UserID:    userID,

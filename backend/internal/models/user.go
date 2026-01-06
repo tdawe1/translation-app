@@ -94,6 +94,7 @@ type WatcherConfig struct {
 	RSSFeedURL            string    `gorm:"type:text;default:'https://gengo.com/jobs/rss'" json:"rss_feed_url"`
 	WebSocketEnabled      bool      `gorm:"default:true" json:"websocket_enabled"`
 	GengoUserID           string    `gorm:"size:50" json:"gengo_user_id,omitempty"`
+	GengoUserKey          string    `gorm:"type:text" json:"gengo_user_key,omitempty"` // Browser localStorage userKey for WebSocket auth
 	GengoSessionToken     string    `gorm:"type:text" json:"-"` // Encrypted, don't serialize
 	MinReward             float64   `gorm:"default:0" json:"min_reward"`
 	MaxReward             float64   `gorm:"default:999999" json:"max_reward"`

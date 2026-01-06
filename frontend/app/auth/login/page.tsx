@@ -10,6 +10,8 @@ import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
 import { authApi, ApiErrorClass } from "@/lib/api";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function LoginPage() {
   const router = useRouter();
   const setUser = useAuthStore((state) => state.setUser);
@@ -136,7 +138,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => {
-                window.location.href = "/api/v1/auth/oauth/google";
+                window.location.href = `${API_URL}/api/v1/auth/oauth/google`;
               }}
               className="w-full py-3 bg-white border border-neutral-200 text-sm text-neutral-600 transition-colors duration-150 hover:border-blue-500 flex items-center justify-center gap-2"
             >
@@ -163,7 +165,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => {
-                window.location.href = "/api/v1/auth/oauth/github";
+                window.location.href = `${API_URL}/api/v1/auth/oauth/github`;
               }}
               className="w-full py-3 bg-white border border-neutral-200 text-sm text-neutral-600 transition-colors duration-150 hover:border-blue-500 flex items-center justify-center gap-2"
             >
