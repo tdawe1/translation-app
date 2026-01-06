@@ -122,6 +122,15 @@ class HttpClient {
   }
 
   /**
+   * Check if we have a token before making authenticated requests
+   * Returns true if token exists, false otherwise
+   */
+  private hasToken(): boolean {
+    return typeof sessionStorage !== "undefined" &&
+           !!sessionStorage.getItem("access_token");
+  }
+
+  /**
    * Generate a cache key for deduplication
    * Based on method, path, and request body
    */
@@ -135,7 +144,7 @@ class HttpClient {
 
   private async request<T>(
     path: string,
-    options: RequestInit = {}
+    options: RequestInit & { optional?: boolean } = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const method = options.method || "GET";
@@ -167,12 +176,15 @@ class HttpClient {
         credentials: "include", // Send httpOnly cookies
       });
 
-      // Handle 401 Unauthorized - redirect to login
+      // Handle 401 Unauthorized - clear token and throw for auth store to handle
       if (response.status === 401) {
         sessionStorage.removeItem("access_token");
-        if (typeof window !== "undefined") {
-          window.location.href = "/auth/login";
+        // If optional mode, return null instead of throwing
+        if (options.optional) {
+          return null as T;
         }
+        // Don't redirect here - let the auth store handle routing
+        // This prevents duplicate redirects and allows the auth store to manage state
         throw new ApiErrorClass("Unauthorized", "UNAUTHORIZED");
       }
 
@@ -200,8 +212,8 @@ class HttpClient {
     return requestPromise;
   }
 
-  get<T>(path: string): Promise<T> {
-    return this.request<T>(path, { method: "GET" });
+  get<T>(path: string, options?: RequestInit & { optional?: boolean }): Promise<T> {
+    return this.request<T>(path, { ...options, method: "GET" });
   }
 
   post<T>(path: string, body?: unknown): Promise<T> {
@@ -250,7 +262,7 @@ export const authApi = {
   logout: (): Promise<void> =>
     client.post<void>("/api/v1/auth/logout"),
 
-  me: (): Promise<User> => client.get<User>("/api/v1/me"),
+  me: (): Promise<User | null> => client.get<User>("/api/v1/me", { optional: true }),
 
   changePassword: (data: ChangePasswordRequest): Promise<{ message: string }> =>
     client.put<{ message: string }>("/api/v1/me/password", data),

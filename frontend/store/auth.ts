@@ -51,7 +51,12 @@ export const useAuthStore = create<AuthState>()(
       fetchUser: async () => {
         try {
           const user = await authApi.me();
-          set({ user, isAuthenticated: true, isLoading: false, error: null });
+          if (user) {
+            set({ user, isAuthenticated: true, isLoading: false, error: null });
+          } else {
+            // No user session (optional request returned null)
+            set({ user: null, isAuthenticated: false, isLoading: false, error: null });
+          }
         } catch (err) {
           // User is not logged in or session expired
           set({ user: null, isAuthenticated: false, isLoading: false, error: null });
