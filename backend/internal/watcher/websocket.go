@@ -16,29 +16,39 @@ const (
 	// Gengo WebSocket URL
 	gengoWebSocketURL = "wss://live-dashboard.gengo.com"
 
-	// Time between heartbeat pings
-	heartbeatInterval = 30 * time.Second
+	// Default heartbeat interval for regular users
+	defaultUserHeartbeatInterval = 10 * time.Second
 
-	// Maximum time to wait for pong response
-	pongWait = 45 * time.Second
+	// Default heartbeat interval for admin users (fastest detection)
+	defaultAdminHeartbeatInterval = 1 * time.Second
 
-	// Reconnection delay on failure
-	reconnectDelay = 10 * time.Second
+	// Default pong timeout for regular users (2x heartbeat)
+	defaultUserPongWait = 20 * time.Second
+
+	// Default pong timeout for admin users (2x heartbeat)
+	defaultAdminPongWait = 2 * time.Second
+
+	// Initial reconnection delay on failure
+	initialReconnectDelay = 1 * time.Second
 )
 
 // WebSocketMonitor monitors Gengo's WebSocket for new jobs
 type WebSocketMonitor struct {
-	UserID       uuid.UUID
-	UserSession  string
-	UserKey      string
-	GengoUserID  string // External Gengo user ID
-	seenIDs      map[string]bool
-	mu           sync.RWMutex
+	UserID      uuid.UUID
+	UserSession string
+	UserKey     string
+	GengoUserID string // External Gengo user ID
+	seenIDs     map[string]bool
+	mu          sync.RWMutex
+
+	// Timing configuration
+	HeartbeatInterval time.Duration
+	PongWait          time.Duration
 
 	// Connection state
-	conn         *websocket.Conn
-	status       string
-	statusMu     sync.RWMutex
+	conn     *websocket.Conn
+	status   string
+	statusMu sync.RWMutex
 
 	// Metrics
 	lastPongTime time.Time
@@ -46,14 +56,25 @@ type WebSocketMonitor struct {
 }
 
 // NewWebSocketMonitor creates a new WebSocket monitor
-func NewWebSocketMonitor(userID uuid.UUID, userSession, userKey, gengoUserID string) *WebSocketMonitor {
+// isAdmin determines heartbeat interval (1s for admin, 10s for regular users)
+func NewWebSocketMonitor(userID uuid.UUID, userSession, userKey, gengoUserID string, isAdmin bool) *WebSocketMonitor {
+	heartbeatInterval := defaultUserHeartbeatInterval
+	pongWait := defaultUserPongWait
+
+	if isAdmin {
+		heartbeatInterval = defaultAdminHeartbeatInterval
+		pongWait = defaultAdminPongWait
+	}
+
 	return &WebSocketMonitor{
-		UserID:      userID,
-		UserSession: userSession,
-		UserKey:     userKey,
-		GengoUserID: gengoUserID,
-		seenIDs:     make(map[string]bool),
-		status:      "disconnected",
+		UserID:            userID,
+		UserSession:       userSession,
+		UserKey:           userKey,
+		GengoUserID:       gengoUserID,
+		seenIDs:           make(map[string]bool),
+		status:            "disconnected",
+		HeartbeatInterval: heartbeatInterval,
+		PongWait:          pongWait,
 	}
 }
 
@@ -67,9 +88,9 @@ type wsAuthPayload struct {
 
 // wsMessage represents a message received from Gengo
 type wsMessage struct {
-	Type   string                 `json:"type"`
-	JobID  string                 `json:"job_id,omitempty"`
-	Other  map[string]interface{} `json:"-"`
+	Type  string                 `json:"type"`
+	JobID string                 `json:"job_id,omitempty"`
+	Other map[string]interface{} `json:"-"`
 }
 
 // UnmarshalJSON handles unmarshaling with unknown fields
@@ -110,7 +131,7 @@ func (m *WebSocketMonitor) Start(ctx context.Context, jobChan chan<- Job) {
 				if ctx.Err() != nil {
 					return
 				}
-				log.Printf("[WS] Connection error for user %s: %v (reconnecting in %v)", m.UserID, err, reconnectDelay)
+				log.Printf("[WS] Connection error for user %s: %v (reconnecting in %v)", m.UserID, err, initialReconnectDelay)
 				m.setStatus("reconnecting")
 			}
 		}
@@ -118,7 +139,7 @@ func (m *WebSocketMonitor) Start(ctx context.Context, jobChan chan<- Job) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(reconnectDelay):
+		case <-time.After(initialReconnectDelay):
 		}
 	}
 }
@@ -153,10 +174,10 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 	m.setStatus("live")
 	log.Printf("[WS] Connected and authenticated for user %s", m.UserID)
 
-	heartbeatTicker := time.NewTicker(heartbeatInterval)
+	heartbeatTicker := time.NewTicker(m.HeartbeatInterval)
 	defer heartbeatTicker.Stop()
 
-	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetReadDeadline(time.Now().Add(m.PongWait))
 
 	for {
 		select {
@@ -167,10 +188,10 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 			if err := m.sendPing(); err != nil {
 				return fmt.Errorf("ping failed: %w", err)
 			}
-			conn.SetReadDeadline(time.Now().Add(pongWait))
+			conn.SetReadDeadline(time.Now().Add(m.PongWait))
 
 		default:
-			conn.SetReadDeadline(time.Now().Add(heartbeatInterval + 5*time.Second))
+			conn.SetReadDeadline(time.Now().Add(m.HeartbeatInterval + 5*time.Second))
 			_, message, err := conn.ReadMessage()
 			if err != nil {
 				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {

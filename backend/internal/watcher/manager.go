@@ -32,35 +32,35 @@ func NewTestManager(db database.Database) *UserWatcherManager {
 	}
 
 	return &UserWatcherManager{
-		db:            db,
-		redis:         redisClient,
-		watchers:      make(map[uuid.UUID]*WatcherInstance),
-		stateManager:  NewStateManager(db),
-		jobProcessor:  NewJobProcessor(db, redisClient),
+		db:           db,
+		redis:        redisClient,
+		watchers:     make(map[uuid.UUID]*WatcherInstance),
+		stateManager: NewStateManager(db),
+		jobProcessor: NewJobProcessor(db, redisClient),
 	}
 }
 
 // minimalTestDB is a minimal database.Database implementation for testing
 type minimalTestDB struct{}
 
-func (m *minimalTestDB) Create(value interface{}) *gorm.DB { return nil }
-func (m *minimalTestDB) First(dest interface{}, conds ...interface{}) *gorm.DB { return nil }
-func (m *minimalTestDB) Where(query interface{}, args ...interface{}) *gorm.DB { return nil }
-func (m *minimalTestDB) Model(value interface{}) *gorm.DB { return nil }
-func (m *minimalTestDB) Begin(opts ...*sql.TxOptions) *gorm.DB { return nil }
-func (m *minimalTestDB) Exec(sql string, values ...interface{}) *gorm.DB { return nil }
-func (m *minimalTestDB) Save(value interface{}) *gorm.DB { return nil }
-func (m *minimalTestDB) Updates(values interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Create(value interface{}) *gorm.DB                      { return nil }
+func (m *minimalTestDB) First(dest interface{}, conds ...interface{}) *gorm.DB  { return nil }
+func (m *minimalTestDB) Where(query interface{}, args ...interface{}) *gorm.DB  { return nil }
+func (m *minimalTestDB) Model(value interface{}) *gorm.DB                       { return nil }
+func (m *minimalTestDB) Begin(opts ...*sql.TxOptions) *gorm.DB                  { return nil }
+func (m *minimalTestDB) Exec(sql string, values ...interface{}) *gorm.DB        { return nil }
+func (m *minimalTestDB) Save(value interface{}) *gorm.DB                        { return nil }
+func (m *minimalTestDB) Updates(values interface{}) *gorm.DB                    { return nil }
 func (m *minimalTestDB) UpdateColumn(column string, value interface{}) *gorm.DB { return nil }
-func (m *minimalTestDB) Update(column string, value interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Update(column string, value interface{}) *gorm.DB       { return nil }
 
 // Job represents a detected job from RSS or WebSocket
 type Job struct {
-	ID     string  `json:"id"`
-	Title  string  `json:"title"`
-	Reward float64 `json:"reward"`
-	URL    string  `json:"url"`
-	Source string  `json:"source"` // "rss" or "websocket"
+	ID     string    `json:"id"`
+	Title  string    `json:"title"`
+	Reward float64   `json:"reward"`
+	URL    string    `json:"url"`
+	Source string    `json:"source"` // "rss" or "websocket"
 	UserID uuid.UUID `json:"user_id"`
 }
 
@@ -79,22 +79,22 @@ type WatcherInstance struct {
 
 // UserWatcherManager manages per-user watcher instances
 type UserWatcherManager struct {
-	db            database.Database
-	redis         *redis.Client
-	watchers      map[uuid.UUID]*WatcherInstance
-	mu            sync.RWMutex
-	stateManager  *StateManager
-	jobProcessor  *JobProcessor
+	db           database.Database
+	redis        *redis.Client
+	watchers     map[uuid.UUID]*WatcherInstance
+	mu           sync.RWMutex
+	stateManager *StateManager
+	jobProcessor *JobProcessor
 }
 
 // NewUserWatcherManager creates a new watcher manager
 func NewUserWatcherManager(db database.Database, redisClient *redis.Client) *UserWatcherManager {
 	return &UserWatcherManager{
-		db:            db,
-		redis:         redisClient,
-		watchers:      make(map[uuid.UUID]*WatcherInstance),
-		stateManager:  NewStateManager(db),
-		jobProcessor:  NewJobProcessor(db, redisClient),
+		db:           db,
+		redis:        redisClient,
+		watchers:     make(map[uuid.UUID]*WatcherInstance),
+		stateManager: NewStateManager(db),
+		jobProcessor: NewJobProcessor(db, redisClient),
 	}
 }
 
@@ -119,12 +119,19 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 		return fmt.Errorf("state not found for user %s: %w", userID, err)
 	}
 
+	// Check if user is admin for heartbeat interval
+	var user models.User
+	err = m.db.Where("id = ?", userID).First(&user).Error
+	if err != nil {
+		return fmt.Errorf("failed to load user: %w", err)
+	}
+
 	// Create context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Create monitors
 	rss := NewRSSMonitor(config.RSSFeedURL, userID, config.MinReward)
-	ws := NewWebSocketMonitor(userID, config.GengoSessionToken, "", config.GengoUserID)
+	ws := NewWebSocketMonitor(userID, config.GengoSessionToken, config.GengoUserID)
 
 	instance := &WatcherInstance{
 		UserID:    userID,
