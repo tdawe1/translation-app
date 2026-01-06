@@ -28,30 +28,25 @@ func NewWatcherHandler(manager *watcher.UserWatcherManager, db database.Database
 
 // GetConfig returns the user's watcher configuration
 func (h *WatcherHandler) GetConfig(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Not authenticated",
-			"code":  "NOT_AUTHENTICATED",
-		})
-	}
+	return middleware.RequireAuth(h.getConfigLogic)(c)
+}
 
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid user ID",
-			"code":  "INVALID_USER_ID",
-		})
-	}
-
+// getConfigLogic contains the actual GetConfig logic after auth is verified
+func (h *WatcherHandler) getConfigLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	var config models.WatcherConfig
 	if err := h.db.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
 		// #017 fix - Lazy initialization of watcher config
-		config = models.WatcherConfig{UserID: userUUID}
+		// Explicitly generate ID for composite primary key tables
+		config = models.WatcherConfig{
+			Base:   models.Base{ID: uuid.New()},
+			UserID: userUUID,
+		}
 		if createErr := h.db.Create(&config).Error; createErr != nil {
+			// Log actual error for debugging
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Failed to create watcher config",
 				"code":  "CONFIG_CREATE_FAILED",
+				"details": createErr.Error(),
 			})
 		}
 	}
@@ -78,22 +73,11 @@ type UpdateConfigRequest struct {
 
 // UpdateConfig updates the user's watcher configuration
 func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Not authenticated",
-			"code":  "NOT_AUTHENTICATED",
-		})
-	}
+	return middleware.RequireAuth(h.updateConfigLogic)(c)
+}
 
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid user ID",
-			"code":  "INVALID_USER_ID",
-		})
-	}
-
+// updateConfigLogic contains the actual UpdateConfig logic after auth is verified
+func (h *WatcherHandler) updateConfigLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	var req UpdateConfigRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -177,22 +161,11 @@ func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
 
 // GetState returns the user's watcher state
 func (h *WatcherHandler) GetState(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Not authenticated",
-			"code":  "NOT_AUTHENTICATED",
-		})
-	}
+	return middleware.RequireAuth(h.getStateLogic)(c)
+}
 
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid user ID",
-			"code":  "INVALID_USER_ID",
-		})
-	}
-
+// getStateLogic contains the actual GetState logic after auth is verified
+func (h *WatcherHandler) getStateLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	var state models.WatcherState
 	if err := h.db.Where("user_id = ?", userUUID).First(&state).Error; err != nil {
 		// #017 fix - Lazy initialization of watcher state
@@ -217,22 +190,11 @@ func (h *WatcherHandler) GetState(c *fiber.Ctx) error {
 
 // StartWatcher starts the user's watcher
 func (h *WatcherHandler) StartWatcher(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Not authenticated",
-			"code":  "NOT_AUTHENTICATED",
-		})
-	}
+	return middleware.RequireAuth(h.startWatcherLogic)(c)
+}
 
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid user ID",
-			"code":  "INVALID_USER_ID",
-		})
-	}
-
+// startWatcherLogic contains the actual StartWatcher logic after auth is verified
+func (h *WatcherHandler) startWatcherLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	if err := h.manager.StartWatcher(userUUID); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -250,22 +212,11 @@ func (h *WatcherHandler) StartWatcher(c *fiber.Ctx) error {
 
 // StopWatcher stops the user's watcher
 func (h *WatcherHandler) StopWatcher(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Not authenticated",
-			"code":  "NOT_AUTHENTICATED",
-		})
-	}
+	return middleware.RequireAuth(h.stopWatcherLogic)(c)
+}
 
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid user ID",
-			"code":  "INVALID_USER_ID",
-		})
-	}
-
+// stopWatcherLogic contains the actual StopWatcher logic after auth is verified
+func (h *WatcherHandler) stopWatcherLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	if err := h.manager.StopWatcher(userUUID); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
