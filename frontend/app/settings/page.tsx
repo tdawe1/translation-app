@@ -23,12 +23,12 @@ export default function SettingsPage() {
   // Fetch fresh user data to get OAuth accounts
   useEffect(() => {
     const fetchUser = async () => {
-      try {
-        const freshUser = await authApi.me();
+      const freshUser = await authApi.me();
+      if (freshUser) {
         setUser(freshUser);
-      } catch (err) {
-        // Keep existing user state on error
       }
+      // If freshUser is null, user was redirected to login or session expired
+      // The ProtectedRoute component will handle the redirect
     };
     fetchUser();
   }, [setUser]);
@@ -50,21 +50,21 @@ export default function SettingsPage() {
       <ErrorBoundary>
         <main id="main-content" className="min-h-screen bg-neutral-50">
           {/* Header */}
-          <header className="bg-white border-b border-neutral-200">
+          <header className="bg-white border-b border-neutral-300">
             <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <Link
                   href="/dashboard"
-                  className="font-mono text-xs text-neutral-500 uppercase tracking-widest hover:text-neutral-900"
+                  className="font-mono text-xs text-neutral-600 uppercase tracking-widest hover:text-neutral-900 font-medium"
                 >
                   ← Back
                 </Link>
-                <h1 className="text-xl font-light tracking-tighter">
+                <h1 className="text-xl font-light tracking-tighter text-neutral-900">
                   Settings
                 </h1>
               </div>
               <div className="flex items-center gap-4">
-                <span className="font-mono text-xs text-neutral-500 uppercase tracking-widest">
+                <span className="font-mono text-xs text-neutral-600 uppercase tracking-widest font-medium">
                   {user?.email}
                 </span>
               </div>
@@ -76,10 +76,10 @@ export default function SettingsPage() {
             {/* Profile Section */}
             <section aria-labelledby="profile-heading">
               <div className="mb-6">
-                <h2 id="profile-heading" className="text-4xl font-light tracking-tighter mb-2">
+                <h2 id="profile-heading" className="text-4xl font-light tracking-tighter mb-2 text-neutral-900">
                   Profile
                 </h2>
-                <p className="text-neutral-500 font-mono text-xs uppercase tracking-widest">
+                <p className="text-neutral-600 font-mono text-xs uppercase tracking-widest font-medium">
                   Manage your account
                 </p>
               </div>
@@ -90,10 +90,10 @@ export default function SettingsPage() {
             {/* Connected Accounts Section */}
             <section aria-labelledby="accounts-heading">
               <div className="mb-6">
-                <h2 id="accounts-heading" className="text-4xl font-light tracking-tighter mb-2">
+                <h2 id="accounts-heading" className="text-4xl font-light tracking-tighter mb-2 text-neutral-900">
                   Connected Accounts
                 </h2>
-                <p className="text-neutral-500 font-mono text-xs uppercase tracking-widest">
+                <p className="text-neutral-600 font-mono text-xs uppercase tracking-widest font-medium">
                   Linked sign-in methods
                 </p>
               </div>
@@ -104,7 +104,7 @@ export default function SettingsPage() {
             {/* Danger Zone */}
             <section aria-labelledby="danger-heading">
               <div className="mb-6">
-                <h2 id="danger-heading" className="text-red-600 font-mono text-xs uppercase tracking-widest">
+                <h2 id="danger-heading" className="text-red-600 font-mono text-xs uppercase tracking-widest font-semibold">
                   Danger Zone
                 </h2>
               </div>
@@ -112,12 +112,12 @@ export default function SettingsPage() {
               <div className="bento-card p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-medium mb-1">Sign Out</h3>
-                    <p className="text-sm text-neutral-500">Sign out of your account on this device</p>
+                    <h3 className="text-lg font-medium mb-1 text-neutral-900">Sign Out</h3>
+                    <p className="text-sm text-neutral-600">Sign out of your account on this device</p>
                   </div>
                   <button
                     onClick={handleLogout}
-                    className="px-6 py-3 border border-neutral-300 text-sm transition-colors duration-150 hover:border-red-600 hover:text-red-600"
+                    className="px-6 py-3 border border-neutral-300 text-neutral-900 text-sm transition-colors duration-150 hover:border-red-600 hover:text-red-600"
                   >
                     Sign Out
                   </button>
@@ -194,10 +194,10 @@ function ProfileSection({
     <div className="bento-card p-8">
       {/* Email */}
       <div className="mb-8">
-        <label className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2">
+        <label className="block font-mono text-xs uppercase tracking-widest text-neutral-600 mb-2 font-medium">
           Email
         </label>
-        <p className="text-sm py-3 px-4 bg-neutral-50 border border-neutral-200 font-mono">
+        <p className="text-sm py-3 px-4 bg-neutral-50 border border-neutral-300 font-mono text-neutral-900">
           {user?.email}
         </p>
       </div>
@@ -209,7 +209,7 @@ function ProfileSection({
             <div>
               <label
                 htmlFor="old-password"
-                className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2"
+                className="block font-mono text-xs uppercase tracking-widest text-neutral-600 mb-2 font-medium"
               >
                 Current Password
               </label>
@@ -218,7 +218,7 @@ function ProfileSection({
                 type="password"
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-neutral-200 text-sm transition-colors duration-150 focus:outline-none focus:border-blue-500"
+                className="w-full px-4 py-3 bg-white border border-neutral-300 text-neutral-900 text-sm transition-colors duration-150 focus:outline-none focus:border-blue-500"
                 required
                 autoComplete="current-password"
               />
@@ -227,7 +227,7 @@ function ProfileSection({
             <div>
               <label
                 htmlFor="new-password"
-                className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2"
+                className="block font-mono text-xs uppercase tracking-widest text-neutral-600 mb-2 font-medium"
               >
                 New Password
               </label>
@@ -236,7 +236,7 @@ function ProfileSection({
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-neutral-200 text-sm transition-colors duration-150 focus:outline-none focus:border-blue-500"
+                className="w-full px-4 py-3 bg-white border border-neutral-300 text-neutral-900 text-sm transition-colors duration-150 focus:outline-none focus:border-blue-500"
                 required
                 autoComplete="new-password"
                 minLength={8}
@@ -246,7 +246,7 @@ function ProfileSection({
             <div>
               <label
                 htmlFor="confirm-password"
-                className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2"
+                className="block font-mono text-xs uppercase tracking-widest text-neutral-600 mb-2 font-medium"
               >
                 Confirm New Password
               </label>
@@ -255,7 +255,7 @@ function ProfileSection({
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-neutral-200 text-sm transition-colors duration-150 focus:outline-none focus:border-blue-500"
+                className="w-full px-4 py-3 bg-white border border-neutral-300 text-neutral-900 text-sm transition-colors duration-150 focus:outline-none focus:border-blue-500"
                 required
                 autoComplete="new-password"
                 minLength={8}
@@ -263,13 +263,13 @@ function ProfileSection({
             </div>
 
             {passwordError && (
-              <div className="p-3 bg-red-50 border border-red-100 text-red-700 text-sm">
+              <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-sm">
                 {passwordError}
               </div>
             )}
 
             {passwordSuccess && (
-              <div className="p-3 bg-green-50 border border-green-100 text-green-700 text-sm">
+              <div className="p-3 bg-green-50 border border-green-200 text-green-800 text-sm">
                 Password updated successfully
               </div>
             )}
@@ -292,33 +292,33 @@ function ProfileSection({
                   setNewPassword("");
                   setConfirmPassword("");
                 }}
-                className="px-6 py-3 border border-neutral-300 text-sm transition-colors duration-150 hover:border-neutral-400"
+                className="px-6 py-3 border border-neutral-300 text-neutral-900 text-sm transition-colors duration-150 hover:border-neutral-400"
               >
                 Cancel
               </button>
             </div>
           </form>
         ) : (
-          <div className="flex items-center justify-between py-3 border-t border-neutral-200">
+          <div className="flex items-center justify-between py-3 border-t border-neutral-300">
             <div>
-              <p className="font-medium text-sm">Password</p>
-              <p className="text-xs text-neutral-500 mt-1">Last changed recently</p>
+              <p className="font-medium text-sm text-neutral-900">Password</p>
+              <p className="text-xs text-neutral-600 mt-1">Last changed recently</p>
             </div>
             <button
               onClick={() => setShowPasswordForm(true)}
-              className="px-6 py-3 border border-neutral-300 text-sm transition-colors duration-150 hover:border-blue-500"
+              className="px-6 py-3 border border-neutral-300 text-neutral-900 text-sm transition-colors duration-150 hover:border-blue-500"
             >
               Change Password
             </button>
           </div>
         )
       ) : (
-        <div className="py-3 border-t border-neutral-200">
-          <p className="text-sm text-neutral-600 mb-2">
+        <div className="py-3 border-t border-neutral-300">
+          <p className="text-sm text-neutral-700 mb-2">
             You signed in with {user?.provider === "google" ? "Google" : "GitHub"}. Set a password to enable email/password sign-in.
           </p>
           <button
-            className="px-6 py-3 border border-neutral-300 text-sm transition-colors duration-150 hover:border-blue-500 opacity-50 cursor-not-allowed"
+            className="px-6 py-3 border border-neutral-300 text-neutral-900 text-sm transition-colors duration-150 hover:border-blue-500 opacity-50 cursor-not-allowed"
             disabled
             title="Coming soon"
           >
@@ -411,24 +411,24 @@ function ConnectedAccounts({ user }: { user: User | null }) {
   return (
     <div className="bento-card p-8">
       {accounts.length === 0 && !user?.provider ? (
-        <p className="text-sm text-neutral-500 py-3">
+        <p className="text-sm text-neutral-600 py-3">
           No connected accounts. Sign in with Google or GitHub to link your account.
         </p>
       ) : (
         <div className="space-y-4">
           {/* Primary Provider */}
           {user?.provider && (
-            <div className="flex items-center justify-between py-3 border-b border-neutral-200">
+            <div className="flex items-center justify-between py-3 border-b border-neutral-300">
               <div className="flex items-center gap-3">
                 {getProviderIcon(user.provider)}
                 <div>
                   <p className={`text-sm font-medium ${getProviderColor(user.provider)}`}>
                     {getProviderDisplayName(user.provider)}
                   </p>
-                  <p className="text-xs text-neutral-500">Primary sign-in method</p>
+                  <p className="text-xs text-neutral-600">Primary sign-in method</p>
                 </div>
               </div>
-              <span className="px-3 py-1 bg-green-50 text-green-700 text-xs font-mono uppercase">
+              <span className="px-3 py-1 bg-green-50 text-green-800 text-xs font-mono uppercase border border-green-200">
                 Active
               </span>
             </div>
@@ -438,7 +438,7 @@ function ConnectedAccounts({ user }: { user: User | null }) {
           {accounts.map((account) => (
             <div
               key={`${account.provider}-${account.created_at}`}
-              className="flex items-center justify-between py-3 border-b border-neutral-200 last:border-0"
+              className="flex items-center justify-between py-3 border-b border-neutral-300 last:border-0"
             >
               <div className="flex items-center gap-3">
                 {getProviderIcon(account.provider)}
@@ -446,12 +446,12 @@ function ConnectedAccounts({ user }: { user: User | null }) {
                   <p className={`text-sm font-medium ${getProviderColor(account.provider)}`}>
                     {getProviderDisplayName(account.provider)}
                   </p>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-neutral-600">
                     Linked {new Date(account.created_at).toLocaleDateString()}
                   </p>
                 </div>
               </div>
-              <span className="px-3 py-1 bg-neutral-100 text-neutral-600 text-xs font-mono uppercase">
+              <span className="px-3 py-1 bg-neutral-100 text-neutral-700 text-xs font-mono uppercase border border-neutral-300">
                 Linked
               </span>
             </div>
@@ -463,15 +463,15 @@ function ConnectedAccounts({ user }: { user: User | null }) {
               type="button"
               onClick={() => handleLinkProvider("google")}
               disabled={isLinking}
-              className="w-full flex items-center justify-between py-3 border-t border-neutral-200 group hover:bg-neutral-50 disabled:opacity-50"
+              className="w-full flex items-center justify-between py-3 border-t border-neutral-300 group hover:bg-neutral-50 disabled:opacity-50"
             >
               <div className="flex items-center gap-3">
                 {getProviderIcon("google")}
-                <p className="text-sm text-neutral-600 group-hover:text-blue-600">
+                <p className="text-sm text-neutral-700 group-hover:text-blue-600">
                   Link Google account
                 </p>
               </div>
-              <span className="text-neutral-400 group-hover:text-blue-600">
+              <span className="text-neutral-500 group-hover:text-blue-600">
                 {isLinking ? "..." : "→"}
               </span>
             </button>
@@ -482,15 +482,15 @@ function ConnectedAccounts({ user }: { user: User | null }) {
               type="button"
               onClick={() => handleLinkProvider("github")}
               disabled={isLinking}
-              className="w-full flex items-center justify-between py-3 border-t border-neutral-200 group hover:bg-neutral-50 disabled:opacity-50"
+              className="w-full flex items-center justify-between py-3 border-t border-neutral-300 group hover:bg-neutral-50 disabled:opacity-50"
             >
               <div className="flex items-center gap-3">
                 {getProviderIcon("github")}
-                <p className="text-sm text-neutral-600 group-hover:text-purple-600">
+                <p className="text-sm text-neutral-700 group-hover:text-purple-600">
                   Link GitHub account
                 </p>
               </div>
-              <span className="text-neutral-400 group-hover:text-purple-600">
+              <span className="text-neutral-500 group-hover:text-purple-600">
                 {isLinking ? "..." : "→"}
               </span>
             </button>
