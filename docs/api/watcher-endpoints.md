@@ -57,6 +57,36 @@ Update monitoring settings and filters.
 
 ---
 
+## Partial Updates
+
+When sending update requests, only include the fields you want to change.
+Omitted fields will not be modified.
+
+### Example - updating only min_reward and auto_accept:
+```json
+{
+  "min_reward": 5.00,
+  "auto_accept_enabled": true
+}
+```
+
+### Field Update Rules
+- **Non-null strings**: Empty string values (`""`) are ignored
+- **Numeric pointers**: Null pointers are ignored; use `0` or explicit values to update
+- **Boolean pointers**: Null pointers are ignored; use `false` to explicitly disable
+- **Arrays**: Null arrays are ignored; empty arrays `[]` are not supported for this field
+
+### Adding New Config Fields
+
+When adding new configuration fields to `UpdateConfigRequest`:
+
+1. Add the field to the request struct with `json` tag
+2. Add the corresponding database column via migration
+3. The `ApplyPartialUpdate` helper automatically includes it in updates
+4. No manual mapping code needed
+
+---
+
 ## Get Watcher State
 Retrieve the current operational status of the watcher.
 
