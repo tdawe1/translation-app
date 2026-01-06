@@ -95,52 +95,16 @@ func (h *WatcherHandler) updateConfigLogic(c *fiber.Ctx, userUUID uuid.UUID) err
 		})
 	}
 
-	// Update fields that are provided
-	updates := make(map[string]interface{})
+	// Apply partial updates using helper
+	updates := ApplyPartialUpdate(req)
 
-	if req.RSSFeedURL != "" {
-		updates["RSSFeedURL"] = req.RSSFeedURL
-	}
-	if req.WebSocketEnabled != nil {
-		updates["WebSocketEnabled"] = *req.WebSocketEnabled
-	}
-	if req.GengoUserID != "" {
-		updates["GengoUserID"] = req.GengoUserID
-	}
-	if req.MinReward != nil {
-		updates["MinReward"] = *req.MinReward
-	}
-	if req.MaxReward != nil {
-		updates["MaxReward"] = *req.MaxReward
-	}
+	// Special handling for IncludedLanguagePairs (JSON field)
 	if req.IncludedLanguagePairs != nil {
-		// Convert to JSON string for storage
 		jsonPairs, _ := json.Marshal(req.IncludedLanguagePairs)
-		updates["IncludedLanguagePairs"] = string(jsonPairs)
-	}
-	if req.EnableDesktopNotifs != nil {
-		updates["EnableDesktopNotifs"] = *req.EnableDesktopNotifs
-	}
-	if req.EnableSoundNotifs != nil {
-		updates["EnableSoundNotifs"] = *req.EnableSoundNotifs
-	}
-	if req.EnableEmailNotifs != nil {
-		updates["EnableEmailNotifs"] = *req.EnableEmailNotifs
-	}
-	if req.NotificationEmail != "" {
-		updates["NotificationEmail"] = req.NotificationEmail
-	}
-	if req.AutoAcceptEnabled != nil {
-		updates["AutoAcceptEnabled"] = *req.AutoAcceptEnabled
-	}
-	if req.AutoAcceptMinReward != nil {
-		updates["AutoAcceptMinReward"] = *req.AutoAcceptMinReward
-	}
-	if req.AutoAcceptMaxReward != nil {
-		updates["AutoAcceptMaxReward"] = *req.AutoAcceptMaxReward
+		updates["included_language_pairs"] = string(jsonPairs)
 	}
 
-	// Apply updates
+	// Apply updates to database
 	if err := h.db.Model(&config).Updates(updates).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update config",

@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/tdawe1/translation-app/internal/models"
-	"github.com/tdawe1/translation-app/internal/testing" as app_testing
+	app_testing "github.com/tdawe1/translation-app/internal/testing"
 )
 
 func init() {
