@@ -63,12 +63,11 @@ type WSTicketResponse struct {
 
 // GetWSTicket generates a one-time-use ticket for WebSocket authentication
 func (h *WebSocketHandler) GetWSTicket(c *fiber.Ctx) error {
-	// User is authenticated via JWT middleware (cookie)
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Not authenticated")
-	}
+	return middleware.RequireAuth(h.getWSTicketLogic)(c)
+}
 
+// getWSTicketLogic contains the actual GetWSTicket logic after auth is verified
+func (h *WebSocketHandler) getWSTicketLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	// Generate a random ticket UUID
 	ticket := uuid.New().String()
 
@@ -76,7 +75,7 @@ func (h *WebSocketHandler) GetWSTicket(c *fiber.Ctx) error {
 	ctx := context.Background()
 	key := wsTicketPrefix + ticket
 	ticketData := map[string]interface{}{
-		"user_id": userID,
+		"user_id": userUUID.String(),
 		"created": time.Now().Unix(),
 	}
 
@@ -91,7 +90,7 @@ func (h *WebSocketHandler) GetWSTicket(c *fiber.Ctx) error {
 		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Failed to generate ticket")
 	}
 
-	log.Printf("[WS] Generated ticket for user %s", userID)
+	log.Printf("[WS] Generated ticket for user %s", userUUID)
 
 	return c.JSON(WSTicketResponse{
 		Ticket:    ticket,
