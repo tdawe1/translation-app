@@ -18,6 +18,7 @@ import (
 	"github.com/tdawe1/translation-app/internal/handlers"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/models"
+	"github.com/tdawe1/translation-app/internal/service"
 	"github.com/tdawe1/translation-app/internal/watcher"
 )
 
@@ -82,11 +83,18 @@ func main() {
 		BaseURL:   cfg.OAuthRedirectURL, // Frontend URL
 	})
 
+	// Initialize token service for email verification, magic link, and password reset
+	tokenHandlerSvc := service.NewTokenService(gormDB)
+
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, cfg.CookieSecure)
-	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc)
+	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc, cfg)
 	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret, db)
-	emailHandler := handlers.NewEmailHandler(db, tokenSvc, emailSvc)
+
+	// New dedicated handlers for email verification, magic link, and password reset
+	emailVerificationHandler := handlers.NewEmailVerificationHandler(db, tokenSvc, emailSvc, tokenHandlerSvc)
+	magicLinkHandler := handlers.NewMagicLinkHandler(db, tokenSvc, emailSvc, tokenHandlerSvc, cfg.CookieSecure)
+	passwordResetHandler := handlers.NewPasswordResetHandler(db, emailSvc, tokenHandlerSvc)
 
 	// Initialize watcher manager
 	watcherManager := watcher.NewUserWatcherManager(db, redisClient)
@@ -130,12 +138,13 @@ func main() {
 
 	// Email verification routes (public) with rate limiting (#009 fix)
 	emailLimiter := middleware.EmailLimiters()
-	authGroup.Post("/verify-email/send", emailLimiter.SendVerification, emailHandler.SendVerificationEmail)
-	authGroup.Post("/verify-email", emailHandler.VerifyEmail)
-	authGroup.Post("/magic-link/send", emailLimiter.SendMagicLink, emailHandler.SendMagicLink)
-	authGroup.Post("/magic-link/verify", emailHandler.VerifyMagicLink)
-	authGroup.Post("/password-reset/send", emailLimiter.SendPasswordReset, emailHandler.SendPasswordReset)
-	authGroup.Post("/password-reset", emailHandler.ResetPassword)
+	authGroup.Post("/verify-email/send", emailLimiter.SendVerification, emailVerificationHandler.SendVerificationEmail)
+	authGroup.Post("/verify-email", emailVerificationHandler.VerifyEmail)
+	authGroup.Post("/magic-link", emailLimiter.SendMagicLink, magicLinkHandler.SendMagicLink)
+	authGroup.Post("/magic-link/verify", magicLinkHandler.VerifyMagicLink)
+	authGroup.Get("/magic-link/verify", magicLinkHandler.VerifyMagicLink) // Support GET for email redirect flow
+	authGroup.Post("/password-reset", emailLimiter.SendPasswordReset, passwordResetHandler.SendPasswordReset)
+	authGroup.Post("/password-reset/verify", passwordResetHandler.ResetPassword)
 
 	// OAuth routes (public)
 	oauthGroup := api.Group("/oauth")
