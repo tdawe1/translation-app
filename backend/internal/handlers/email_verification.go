@@ -51,9 +51,9 @@ func (h *EmailVerificationHandler) SendVerificationEmail(c *fiber.Ctx) error {
 	err := h.db.Where("email = ?", req.Email).First(&user).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "User not found",
-				"code":  "USER_NOT_FOUND",
+			// Don't reveal if user exists (security best practice - prevents account enumeration)
+			return c.JSON(fiber.Map{
+				"message": "If an account exists with this email, a verification link has been sent",
 			})
 		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

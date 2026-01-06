@@ -156,12 +156,14 @@ func TestEmailVerificationHandler_SendVerificationEmail_UserNotFound(t *testing.
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
-	assert.Equal(t, 404, resp.StatusCode)
+	// Should return 200 to prevent account enumeration
+	assert.Equal(t, 200, resp.StatusCode)
 
-	var errorResp map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&errorResp)
+	var result map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
 	require.NoError(t, err)
-	assert.Contains(t, errorResp["error"], "not found")
+	// Generic message that doesn't reveal if account exists
+	assert.Contains(t, result["message"], "If an account exists")
 }
 
 func TestEmailVerificationHandler_SendVerificationEmail_AlreadyVerified(t *testing.T) {
