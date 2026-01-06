@@ -277,16 +277,11 @@ type ChangePasswordRequest struct {
 // ChangePassword handles password changes for authenticated users
 // PUT /api/v1/me/password
 func (h *AuthHandler) ChangePassword(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Not authenticated")
-	}
+	return middleware.RequireAuth(h.changePasswordLogic)(c)
+}
 
-	userUUID, err := ParseUserID(userID)
-	if err != nil {
-		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidUserID, "Invalid user ID")
-	}
-
+// changePasswordLogic contains the actual ChangePassword logic after auth is verified
+func (h *AuthHandler) changePasswordLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	var req ChangePasswordRequest
 	if err := c.BodyParser(&req); err != nil {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
