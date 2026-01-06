@@ -144,6 +144,48 @@ Change the password for the current user.
 ### Success Response
 - **Code**: `204 No Content`
 
+---
+
+## Error Responses
+
+Protected endpoints may return the following authentication errors:
+
+### 401 Unauthorized
+The request lacks valid authentication credentials.
+
+```json
+{
+  "error": "Not authenticated",
+  "code": "NOT_AUTHENTICATED"
+}
+```
+
+**Causes**:
+- Missing or expired session token
+- Invalid JWT token
+- Refresh token not found or revoked
+
+### 400 Bad Request
+The user ID in the token is malformed.
+
+```json
+{
+  "error": "Invalid user ID",
+  "code": "INVALID_USER_ID"
+}
+```
+
+**Causes**:
+- Corrupted JWT token
+- User ID is not a valid UUID format
+
+## For Developers
+
+### Creating Protected Endpoints
+
+See [Authentication Guide](../getting-started/authentication.md#creating-protected-endpoints) for instructions on using the `RequireAuth` helper to create new protected endpoints.
+
 ## Next Steps
 - [OAuth Endpoints](../api/oauth-endpoints.md)
 - [Watcher Endpoints](../api/watcher-endpoints.md)
+- [Error Codes](./error-codes.md)

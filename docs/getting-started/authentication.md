@@ -89,6 +89,79 @@ Authenticated users are strictly isolated. All data queries are scoped by the `u
 ### "Token Expired"
 Magic links and password resets expire quickly for security. Please request a new link if yours has expired.
 
+## Creating Protected Endpoints
+
+When creating new endpoints that require authentication, use the `RequireAuth` helper:
+
+```go
+package handlers
+
+import (
+    "github.com/gofiber/fiber/v2"
+    "github.com/google/uuid"
+    "github.com/tdawe1/translation-app/internal/middleware"
+)
+
+// MyHandler handles a protected endpoint
+type MyHandler struct{}
+
+// Handle registers the protected route
+func (h *MyHandler) Register(app *fiber.App) {
+    app.Get("/api/protected", h.Handle)
+}
+
+// Handle wraps the authenticated logic with RequireAuth
+func (h *MyHandler) Handle(c *fiber.Ctx) error {
+    return middleware.RequireAuth(h.handleLogic)(c)
+}
+
+// handleLogic receives the authenticated user UUID automatically
+func (h *MyHandler) handleLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
+    // userUUID is guaranteed to be valid here
+    // Your handler logic...
+    return c.JSON(fiber.Map{
+        "message": "Hello, " + userUUID.String(),
+    })
+}
+```
+
+### How RequireAuth Works
+
+The `RequireAuth` helper:
+
+1. Extracts the user ID from the JWT token (set by the JWT middleware)
+2. Validates the UUID format
+3. Returns appropriate errors if authentication fails
+4. Calls your handler with the validated `userUUID` parameter
+
+### Error Responses
+
+When authentication fails, `RequireAuth` returns standardized error responses:
+
+**401 Unauthorized**: Missing or invalid session token
+```json
+{
+  "error": "Not authenticated",
+  "code": "NOT_AUTHENTICATED"
+}
+```
+
+**400 Bad Request**: Invalid user ID format
+```json
+{
+  "error": "Invalid user ID",
+  "code": "INVALID_USER_ID"
+}
+```
+
+### Why Use RequireAuth?
+
+- **Type Safety**: The `userUUID` parameter is guaranteed to be a valid `uuid.UUID`
+- **Consistency**: All protected endpoints return the same error format
+- **Separation of Concerns**: Authentication logic is separated from business logic
+- **Testability**: The `handleLogic` function can be tested with a mock `uuid.UUID`
+
 ## Next Steps
 - [API Reference](../api/overview.md)
 - [Watcher Configuration](../core-concepts/watcher-system.md)
+- [Error Codes](../api/error-codes.md)
