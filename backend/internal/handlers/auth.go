@@ -135,16 +135,11 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 
 // GetMe returns current user info
 func (h *AuthHandler) GetMe(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Not authenticated")
-	}
+	return middleware.RequireAuth(h.getMeLogic)(c)
+}
 
-	userUUID, err := ParseUserID(userID)
-	if err != nil {
-		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidUserID, "Invalid user ID")
-	}
-
+// getMeLogic contains the actual GetMe logic after auth is verified
+func (h *AuthHandler) getMeLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	user, apiErr := h.userService.GetUserByID(userUUID)
 	if apiErr != nil {
 		errObj := getAPIError(apiErr)
