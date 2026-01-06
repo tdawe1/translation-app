@@ -90,7 +90,7 @@ type RefreshToken struct {
 // WatcherConfig represents per-user watcher configuration
 type WatcherConfig struct {
 	Base
-	UserID                uuid.UUID `gorm:"type:uuid;primary_key" json:"user_id"`
+	UserID                uuid.UUID `gorm:"type:uuid;not null;uniqueIndex" json:"user_id"`
 	RSSFeedURL            string    `gorm:"type:text;default:'https://gengo.com/jobs/rss'" json:"rss_feed_url"`
 	WebSocketEnabled      bool      `gorm:"default:true" json:"websocket_enabled"`
 	GengoUserID           string    `gorm:"size:50" json:"gengo_user_id,omitempty"`
@@ -110,7 +110,7 @@ type WatcherConfig struct {
 
 // WatcherState represents per-user watcher runtime state
 type WatcherState struct {
-	UserID            uuid.UUID `gorm:"type:uuid;primary_key" json:"user_id"`
+	UserID            uuid.UUID `gorm:"type:uuid;not null;uniqueIndex" json:"user_id"`
 	LastSeenJobIDs    string    `gorm:"type:jsonb" json:"last_seen_job_ids"` // JSON array
 	LastSeenRSSLink   string    `gorm:"type:text" json:"last_seen_rss_link,omitempty"`
 	TotalJobsFound    int       `gorm:"default:0" json:"total_jobs_found"`

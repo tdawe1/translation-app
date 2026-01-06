@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"context"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -22,12 +23,13 @@ type stateStore struct {
 
 // OAuthHandler handles OAuth authentication
 type OAuthHandler struct {
-	oauthService *oauth.Service
-	db           database.Database
-	tokenService *auth.TokenService
-	states       *stateStore
-	stateExpiry  time.Duration
-	stopCleanup  chan struct{}
+	oauthService  *oauth.Service
+	db            database.Database
+	tokenService  *auth.TokenService
+	states        *stateStore
+	stateExpiry   time.Duration
+	stopCleanup   chan struct{}
+	frontendRedirect string // URL to redirect users to after successful OAuth
 }
 
 // statePattern validates OAuth state format (alphanumeric, 32-64 chars)
@@ -35,19 +37,32 @@ var statePattern = regexp.MustCompile(`^[a-zA-Z0-9]{32,64}$`)
 
 // NewOAuthHandler creates a new OAuth handler
 func NewOAuthHandler(db database.Database, tokenService *auth.TokenService) *OAuthHandler {
-	// OAuth config will be loaded from environment
+	// Backend URL for OAuth callbacks (where GitHub sends the code)
+	backendURL := os.Getenv("BACKEND_URL")
+	if backendURL == "" {
+		backendURL = "http://localhost:8001"
+	}
+
+	// Frontend URL for redirecting users after successful login
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000"
+	}
+
+	// Load OAuth config from environment variables
 	config := &oauth.Config{
-		GoogleClientID:     "", // Loaded from env
-		GoogleClientSecret: "", // Loaded from env
-		GitHubClientID:     "", // Loaded from env
-		GitHubClientSecret: "", // Loaded from env
-		FrontendURL:        "", // Loaded from env
+		GoogleClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+		GitHubClientID:     os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
+		GitHubClientSecret: os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
+		FrontendURL:        backendURL, // This is used for callback URLs
 	}
 
 	h := &OAuthHandler{
-		oauthService: oauth.NewService(db, config),
-		db:           db,
-		tokenService: tokenService,
+		oauthService:     oauth.NewService(db, config),
+		db:               db,
+		tokenService:     tokenService,
+		frontendRedirect: frontendURL,
 		states: &stateStore{
 			m: make(map[string]time.Time),
 		},
@@ -184,7 +199,15 @@ func (h *OAuthHandler) Authorize(c *fiber.Ctx) error {
 
 // Callback handles the OAuth callback
 func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
-	provider := c.Params("provider")
+	// Extract provider from path since routes are static (/google/callback, /github/callback)
+	// Path format: /api/v1/oauth/google/callback or /api/v1/oauth/github/callback
+	// Split: ["", "api", "v1", "oauth", "github", "callback"] - provider at index 4
+	pathParts := strings.Split(c.Path(), "/")
+	var provider string
+	if len(pathParts) >= 5 {
+		provider = pathParts[4]
+	}
+
 	if !ValidateProvider(provider) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "invalid provider",
@@ -296,6 +319,10 @@ func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 	})
 
 	// Return only user info, not token (#002 fix - prevent token leak in response)
+	// But redirect to frontend dashboard for OAuth callback completion
+	if h.frontendRedirect != "" {
+		return c.Redirect(h.frontendRedirect + "/dashboard")
+	}
 	return c.JSON(fiber.Map{
 		"user": user,
 	})

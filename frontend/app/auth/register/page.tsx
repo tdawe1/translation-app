@@ -58,8 +58,18 @@ export default function RegisterPage() {
     }
   };
 
-  const handleOAuthRegister = (provider: "google" | "github") => {
-    oauthApi.authorize(provider);
+  const handleOAuthRegister = async (provider: "google" | "github") => {
+    try {
+      const response = await oauthApi.authorize(provider);
+      // Redirect to OAuth provider's authorization page
+      window.location.href = response.auth_url;
+    } catch (err) {
+      if (err instanceof ApiErrorClass) {
+        setError(err.message);
+      } else {
+        setError("Failed to connect to OAuth provider");
+      }
+    }
   };
 
   return (

@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { authApi, type User } from "@/lib/api";
+import { authApi, oauthApi, type User } from "@/lib/api";
 import { toast } from "@/store/toast";
 import Link from "next/link";
 
@@ -334,6 +334,18 @@ function ProfileSection({
  * ConnectedAccounts - Display linked OAuth accounts (read-only)
  */
 function ConnectedAccounts({ user }: { user: User | null }) {
+  const [isLinking, setIsLinking] = useState(false);
+
+  const handleLinkProvider = async (provider: "google" | "github") => {
+    setIsLinking(true);
+    try {
+      const response = await oauthApi.authorize(provider);
+      window.location.href = response.auth_url;
+    } catch {
+      // Silently fail - user can try again
+    }
+  };
+
   // Get display name for provider
   const getProviderDisplayName = (provider: string): string => {
     switch (provider) {
@@ -447,9 +459,11 @@ function ConnectedAccounts({ user }: { user: User | null }) {
 
           {/* Available Providers (not linked) */}
           {!hasGoogle && (
-            <a
-              href="/api/v1/auth/oauth/google"
-              className="flex items-center justify-between py-3 border-t border-neutral-200 group"
+            <button
+              type="button"
+              onClick={() => handleLinkProvider("google")}
+              disabled={isLinking}
+              className="w-full flex items-center justify-between py-3 border-t border-neutral-200 group hover:bg-neutral-50 disabled:opacity-50"
             >
               <div className="flex items-center gap-3">
                 {getProviderIcon("google")}
@@ -457,14 +471,18 @@ function ConnectedAccounts({ user }: { user: User | null }) {
                   Link Google account
                 </p>
               </div>
-              <span className="text-neutral-400 group-hover:text-blue-600">→</span>
-            </a>
+              <span className="text-neutral-400 group-hover:text-blue-600">
+                {isLinking ? "..." : "→"}
+              </span>
+            </button>
           )}
 
           {!hasGitHub && (
-            <a
-              href="/api/v1/auth/oauth/github"
-              className="flex items-center justify-between py-3 border-t border-neutral-200 group"
+            <button
+              type="button"
+              onClick={() => handleLinkProvider("github")}
+              disabled={isLinking}
+              className="w-full flex items-center justify-between py-3 border-t border-neutral-200 group hover:bg-neutral-50 disabled:opacity-50"
             >
               <div className="flex items-center gap-3">
                 {getProviderIcon("github")}
@@ -472,8 +490,10 @@ function ConnectedAccounts({ user }: { user: User | null }) {
                   Link GitHub account
                 </p>
               </div>
-              <span className="text-neutral-400 group-hover:text-purple-600">→</span>
-            </a>
+              <span className="text-neutral-400 group-hover:text-purple-600">
+                {isLinking ? "..." : "→"}
+              </span>
+            </button>
           )}
         </div>
       )}

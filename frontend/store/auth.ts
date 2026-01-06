@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { User } from "@/lib/api";
+import { authApi } from "@/lib/api";
 
 interface AuthState {
   user: User | null;
@@ -17,11 +18,12 @@ interface AuthState {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   clear: () => void;
+  fetchUser: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       isAuthenticated: false,
       isLoading: true,
@@ -32,6 +34,7 @@ export const useAuthStore = create<AuthState>()(
           user,
           isAuthenticated: !!user,
           error: null,
+          isLoading: false,
         }),
 
       setLoading: (isLoading) => set({ isLoading }),
@@ -44,6 +47,16 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           error: null,
         }),
+
+      fetchUser: async () => {
+        try {
+          const user = await authApi.me();
+          set({ user, isAuthenticated: true, isLoading: false, error: null });
+        } catch (err) {
+          // User is not logged in or session expired
+          set({ user: null, isAuthenticated: false, isLoading: false, error: null });
+        }
+      },
     }),
     {
       name: "gengowatcher-auth",

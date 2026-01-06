@@ -91,7 +91,8 @@ func (s *UserService) Register(req RegisterRequest) (*AuthResult, error) {
 
 	// Create default watcher config
 	config := models.WatcherConfig{
-		UserID: user.ID,
+		UserID:                user.ID,
+		IncludedLanguagePairs: "[]", // Valid JSON array for jsonb field
 	}
 	if err := tx.Create(&config).Error; err != nil {
 		tx.Rollback()
@@ -100,8 +101,10 @@ func (s *UserService) Register(req RegisterRequest) (*AuthResult, error) {
 
 	// Create default watcher state
 	state := models.WatcherState{
-		UserID:        user.ID,
-		WatcherStatus: "stopped",
+		UserID:           user.ID,
+		WatcherStatus:    "stopped",
+		LastSeenJobIDs:   "[]", // Valid JSON array for jsonb field
+		RecentJobHistory: "[]", // Valid JSON array for jsonb field
 	}
 	if err := tx.Create(&state).Error; err != nil {
 		tx.Rollback()
@@ -289,7 +292,8 @@ func (s *UserService) FindOrCreateByOAuth(provider, providerID, email string, in
 
 	// Create default watcher config
 	config := models.WatcherConfig{
-		UserID: user.ID,
+		UserID:                user.ID,
+		IncludedLanguagePairs: "[]", // Valid JSON array for jsonb field
 	}
 	if err := tx.Create(&config).Error; err != nil {
 		tx.Rollback()
@@ -298,8 +302,10 @@ func (s *UserService) FindOrCreateByOAuth(provider, providerID, email string, in
 
 	// Create default watcher state
 	state := models.WatcherState{
-		UserID:        user.ID,
-		WatcherStatus: "stopped",
+		UserID:           user.ID,
+		WatcherStatus:    "stopped",
+		LastSeenJobIDs:   "[]", // Valid JSON array for jsonb field
+		RecentJobHistory: "[]", // Valid JSON array for jsonb field
 	}
 	if err := tx.Create(&state).Error; err != nil {
 		tx.Rollback()

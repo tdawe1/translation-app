@@ -254,3 +254,8 @@ func (s *Service) UnlinkOAuthAccount(userID uuid.UUID, provider Provider) error 
 	return s.db.Where("user_id = ? AND provider = ?", userID, string(provider)).
 		Delete(&models.OAuthAccount{}).Error
 }
+
+// GetFrontendURL returns the configured frontend URL
+func (s *Service) GetFrontendURL() string {
+	return s.config.FrontendURL
+}

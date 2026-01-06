@@ -8,9 +8,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
-import { authApi, ApiErrorClass } from "@/lib/api";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { authApi, oauthApi, ApiErrorClass } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -43,6 +41,20 @@ export default function LoginPage() {
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleOAuthLogin = async (provider: "google" | "github") => {
+    try {
+      const response = await oauthApi.authorize(provider);
+      // Redirect to OAuth provider's authorization page
+      window.location.href = response.auth_url;
+    } catch (err) {
+      if (err instanceof ApiErrorClass) {
+        setError(err.message);
+      } else {
+        setError("Failed to connect to OAuth provider");
+      }
     }
   };
 
@@ -137,9 +149,7 @@ export default function LoginPage() {
           <div className="space-y-3">
             <button
               type="button"
-              onClick={() => {
-                window.location.href = `${API_URL}/api/v1/auth/oauth/google`;
-              }}
+              onClick={() => handleOAuthLogin("google")}
               className="w-full py-3 bg-white border border-neutral-200 text-sm text-neutral-600 transition-colors duration-150 hover:border-blue-500 flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -164,9 +174,7 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                window.location.href = `${API_URL}/api/v1/auth/oauth/github`;
-              }}
+              onClick={() => handleOAuthLogin("github")}
               className="w-full py-3 bg-white border border-neutral-200 text-sm text-neutral-600 transition-colors duration-150 hover:border-blue-500 flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
