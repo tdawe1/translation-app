@@ -16,6 +16,7 @@ type Service struct {
 	fromName   string
 	baseURL    string // Frontend URL for verification links
 	httpClient *http.Client
+	testMode   bool // Allows test service to be considered "enabled"
 }
 
 // Config holds email configuration
@@ -44,9 +45,9 @@ func NewService(cfg *Config) *Service {
 	}
 }
 
-// IsEnabled returns true if the email service is configured
+// IsEnabled returns true if the email service is configured or in test mode
 func (s *Service) IsEnabled() bool {
-	return s.apiKey != ""
+	return s.testMode || s.apiKey != ""
 }
 
 // SendMagicLink sends a magic link email (alias for SendMagicLinkEmail)
@@ -61,6 +62,7 @@ func NewTestService(cfg *Config) *Service {
 		fromEmail: cfg.FromEmail,
 		fromName:  cfg.FromName,
 		baseURL:   cfg.BaseURL,
+		testMode:  true, // Mark as enabled for testing
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
