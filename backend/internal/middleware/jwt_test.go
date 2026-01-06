@@ -145,3 +145,42 @@ func generateTestToken(secret, userID string) string {
 	}
 	return tokenString
 }
+
+func TestJWTValidator_ExpiredToken(t *testing.T) {
+	// Setup
+	secret := "test-secret-for-testing-only-32-chars-long!!"
+	cfg := NewJWTConfig(WithSecret(secret))
+
+	// Create an expired token (exp set to past)
+	expiredClaims := jwt.MapClaims{
+		"user_id": "123e4567-e89b-12d3-a456-426614174000",
+		"exp":     time.Now().Add(-1 * time.Hour).Unix(), // Expired 1 hour ago
+		"iat":     time.Now().Add(-25 * time.Hour).Unix(),
+	}
+
+	expiredToken := jwt.NewWithClaims(jwt.SigningMethodHS256, expiredClaims)
+	expiredTokenString, err := expiredToken.SignedString([]byte(secret))
+	if err != nil {
+		t.Fatalf("Failed to generate expired token: %v", err)
+	}
+
+	// Create request with expired token
+	app := fiber.New()
+	app.Use(JWTValidator(cfg))
+	app.Get("/protected", func(c *fiber.Ctx) error {
+		return c.SendString("protected")
+	})
+
+	req, _ := http.NewRequest("GET", "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+expiredTokenString)
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+
+	// Should reject expired token
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("Expected 401 for expired token, got %d", resp.StatusCode)
+	}
+}
