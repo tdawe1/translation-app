@@ -22,13 +22,6 @@ import (
 	"github.com/tdawe1/translation-app/internal/models"
 )
 
-func init() {
-	// Set test JWT secret if not already set
-	if os.Getenv("JWT_SECRET") == "" {
-		os.Setenv("JWT_SECRET", "test-secret-for-testing-only-32-chars-min")
-	}
-}
-
 // TestMagicLink_AtomicConsume verifies that magic link tokens are consumed atomically
 // Using Redis GETDEL prevents race conditions and ensures single-use tokens
 func TestMagicLink_AtomicConsume(t *testing.T) {

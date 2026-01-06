@@ -16,7 +16,14 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/tdawe1/translation-app/internal/models"
+	"github.com/tdawe1/translation-app/internal/testing" as app_testing
 )
+
+func init() {
+	// Set up test environment using the centralized test helpers
+	// This ensures all required environment variables are set for testing
+	app_testing.SetupTestEnvironment()
+}
 
 // TestDB returns a test database connection
 // Uses PostgreSQL test database - runs migrations for realistic testing
