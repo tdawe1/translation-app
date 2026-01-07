@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -112,18 +115,39 @@ func (h *LemonSqueezyHandler) HandleWebhook(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusOK)
 }
 
-// verifySignature verifies the webhook signature
-func (h *LemonSqueezyHandler) verifySignature(body []byte, signature string) bool {
-	// Signature format: <timestamp>.<hex_signature>
-	// For now, just verify the hex part
-	// In production, you'd want to verify timestamp too
+// webhookTimestampTolerance defines the acceptable time window for webhook timestamps
+const webhookTimestampTolerance = 5 * time.Minute
 
+// verifySignature verifies the webhook signature with timestamp validation (P2 fix)
+// Signature format: <timestamp>.<hex_signature>
+func (h *LemonSqueezyHandler) verifySignature(body []byte, signature string) bool {
+	// Split signature into timestamp and hex parts
+	parts := strings.Split(signature, ".")
+	if len(parts) != 2 {
+		log.Printf("Webhook signature invalid format: expected timestamp.hex, got %d parts", len(parts))
+		return false
+	}
+
+	// Verify timestamp is within tolerance window
+	timestamp, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		log.Printf("Webhook timestamp parse error: %v", err)
+		return false
+	}
+
+	age := time.Since(time.Unix(timestamp, 0))
+	if age > webhookTimestampTolerance || age < -webhookTimestampTolerance {
+		log.Printf("Webhook timestamp too old or future: age=%v, tolerance=%v", age, webhookTimestampTolerance)
+		return false
+	}
+
+	// Verify HMAC signature
 	mac := hmac.New(sha256.New, []byte(h.webhookSecret))
 	mac.Write(body)
 	expectedSignature := hex.EncodeToString(mac.Sum(nil))
 
-	// Compare signatures securely
-	return hmac.Equal([]byte(signature), []byte(expectedSignature))
+	// Compare signatures securely using constant-time comparison
+	return hmac.Equal([]byte(parts[1]), []byte(expectedSignature))
 }
 
 // processEvent processes a webhook event

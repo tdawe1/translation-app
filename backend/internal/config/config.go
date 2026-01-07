@@ -40,6 +40,9 @@ type Config struct {
 	// CORS
 	AllowedOrigins string // Comma-separated list
 
+	// Trusted proxies (P2 fix - CIDR ranges that are trusted for X-Forwarded-For)
+	TrustedProxies string // Comma-separated list of CIDR ranges
+
 	// Cookies
 	CookieSecure bool // Set Secure flag on cookies
 }
@@ -67,6 +70,7 @@ func Load() *Config {
 		GitHubOAuthClientSecret:   getEnv("GITHUB_OAUTH_CLIENT_SECRET", ""),
 		OAuthRedirectURL:         getEnv("OAUTH_REDIRECT_URL", "http://localhost:3000"),
 		AllowedOrigins:            getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001"),
+		TrustedProxies:           getEnv("TRUSTED_PROXIES", ""), // Empty = don't trust any proxy
 		CookieSecure:              getEnv("ENV", "development") == "production",
 	}
 
@@ -102,6 +106,22 @@ func (c *Config) AllowedOriginList() []string {
 	result := make([]string, 0, len(origins))
 	for _, origin := range origins {
 		trimmed := strings.TrimSpace(origin)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+// TrustedProxyList returns the trusted proxy CIDR ranges as a slice (P2 fix)
+func (c *Config) TrustedProxyList() []string {
+	if c.TrustedProxies == "" {
+		return nil // No trusted proxies configured
+	}
+	proxies := strings.Split(c.TrustedProxies, ",")
+	result := make([]string, 0, len(proxies))
+	for _, proxy := range proxies {
+		trimmed := strings.TrimSpace(proxy)
 		if trimmed != "" {
 			result = append(result, trimmed)
 		}

@@ -170,6 +170,80 @@ func TestGenerateSecureToken(t *testing.T) {
 	})
 }
 
+func TestValidateStrength_AllRequirements_Passes(t *testing.T) {
+	// Password with 12+ chars, upper, lower, digit, special should pass
+	password := "SecureP@ssw0rd123"
+	err := ValidateStrength(password)
+	if err != nil {
+		t.Errorf("ValidateStrength() valid password failed: %v", err)
+	}
+}
+
+func TestValidateStrength_TooShort_ReturnsError(t *testing.T) {
+	tests := []struct {
+		name     string
+		password string
+	}{
+		{"empty", ""},
+		{"1 char", "a"},
+		{"5 chars", "abcDE"},
+		{"11 chars", "abcDEFG1234"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateStrength(tt.password)
+			if err != ErrPasswordTooShort {
+				t.Errorf("ValidateStrength() expected ErrPasswordTooShort, got %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateStrength_MissingUpper_ReturnsError(t *testing.T) {
+	// 12+ chars, no uppercase
+	password := "securep@ssw0rd"
+	err := ValidateStrength(password)
+	if err != ErrPasswordMissingUpper {
+		t.Errorf("ValidateStrength() expected ErrPasswordMissingUpper, got %v", err)
+	}
+}
+
+func TestValidateStrength_MissingLower_ReturnsError(t *testing.T) {
+	// 12+ chars, no lowercase
+	password := "SECUREP@SSW0RD"
+	err := ValidateStrength(password)
+	if err != ErrPasswordMissingLower {
+		t.Errorf("ValidateStrength() expected ErrPasswordMissingLower, got %v", err)
+	}
+}
+
+func TestValidateStrength_MissingDigit_ReturnsError(t *testing.T) {
+	// 12+ chars, no digit
+	password := "SecurePassword!"
+	err := ValidateStrength(password)
+	if err != ErrPasswordMissingDigit {
+		t.Errorf("ValidateStrength() expected ErrPasswordMissingDigit, got %v", err)
+	}
+}
+
+func TestValidateStrength_MissingSpecial_ReturnsError(t *testing.T) {
+	// 12+ chars, no special character
+	password := "SecurePassword123"
+	err := ValidateStrength(password)
+	if err != ErrPasswordMissingSpecial {
+		t.Errorf("ValidateStrength() expected ErrPasswordMissingSpecial, got %v", err)
+	}
+}
+
+func TestValidateStrength_UnicodeSpecial_Passes(t *testing.T) {
+	// Unicode symbols should count as special characters
+	password := "SecurePassw0rd•" // Bullet symbol
+	err := ValidateStrength(password)
+	if err != nil {
+		t.Errorf("ValidateStrength() unicode special char failed: %v", err)
+	}
+}
+
 func TestBcryptCost(t *testing.T) {
 	// Verify bcrypt cost is at least 12 (OWASP recommendation)
 	if BcryptCost < 12 {

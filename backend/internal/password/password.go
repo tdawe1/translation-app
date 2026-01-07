@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
+	"unicode"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -16,6 +17,13 @@ const BcryptCost = 12
 
 var (
 	ErrCryptoFailed = errors.New("failed to generate secure random value")
+
+	// Password strength validation errors (P2 fix)
+	ErrPasswordTooShort     = errors.New("password must be at least 12 characters")
+	ErrPasswordMissingUpper  = errors.New("password must contain an uppercase letter")
+	ErrPasswordMissingLower  = errors.New("password must contain a lowercase letter")
+	ErrPasswordMissingDigit  = errors.New("password must contain a digit")
+	ErrPasswordMissingSpecial = errors.New("password must contain a special character")
 )
 
 // HashPassword hashes a password using bcrypt with secure cost factor
@@ -25,6 +33,42 @@ func HashPassword(password string) (string, error) {
 		return "", err
 	}
 	return string(hashedPassword), nil
+}
+
+// ValidateStrength validates password strength requirements (P2 fix)
+// Enforces: minimum 12 chars, uppercase, lowercase, digit, and special character
+func ValidateStrength(password string) error {
+	if len(password) < 12 {
+		return ErrPasswordTooShort
+	}
+
+	var hasUpper, hasLower, hasDigit, hasSpecial bool
+	for _, c := range password {
+		switch {
+		case unicode.IsUpper(c):
+			hasUpper = true
+		case unicode.IsLower(c):
+			hasLower = true
+		case unicode.IsDigit(c):
+			hasDigit = true
+		case unicode.IsPunct(c) || unicode.IsSymbol(c):
+			hasSpecial = true
+		}
+	}
+
+	if !hasUpper {
+		return ErrPasswordMissingUpper
+	}
+	if !hasLower {
+		return ErrPasswordMissingLower
+	}
+	if !hasDigit {
+		return ErrPasswordMissingDigit
+	}
+	if !hasSpecial {
+		return ErrPasswordMissingSpecial
+	}
+	return nil
 }
 
 // VerifyPassword verifies a password against a hash

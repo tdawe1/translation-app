@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/helmet"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/redis/go-redis/v9"
@@ -23,6 +24,9 @@ import (
 )
 
 func main() {
+	// Validate JWT secret before any auth setup
+	middleware.ValidateJWTSecretOnStartup()
+
 	// Load configuration
 	cfg := config.Load()
 
@@ -118,6 +122,15 @@ func main() {
 		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS",
 	}))
 
+	// Security headers (P2 fix)
+	app.Use(helmet.New(helmet.Config{
+		XSSProtection:         "1; mode=block",
+		ContentTypeNosniff:    "nosniff",
+		XFrameOptions:         "SAMEORIGIN",
+		HSTSMaxAge:            31536000,      // 1 year
+		HSTSExcludeSubdomains: cfg.Env != "production", // Include subdomains only in production
+	}))
+
 	// Health check
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -131,13 +144,14 @@ func main() {
 
 	// Auth routes (public)
 	authGroup := api.Group("/auth")
-	authLimiter := middleware.AuthLimiters()
+	trustedProxies := cfg.TrustedProxyList()
+	authLimiter := middleware.AuthLimiters(trustedProxies)
 	authGroup.Post("/register", authLimiter.Register, authHandler.Register)
 	authGroup.Post("/login", authLimiter.Login, authHandler.Login)
 	authGroup.Post("/logout", authHandler.Logout)
 
-	// Email verification routes (public) with rate limiting (#009 fix)
-	emailLimiter := middleware.EmailLimiters()
+	// Email verification routes (public) with rate limiting (#009 fix, P2 fix)
+	emailLimiter := middleware.EmailLimiters(trustedProxies)
 	authGroup.Post("/verify-email/send", emailLimiter.SendVerification, emailVerificationHandler.SendVerificationEmail)
 	authGroup.Post("/verify-email", emailVerificationHandler.VerifyEmail)
 	authGroup.Post("/magic-link", emailLimiter.SendMagicLink, magicLinkHandler.SendMagicLink)

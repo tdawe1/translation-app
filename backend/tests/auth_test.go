@@ -260,7 +260,9 @@ func TestPasswordChange(t *testing.T) {
 	authHeader := "Bearer " + GenerateTestToken(t, user.ID)
 
 	t.Run("PasswordChange succeeds with valid credentials", func(t *testing.T) {
-		reqBody := bytes.NewBufferString(`{"old_password":"password123","new_password":"newPassword456"}`)
+		// Use strong password meeting new requirements: 12+ chars, upper, lower, digit, special
+		newPassword := "NewPassword456!"
+		reqBody := bytes.NewBufferString(`{"old_password":"password123","new_password":"` + newPassword + `"}`)
 		req := httptest.NewRequest("PUT", "/api/v1/me/password", reqBody)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", authHeader)
@@ -277,13 +279,14 @@ func TestPasswordChange(t *testing.T) {
 		// Verify user can login with new password
 		_, apiErr := userSvc.Login(auth.LoginRequest{
 			Email:    "password-change-test@example.com",
-			Password: "newPassword456",
+			Password: newPassword,
 		})
 		assert.Nil(t, apiErr, "Should be able to login with new password")
 	})
 
 	t.Run("PasswordChange fails with wrong old password", func(t *testing.T) {
-		reqBody := bytes.NewBufferString(`{"old_password":"wrongPassword","new_password":"newPassword456"}`)
+		// Use strong password for new_password
+		reqBody := bytes.NewBufferString(`{"old_password":"wrongPassword","new_password":"NewPassword456!"}`)
 		req := httptest.NewRequest("PUT", "/api/v1/me/password", reqBody)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", authHeader)
@@ -299,6 +302,7 @@ func TestPasswordChange(t *testing.T) {
 	})
 
 	t.Run("PasswordChange fails with weak new password", func(t *testing.T) {
+		// "short" doesn't meet the 12+ character requirement
 		reqBody := bytes.NewBufferString(`{"old_password":"password123","new_password":"short"}`)
 		req := httptest.NewRequest("PUT", "/api/v1/me/password", reqBody)
 		req.Header.Set("Content-Type", "application/json")
@@ -311,11 +315,13 @@ func TestPasswordChange(t *testing.T) {
 		var errorResp map[string]interface{}
 		err = json.NewDecoder(resp.Body).Decode(&errorResp)
 		require.NoError(t, err)
-		assert.Contains(t, errorResp["error"], "8 characters")
+		// New validation requires 12+ characters
+		assert.Contains(t, errorResp["error"], "12 characters")
 	})
 
 	t.Run("PasswordChange fails without authentication", func(t *testing.T) {
-		reqBody := bytes.NewBufferString(`{"old_password":"password123","new_password":"newPassword456"}`)
+		// Use strong password for new_password
+		reqBody := bytes.NewBufferString(`{"old_password":"password123","new_password":"NewPassword456!"}`)
 		req := httptest.NewRequest("PUT", "/api/v1/me/password", reqBody)
 		req.Header.Set("Content-Type", "application/json")
 		// No Authorization header

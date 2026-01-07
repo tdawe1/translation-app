@@ -16,6 +16,7 @@ import (
 	apperrors "github.com/tdawe1/translation-app/internal/errors"
 	"github.com/tdawe1/translation-app/internal/email"
 	"github.com/tdawe1/translation-app/internal/middleware"
+	"github.com/tdawe1/translation-app/internal/password"
 )
 
 // getAPIError safely converts an error to *apperrors.APIError.
@@ -75,9 +76,9 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
 	}
 
-	// Validate input
-	if len(req.Password) < 8 {
-		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrWeakPassword, "Password must be at least 8 characters")
+	// Validate password strength (P2 fix - enforces 12+ chars, upper, lower, digit, special)
+	if err := password.ValidateStrength(req.Password); err != nil {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrWeakPassword, err.Error())
 	}
 
 	result, apiErr := h.userService.Register(auth.RegisterRequest{
@@ -327,9 +328,9 @@ func (h *AuthHandler) ChangePassword(c *fiber.Ctx) error {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
 	}
 
-	// Validate new password length
-	if len(req.NewPassword) < 8 {
-		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrWeakPassword, "Password must be at least 8 characters")
+	// Validate password strength (P2 fix - enforces 12+ chars, upper, lower, digit, special)
+	if err := password.ValidateStrength(req.NewPassword); err != nil {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrWeakPassword, err.Error())
 	}
 
 	// Change password via service
