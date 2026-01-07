@@ -54,7 +54,8 @@ frontend_start() {
 
     # Start dev server in background with logging
     # Using nohup to ensure the process continues if shell exits
-    nohup npm run dev > "$FRONTEND_LOG_FILE" 2>&1 &
+    # PORT env var tells Next.js which port to listen on
+    nohup env "PORT=$FRONTEND_PORT" npm run dev > "$FRONTEND_LOG_FILE" 2>&1 &
     local frontend_pid=$!
 
     # Save PID
