@@ -9,7 +9,10 @@
     "lint": "next lint",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "test:smoke": "playwright test",
+    "test:smoke:headed": "playwright test --headed",
+    "test:smoke:debug": "playwright test --debug"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",
@@ -20,6 +23,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
