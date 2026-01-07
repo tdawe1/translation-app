@@ -45,10 +45,13 @@ Thumbs.db
 # Logs
 logs/
 *.log
-
+*.agents/
+*.plans/
 # Claude state (not committed)
 .claude/state.md
 
 # Build
 dist/
 build/
+firebase-debug.log
+/home/thomas/translation-app/docker-compose.production.yml

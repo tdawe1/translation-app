@@ -13,14 +13,38 @@ source "$SCRIPT_DIR/functions/frontend.sh"
 source "$SCRIPT_DIR/functions/logs.sh"
 
 #-------------------------------------------------------------------------------
+# Global flags
+#-------------------------------------------------------------------------------
+
+# Verbose mode can be enabled via:
+# 1. --verbose or -v flag
+# 2. VERBOSE environment variable
+# Example: ./dev.sh --verbose up
+parse_verbose_flag() {
+    for arg in "$@"; do
+        case "$arg" in
+            --verbose|-v)
+                VERBOSE=1
+                export VERBOSE
+                ;;
+        esac
+    done
+}
+
+#-------------------------------------------------------------------------------
 # Usage information
 #-------------------------------------------------------------------------------
 
 show_usage() {
     cat <<'EOF'
 Usage: ./dev.sh <command> [options]
+       ./dev.sh [--verbose|-v] <command> [options]
 
 Development environment controller for GengoWatcher SaaS.
+
+Options:
+  --verbose, -v          Enable verbose output for debugging
+                        Shows detailed steps, commands, and environment info
 
 Commands:
   up                    Start all services (docker → backend → frontend)
@@ -40,10 +64,14 @@ Commands:
 
 Examples:
   ./dev.sh up                    # Start everything
+  ./dev.sh --verbose up          # Start with detailed debugging output
   ./dev.sh down                  # Stop everything
-  ./dev.sh logs backend          # Watch backend logs
+  ./dev.sh -v logs backend       # Watch backend logs with verbosity
   ./dev.sh backend restart       # Restart only the backend
   ./dev.sh status                # Check all service statuses
+
+Environment Variables:
+  VERBOSE=1              Enable verbose mode (alternative to --verbose flag)
 
 EOF
 }
@@ -328,12 +356,30 @@ cmd_check() {
 #-------------------------------------------------------------------------------
 
 main() {
+    # Parse verbose flag before anything else
+    # This allows --verbose or -v to appear before or after the command
+    parse_verbose_flag "$@"
+
     # Ensure .dev directory structure exists
     ensure_dev_dirs
 
-    # Parse command
-    local cmd="$1"
-    shift || true
+    # Parse command (skip --verbose and -v flags)
+    local cmd=""
+    local args=()
+    for arg in "$@"; do
+        case "$arg" in
+            --verbose|-v)
+                # Already handled by parse_verbose_flag
+                ;;
+            *)
+                if [ -z "$cmd" ]; then
+                    cmd="$arg"
+                else
+                    args+=("$arg")
+                fi
+                ;;
+        esac
+    done
 
     case "$cmd" in
         up)
@@ -349,16 +395,16 @@ main() {
             cmd_status
             ;;
         logs)
-            cmd_logs "$1"
+            cmd_logs "${args[0]:-}"
             ;;
         backend)
-            cmd_backend "$1"
+            cmd_backend "${args[0]:-}"
             ;;
         frontend)
-            cmd_frontend "$1"
+            cmd_frontend "${args[0]:-}"
             ;;
         docker)
-            cmd_docker "$1"
+            cmd_docker "${args[0]:-}"
             ;;
         check)
             cmd_check

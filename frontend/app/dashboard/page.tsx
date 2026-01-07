@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
   const logout = async () => {
     await authApi.logout();
     sessionStorage.removeItem("access_token");
@@ -77,11 +78,13 @@ export default function DashboardPage() {
 
   // Watcher control handlers
   const handleStart = async () => {
+    setStartError(null);
     try {
       await startWatcher();
       toast.success("Watcher started successfully");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to start watcher";
+      setStartError(message);
       toast.error(message);
     }
   };
@@ -283,6 +286,36 @@ export default function DashboardPage() {
                     Ctrl+K
                   </kbd>
                 </button>
+
+                {/* Inline error message */}
+                {startError && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 flex items-start gap-2">
+                    <span aria-hidden="true">✕</span>
+                    <div className="flex-1">
+                      <p className="font-medium">Error starting watcher</p>
+                      <p className="text-red-600 mt-1">{startError}</p>
+                      {startError.includes("Unauthorized") && (
+                        <p className="text-red-600 text-xs mt-2">
+                          Your session may have expired. Try{" "}
+                          <button
+                            onClick={logout}
+                            className="underline hover:text-red-800"
+                          >
+                            signing out and back in
+                          </button>
+                          .
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setStartError(null)}
+                      className="text-red-400 hover:text-red-600"
+                      aria-label="Dismiss error"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -2,6 +2,9 @@
 # _lib.sh - Shared functions for all dev scripts
 # Provides logging, helpers, and common utilities
 
+# Verbose mode flag (can be set via ./dev.sh --verbose or -v)
+VERBOSE="${VERBOSE:-0}"
+
 #-------------------------------------------------------------------------------
 # Colors and terminal output
 #-------------------------------------------------------------------------------
@@ -41,6 +44,60 @@ log_warn() {
 # log_step - Print step header in bold cyan
 log_step() {
     echo -e "${C_BOLD}${C_CYAN}==>${C_RESET} $*"
+}
+
+#-------------------------------------------------------------------------------
+# Verbose logging (only shown when VERBOSE=1)
+#-------------------------------------------------------------------------------
+
+# log_verbose - Print verbose message (only when VERBOSE mode is enabled)
+log_verbose() {
+    if [ "$VERBOSE" -eq 1 ]; then
+        echo -e "${C_DIM}[VERBOSE]${C_RESET} $*"
+    fi
+}
+
+# log_command - Print the command being executed (always in verbose mode)
+log_command() {
+    if [ "$VERBOSE" -eq 1 ]; then
+        echo -e "${C_DIM}\$ $*${C_RESET}"
+    fi
+}
+
+# show_env_vars - Display loaded environment variables with secrets redacted
+# Usage: show_env_vars <env_file_path>
+show_env_vars() {
+    local env_file="$1"
+
+    if [ "$VERBOSE" -eq 1 ]; then
+        echo -e "${C_DIM}─── Environment Variables ───${C_RESET}"
+        if [ -f "$env_file" ]; then
+            while IFS= read -r line || [ -n "$line" ]; do
+                # Skip comments and empty lines
+                case "$line" in
+                    \#*|'') continue ;;
+                esac
+
+                # Parse KEY=value
+                local key="${line%%=*}"
+                local value="${line#*=}"
+
+                # Redact secret values
+                case "$key" in
+                    *SECRET*|*SECRET*|*PASSWORD*|*TOKEN*|*KEY*|*API_KEY*)
+                        if [ -n "$value" ]; then
+                            value="${value:0:4}...${value: -4}"
+                        fi
+                        ;;
+                esac
+
+                printf "  ${C_DIM}%s${C_RESET}=%s\n" "$key" "$value"
+            done < "$env_file"
+        else
+            echo -e "  ${C_DIM}(no .env file at: $env_file)${C_RESET}"
+        fi
+        echo -e "${C_DIM}────────────────────────────────${C_RESET}"
+    fi
 }
 
 #-------------------------------------------------------------------------------
@@ -457,4 +514,36 @@ get_docker_compose_cmd() {
         log_error "docker-compose not found"
         return 1
     fi
+}
+
+#-------------------------------------------------------------------------------
+# Environment file loading
+#-------------------------------------------------------------------------------
+
+# load_env_file - Load environment variables from a .env file
+# Usage: load_env_file <path_to_env_file>
+# Exports variables into the current shell environment
+load_env_file() {
+    local env_file="$1"
+
+    if [ ! -f "$env_file" ]; then
+        log_warn "Environment file not found: $env_file"
+        return 1
+    fi
+
+    log_info "Loading environment from: $env_file"
+
+    # Read the .env file line by line and export variables
+    # Skip comments, empty lines, and handle variable export
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and empty lines
+        case "$line" in
+            \#*|'') continue ;;
+        esac
+
+        # Export the variable (handles KEY=value format)
+        export "$line"
+    done < "$env_file"
+
+    return 0
 }

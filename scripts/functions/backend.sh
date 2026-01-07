@@ -47,40 +47,67 @@ backend_start() {
     fi
 
     log_step "Starting Go backend..."
+    log_verbose "Working directory: $project_root/backend"
 
     cd "$project_root/backend" || return 1
 
+    # Show environment being loaded
+    show_env_vars ".env"
+
     # Build first to ensure we have the binary
     if [ ! -f "server" ]; then
+        log_verbose "Binary not found, building..."
         backend_build || return 1
+    else
+        log_verbose "Using existing binary"
     fi
 
+    # Construct the start command for display
+    local start_cmd="set -a && source .env && set +a && ./server"
+    log_command "$start_cmd"
+
     # Start server in background with logging
-    # Using nohup to ensure the process continues if shell exits
-    nohup ./server > "$BACKEND_LOG_FILE" 2>&1 &
+    # Use env -S to load environment from .env file before starting server
+    # This ensures the Go backend can access OAuth credentials via os.Getenv()
+    log_verbose "Starting background process with nohup..."
+    nohup env -i "$(which bash)" -c "$start_cmd" > "$BACKEND_LOG_FILE" 2>&1 &
     local backend_pid=$!
+
+    log_verbose "Process started with PID: $backend_pid"
 
     # Save PID
     save_pid "$BACKEND_PID_FILE" "$backend_pid"
 
     # Wait a moment for the process to start
+    log_verbose "Waiting for process to initialize..."
     sleep 2
 
     # Verify it's still running
     if ! pid_is_running "$BACKEND_PID_FILE"; then
         log_error "Backend failed to start. Check log: $BACKEND_LOG_FILE"
+        log_verbose "Showing last 10 lines of log:"
+        if [ -f "$BACKEND_LOG_FILE" ]; then
+            tail -10 "$BACKEND_LOG_FILE" | sed 's/^/  /' >&2
+        fi
         return 1
     fi
+
+    log_verbose "Process is running, waiting for port $BACKEND_PORT to be ready..."
 
     # Wait for the port to be ready
     if ! wait_for_port "$BACKEND_PORT" 30; then
         log_error "Backend did not start listening on port $BACKEND_PORT"
+        log_error "Check log for errors: $BACKEND_LOG_FILE"
         kill_pid "$BACKEND_PID_FILE"
         return 1
     fi
 
-    log_success "Backend started (PID: $backend_pid, port: $BACKEND_PORT)"
-    log_info "Log file: $BACKEND_LOG_FILE"
+    log_success "Backend started"
+    echo -e "  ${C_DIM}PID:${C_RESET}       $backend_pid"
+    echo -e "  ${C_DIM}Port:${C_RESET}      $BACKEND_PORT"
+    echo -e "  ${C_DIM}Log:${C_RESET}       $BACKEND_LOG_FILE"
+    echo -e "  ${C_DIM}Health:${C_RESET}    http://localhost:$BACKEND_PORT/health"
+
     return 0
 }
 
@@ -90,20 +117,44 @@ backend_stop() {
 
     if ! pid_is_running "$BACKEND_PID_FILE"; then
         log_warn "Backend is not running"
+        # Clean up stale PID file
+        rm -f "$BACKEND_PID_FILE" 2>/dev/null || true
         return 0
     fi
 
+    local pid
+    pid=$(cat "$BACKEND_PID_FILE")
+    log_verbose "Found running process with PID: $pid"
+
+    log_verbose "Sending SIGTERM (graceful shutdown)..."
     kill_pid "$BACKEND_PID_FILE" TERM
 
     # Give it a moment to shut down
-    sleep 1
+    log_verbose "Waiting for graceful shutdown..."
+    local count=0
+    while [ $count -lt 5 ] && pid_is_running "$BACKEND_PID_FILE"; do
+        sleep 1
+        ((count++))
+        echo -n "."
+    done
+    echo ""
 
     if pid_is_running "$BACKEND_PID_FILE"; then
         log_warn "Backend did not stop gracefully, forcing..."
+        log_verbose "Sending SIGKILL (force quit)..."
         kill_pid "$BACKEND_PID_FILE" KILL
+        sleep 1
     fi
 
-    log_success "Backend stopped"
+    # Verify and cleanup
+    if ! pid_is_running "$BACKEND_PID_FILE"; then
+        log_success "Backend stopped"
+        log_verbose "Cleaned up PID file"
+    else
+        log_error "Failed to stop backend (PID: $pid may be stuck)"
+        return 1
+    fi
+
     return 0
 }
 

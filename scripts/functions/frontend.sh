@@ -46,30 +46,52 @@ frontend_start() {
     fi
 
     log_step "Starting Next.js frontend..."
+    log_verbose "Working directory: $project_root/frontend"
+    log_verbose "Node version: $(node --version 2>/dev/null || echo 'not found')"
+    log_verbose "npm version: $(npm --version 2>/dev/null || echo 'not found')"
 
     cd "$project_root/frontend" || return 1
 
+    # Show frontend env being used
+    show_env_vars ".env.local"
+
     # Ensure dependencies are installed
-    frontend_install_deps || return 1
+    if [ ! -d "node_modules" ]; then
+        log_verbose "node_modules not found, installing dependencies..."
+        frontend_install_deps || return 1
+    else
+        log_verbose "node_modules exists, skipping install"
+    fi
+
+    # Construct the start command for display
+    local start_cmd="PORT=$FRONTEND_PORT npm run dev"
+    log_command "$start_cmd"
 
     # Start dev server in background with logging
-    # Using nohup to ensure the process continues if shell exits
-    # PORT env var tells Next.js which port to listen on
+    log_verbose "Starting background process with nohup..."
     nohup env "PORT=$FRONTEND_PORT" npm run dev > "$FRONTEND_LOG_FILE" 2>&1 &
     local frontend_pid=$!
+
+    log_verbose "Process started with PID: $frontend_pid"
 
     # Save PID
     save_pid "$FRONTEND_PID_FILE" "$frontend_pid"
 
     # Wait for Next.js to start (can take a few seconds)
-    log_info "Waiting for Next.js to start..."
+    log_verbose "Waiting for Next.js to initialize..."
     sleep 5
 
     # Verify it's still running
     if ! pid_is_running "$FRONTEND_PID_FILE"; then
         log_error "Frontend failed to start. Check log: $FRONTEND_LOG_FILE"
+        log_verbose "Showing last 10 lines of log:"
+        if [ -f "$FRONTEND_LOG_FILE" ]; then
+            tail -10 "$FRONTEND_LOG_FILE" | sed 's/^/  /' >&2
+        fi
         return 1
     fi
+
+    log_verbose "Process is running, waiting for port $FRONTEND_PORT to be ready..."
 
     # Wait for the port to be ready (Next.js can take 10-15s on first start)
     if ! wait_for_port "$FRONTEND_PORT" 30; then
@@ -79,9 +101,12 @@ frontend_start() {
         return 1
     fi
 
-    log_success "Frontend started (PID: $frontend_pid, port: $FRONTEND_PORT)"
-    log_info "Log file: $FRONTEND_LOG_FILE"
-    log_info "Visit: http://localhost:$FRONTEND_PORT"
+    log_success "Frontend started"
+    echo -e "  ${C_DIM}PID:${C_RESET}       $frontend_pid"
+    echo -e "  ${C_DIM}Port:${C_RESET}      $FRONTEND_PORT"
+    echo -e "  ${C_DIM}Log:${C_RESET}       $FRONTEND_LOG_FILE"
+    echo -e "  ${C_DIM}URL:${C_RESET}        http://localhost:$FRONTEND_PORT"
+
     return 0
 }
 
@@ -91,20 +116,44 @@ frontend_stop() {
 
     if ! pid_is_running "$FRONTEND_PID_FILE"; then
         log_warn "Frontend is not running"
+        # Clean up stale PID file
+        rm -f "$FRONTEND_PID_FILE" 2>/dev/null || true
         return 0
     fi
 
+    local pid
+    pid=$(cat "$FRONTEND_PID_FILE")
+    log_verbose "Found running process with PID: $pid"
+
+    log_verbose "Sending SIGTERM (graceful shutdown)..."
     kill_pid "$FRONTEND_PID_FILE" TERM
 
     # Give it a moment to shut down
-    sleep 2
+    log_verbose "Waiting for graceful shutdown..."
+    local count=0
+    while [ $count -lt 5 ] && pid_is_running "$FRONTEND_PID_FILE"; do
+        sleep 1
+        ((count++))
+        echo -n "."
+    done
+    echo ""
 
     if pid_is_running "$FRONTEND_PID_FILE"; then
         log_warn "Frontend did not stop gracefully, forcing..."
+        log_verbose "Sending SIGKILL (force quit)..."
         kill_pid "$FRONTEND_PID_FILE" KILL
+        sleep 1
     fi
 
-    log_success "Frontend stopped"
+    # Verify and cleanup
+    if ! pid_is_running "$FRONTEND_PID_FILE"; then
+        log_success "Frontend stopped"
+        log_verbose "Cleaned up PID file"
+    else
+        log_error "Failed to stop frontend (PID: $pid may be stuck)"
+        return 1
+    fi
+
     return 0
 }
 
