@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"testing"
@@ -182,5 +184,15 @@ func TestJWTValidator_ExpiredToken(t *testing.T) {
 	// Should reject expired token
 	if resp.StatusCode != fiber.StatusUnauthorized {
 		t.Errorf("Expected 401 for expired token, got %d", resp.StatusCode)
+	}
+
+	// Parse and verify response body
+	var result map[string]interface{}
+	body, _ := io.ReadAll(resp.Body)
+	json.Unmarshal(body, &result)
+
+	// Verify error code
+	if result["code"] != "INVALID_TOKEN" {
+		t.Errorf("Expected INVALID_TOKEN code, got %v", result["code"])
 	}
 }

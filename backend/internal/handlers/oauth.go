@@ -313,7 +313,7 @@ func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 
 	// Set httpOnly cookie with correct name (#006 fix) and SameSite Strict (#021 fix)
 	c.Cookie(&fiber.Cookie{
-		Name:     "refresh_token",
+		Name:     "session_token",
 		Value:    accessToken,
 		HTTPOnly: true,
 		Secure:   c.Protocol() == "https",

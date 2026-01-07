@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -10,6 +11,39 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// validateJWTSecretOnStartup validates JWT_SECRET at application startup.
+// Fails fast in production if secret is missing or too short.
+// Logs warnings in development but allows startup.
+func ValidateJWTSecretOnStartup() {
+	env := os.Getenv("ENV")
+	secret := os.Getenv("JWT_SECRET")
+
+	switch env {
+	case "production":
+		if secret == "" || len(secret) < minSecretLength {
+			emptyStr := "false"
+			if secret == "" {
+				emptyStr = "true"
+			}
+			log.Fatal("FATAL: JWT_SECRET must be set and >= 32 characters in production. " +
+				"Current state: empty=" + emptyStr +
+				", length=" + fmt.Sprint(len(secret)))
+		}
+	case "", "development":
+		if secret == "" {
+			log.Printf("WARNING: JWT_SECRET not set, using development default. DO NOT SHIP THIS.")
+			log.Printf("WARNING: Set JWT_SECRET to a random string of >= 32 characters.")
+		} else if len(secret) < minSecretLength {
+			log.Printf("WARNING: JWT_SECRET too short (%d chars). Use >= 32 chars for production.", len(secret))
+		}
+	default:
+		// Test or other environments
+		if secret == "" {
+			log.Printf("WARNING: JWT_SECRET not set in '%s' environment", env)
+		}
+	}
+}
 
 const (
 	// minSecretLength is the minimum required length for JWT secret (256 bits for HS256)

@@ -168,9 +168,18 @@ func (s *Service) HandleOAuthLogin(ctx context.Context, provider Provider, code 
 		return nil, err
 	}
 
+	// Handle OAuth users without email (GitHub doesn't require email)
+	// Generate a placeholder email using username: username@github.users.noreply
+	userEmail := userInfo.Email
+	if userEmail == "" {
+		// Use a special domain that won't conflict with real emails
+		// Format: {provider_user_id}@{provider}.oauth.local
+		userEmail = fmt.Sprintf("%s@%s.oauth.local", userInfo.ID, provider)
+	}
+
 	// Create new user (#015 fix - handle race condition with unique constraint)
 	user = models.User{
-		Email:         userInfo.Email,
+		Email:         userEmail,
 		EmailVerified: userInfo.Verified,
 		IsActive:      true,
 	}
