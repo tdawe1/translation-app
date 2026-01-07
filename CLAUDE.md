@@ -460,6 +460,18 @@ REDIS_URL=                     # Redis connection string
 PORT=8000                      # Fiber server port
 COOKIE_SECURE=false            # Set true in production
 
+# Database Connection Pool
+DB_MAX_OPEN_CONNS=25           # Maximum open connections (default: 25)
+DB_MAX_IDLE_CONNS=10           # Maximum idle connections (default: 10)
+DB_CONN_MAX_LIFETIME=1h        # Connection lifetime before refresh (default: 1h)
+DB_CONN_MAX_IDLE_TIME=10m      # Idle time before connection closed (default: 10m)
+
+# Pool Tuning Guidelines:
+# - Small deployment (1-2 cores): DB_MAX_OPEN_CONNS=15
+# - Medium deployment (4-8 cores): DB_MAX_OPEN_CONNS=50
+# - Large deployment (16+ cores): DB_MAX_OPEN_CONNS=100
+# - Set DB_MAX_IDLE_CONNS to ~40% of DB_MAX_OPEN_CONNS
+
 # Email (Resend)
 RESEND_API_KEY=
 FROM_EMAIL=

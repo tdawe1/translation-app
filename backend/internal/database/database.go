@@ -81,6 +81,28 @@ func New(cfg *config.Config) (Database, error) {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
+	// Configure connection pool from config
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sql.DB: %w", err)
+	}
+
+	// Set maximum number of open connections
+	sqlDB.SetMaxOpenConns(cfg.DBMaxOpenConnections)
+
+	// Set maximum number of idle connections
+	sqlDB.SetMaxIdleConns(cfg.DBMaxIdleConnections)
+
+	// Set maximum connection lifetime (only if configured)
+	if cfg.DBConnMaxLifetime > 0 {
+		sqlDB.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
+	}
+
+	// Set maximum idle time for connections (only if configured)
+	if cfg.DBConnMaxIdleTime > 0 {
+		sqlDB.SetConnMaxIdleTime(cfg.DBConnMaxIdleTime)
+	}
+
 	return &gormDB{DB: db}, nil
 }
 

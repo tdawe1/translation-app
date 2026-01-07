@@ -4,7 +4,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds all application configuration
@@ -20,6 +22,12 @@ type Config struct {
 	DBPassword string
 	DBName     string
 	DBSSLMode  string
+
+	// Database connection pool settings
+	DBMaxOpenConnections int
+	DBMaxIdleConnections int
+	DBConnMaxLifetime    time.Duration
+	DBConnMaxIdleTime    time.Duration
 
 	// Security
 	JWTSecret                string
@@ -51,16 +59,20 @@ type Config struct {
 // It will panic if required values are missing in production
 func Load() *Config {
 	cfg := &Config{
-		Port:                      getEnv("PORT", "8000"),
-		Env:                       getEnv("ENV", "development"),
-		DBHost:                    getEnv("DB_HOST", "localhost"),
-		DBPort:                    getEnv("DB_PORT", "5433"),
-		DBUser:                    getEnv("DB_USER", "gengo"),
-		DBPassword:                getEnv("DB_PASSWORD", "devpass"),
-		DBName:                    getEnv("DB_NAME", "gengowatcher"),
-		DBSSLMode:                 getEnv("DB_SSLMODE", "disable"),
-		JWTSecret:                 getEnv("JWT_SECRET", ""),
-		LemonSqueezyWebhookSecret: getEnv("LEMONSQUEZY_WEBHOOK_SECRET", ""),
+		Port:                 getEnv("PORT", "8000"),
+		Env:                  getEnv("ENV", "development"),
+		DBHost:               getEnv("DB_HOST", "localhost"),
+		DBPort:               getEnv("DB_PORT", "5433"),
+		DBUser:               getEnv("DB_USER", "gengo"),
+		DBPassword:           getEnv("DB_PASSWORD", "devpass"),
+		DBName:               getEnv("DB_NAME", "gengowatcher"),
+		DBSSLMode:            getEnv("DB_SSLMODE", "disable"),
+		DBMaxOpenConnections: getEnvInt("DB_MAX_OPEN_CONNS", 25),
+		DBMaxIdleConnections: getEnvInt("DB_MAX_IDLE_CONNS", 10),
+		DBConnMaxLifetime:    getEnvDuration("DB_CONN_MAX_LIFETIME", 1*time.Hour),
+		DBConnMaxIdleTime:    getEnvDuration("DB_CONN_MAX_IDLE_TIME", 10*time.Minute),
+		JWTSecret:            getEnv("JWT_SECRET", ""),
+		LemonSqueezyWebhookSecret: getEnv("LEMONSQUEE_WEBHOOK_SECRET", ""),
 		ResendAPIKey:              getEnv("RESEND_API_KEY", ""),
 		FromEmail:                 getEnv("FROM_EMAIL", "noreply@gengowatcher.example"),
 		FromName:                  getEnv("FROM_NAME", "GengoWatcher"),
@@ -133,6 +145,26 @@ func (c *Config) TrustedProxyList() []string {
 func getEnv(key, defaultVal string) string {
 	if val := os.Getenv(key); val != "" {
 		return val
+	}
+	return defaultVal
+}
+
+// getEnvInt retrieves an environment variable as an integer or returns the default value
+func getEnvInt(key string, defaultVal int) int {
+	if val := os.Getenv(key); val != "" {
+		if intVal, err := strconv.Atoi(val); err == nil {
+			return intVal
+		}
+	}
+	return defaultVal
+}
+
+// getEnvDuration retrieves an environment variable as a duration or returns the default value
+func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
+	if val := os.Getenv(key); val != "" {
+		if dur, err := time.ParseDuration(val); err == nil {
+			return dur
+		}
 	}
 	return defaultVal
 }
