@@ -49,7 +49,9 @@ Transforming GengoWatcher from a localhost-only tool to a remotely-hosted multi-
 ```
 translation-app/
 ├── backend/                    # Go backend service
-│   ├── cmd/server/            # Application entry point
+│   ├── cmd/
+│   │   ├── server/            # Application entry point
+│   │   └── admin_seed/        # Admin seeding CLI tool
 │   ├── internal/              # Private application code
 │   │   ├── auth/              # JWT, password hashing, user service
 │   │   ├── config/            # Environment-based configuration
@@ -61,6 +63,7 @@ translation-app/
 │   │   ├── models/            # GORM models (User, Watcher, Subscription, etc.)
 │   │   ├── oauth/             # OAuth provider logic
 │   │   ├── password/          # Password hashing utilities
+│   │   ├── seeds/             # Admin seeding for development/testing
 │   │   ├── service/           # Token service (verification, magic link, reset)
 │   │   └── watcher/           # RSS/WebSocket monitoring logic
 │   ├── tests/                 # Backend integration tests
@@ -157,6 +160,45 @@ npm run test:coverage   # Coverage report
 # Linting
 npm run lint
 ```
+
+### Admin Seeding (Development & Testing)
+
+The admin seeding system creates or updates admin users atomically with proper JWT tokens.
+
+**Via CLI Tool**:
+```bash
+cd backend
+go run ./cmd/admin_seed -email admin@example.com -password AdminPass123!
+# Output: User ID, email, role, and JWT token (valid 15 minutes)
+```
+
+**Via HTTP Endpoint** (dev-only):
+```bash
+# Only available when ENV=development
+POST /dev/seed-admin
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "SecurePass123!"
+}
+
+# Response: { "user_id": "...", "email": "...", "role": "admin", "token": "..." }
+```
+
+**In Tests**:
+```go
+import "github.com/tdawe1/translation-app/internal/seeds"
+
+// Creates admin user or returns existing if email matches
+adminSeeder := seeds.NewAdminSeeder(db, tokenSvc)
+user, token, err := adminSeeder.EnsureAdminUser("admin@test.com", "Pass123!")
+```
+
+The `AdminSeeder` atomically creates:
+- `User` with `role=admin`
+- `WatcherConfig` (default settings)
+- `WatcherState` (stopped)
 
 ### Docker Services
 

@@ -19,6 +19,7 @@ import (
 	"github.com/tdawe1/translation-app/internal/handlers"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/models"
+	"github.com/tdawe1/translation-app/internal/seeds"
 	"github.com/tdawe1/translation-app/internal/service"
 	"github.com/tdawe1/translation-app/internal/watcher"
 )
@@ -100,6 +101,9 @@ func main() {
 	magicLinkHandler := handlers.NewMagicLinkHandler(db, tokenSvc, emailSvc, tokenHandlerSvc, cfg.CookieSecure)
 	passwordResetHandler := handlers.NewPasswordResetHandler(db, emailSvc, tokenHandlerSvc)
 
+	// Admin handler (requires admin role)
+	adminHandler := handlers.NewAdminHandler(gormDB)
+
 	// Initialize watcher manager
 	watcherManager := watcher.NewUserWatcherManager(db, redisClient)
 	watcherHandler := handlers.NewWatcherHandler(watcherManager, db)
@@ -138,6 +142,48 @@ func main() {
 			"service": "gengowatcher-saas",
 		})
 	})
+
+	// Dev-only admin seeding endpoint (for testing, development only)
+	if cfg.IsDevelopment() {
+		dev := app.Group("/dev")
+		adminSeeder := seeds.NewAdminSeeder(gormDB, tokenSvc)
+
+		// POST /dev/seed-admin - creates or updates an admin user and returns JWT
+		// This endpoint is ONLY available in development mode
+		dev.Post("/seed-admin", func(c *fiber.Ctx) error {
+			type SeedAdminRequest struct {
+				Email    string `json:"email"`
+				Password string `json:"password"`
+			}
+
+			var req SeedAdminRequest
+			if err := c.BodyParser(&req); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": "Invalid request body",
+				})
+			}
+
+			if req.Email == "" || req.Password == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": "email and password are required",
+				})
+			}
+
+			user, token, err := adminSeeder.EnsureAdminUser(req.Email, req.Password)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"user_id":  user.ID.String(),
+				"email":   user.Email,
+				"role":    user.Role,
+				"token":   token,
+			})
+		})
+	}
 
 	// API routes
 	api := app.Group("/api/v1")
@@ -189,6 +235,15 @@ func main() {
 
 	// WebSocket ticket endpoint (protected, used to get short-lived ticket for WS connection)
 	protected.Post("/auth/ws-ticket", wsHandler.GetWSTicket)
+
+	// Admin routes (protected + require admin role)
+	adminGroup := api.Group("/admin")
+	adminGroup.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
+	adminGroup.Use(middleware.RequireAdmin())
+	adminLimiter := middleware.AdminLimiters(trustedProxies)
+	adminGroup.Get("/users", adminLimiter.Management, adminHandler.ListUsers)
+	adminGroup.Patch("/users/:id/role", adminLimiter.Management, adminHandler.UpdateUserRole)
+	adminGroup.Delete("/users/:id", adminLimiter.Management, adminHandler.DeleteUser)
 
 	// Webhook routes (public, verified via signature)
 	webhooks := api.Group("/webhooks")
