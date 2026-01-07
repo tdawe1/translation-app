@@ -55,3 +55,4 @@ dist/
 build/
 firebase-debug.log
 /home/thomas/translation-app/docker-compose.production.yml
+.wakatime-project
