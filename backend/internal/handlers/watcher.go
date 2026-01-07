@@ -38,8 +38,9 @@ func (h *WatcherHandler) getConfigLogic(c *fiber.Ctx, userUUID uuid.UUID) error 
 		// #017 fix - Lazy initialization of watcher config
 		// Explicitly generate ID for composite primary key tables
 		config = models.WatcherConfig{
-			Base:   models.Base{ID: uuid.New()},
-			UserID: userUUID,
+			Base:                  models.Base{ID: uuid.New()},
+			UserID:                userUUID,
+			IncludedLanguagePairs: "[]", // Valid JSON array for jsonb column
 		}
 		if createErr := h.db.Create(&config).Error; createErr != nil {
 			// Log actual error for debugging
@@ -134,8 +135,10 @@ func (h *WatcherHandler) getStateLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	if err := h.db.Where("user_id = ?", userUUID).First(&state).Error; err != nil {
 		// #017 fix - Lazy initialization of watcher state
 		state = models.WatcherState{
-			UserID:        userUUID,
-			WatcherStatus: "stopped",
+			UserID:           userUUID,
+			WatcherStatus:    "stopped",
+			LastSeenJobIDs:   "[]", // Valid JSON array for jsonb column
+			RecentJobHistory: "[]", // Valid JSON array for jsonb column
 		}
 		if createErr := h.db.Create(&state).Error; createErr != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

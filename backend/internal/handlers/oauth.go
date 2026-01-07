@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -38,17 +39,18 @@ var statePattern = regexp.MustCompile(`^[a-zA-Z0-9]{32,64}$`)
 // NewOAuthHandler creates a new OAuth handler
 // Receives config to ensure OAuth credentials are loaded from centralized configuration
 func NewOAuthHandler(db database.Database, tokenService *auth.TokenService, cfg *config.Config) *OAuthHandler {
-	// Backend URL for OAuth callbacks (where GitHub sends the code)
-	backendURL := cfg.OAuthRedirectURL
-	if backendURL == "" {
-		backendURL = "http://localhost:8001"
+	// Backend URL for OAuth callbacks (where GitHub/Google sends the code)
+	// This should be the backend URL with the callback endpoint path
+	callbackURL := cfg.OAuthRedirectURL
+	if callbackURL == "" {
+		callbackURL = "http://localhost:8000"
 	}
 
 	// Frontend URL for redirecting users after successful login
-	// Use OAuthRedirectURL (frontend) from config, fallback to default
-	frontendURL := cfg.OAuthRedirectURL
+	// This is where users land after OAuth completes
+	frontendURL := cfg.FrontendURL
 	if frontendURL == "" {
-		frontendURL = "http://localhost:3000"
+		frontendURL = "http://localhost:3001"
 	}
 
 	// Load OAuth config from centralized config
@@ -57,7 +59,7 @@ func NewOAuthHandler(db database.Database, tokenService *auth.TokenService, cfg 
 		GoogleClientSecret: cfg.GoogleOAuthClientSecret,
 		GitHubClientID:     cfg.GitHubOAuthClientID,
 		GitHubClientSecret: cfg.GitHubOAuthClientSecret,
-		FrontendURL:        backendURL, // This is used for callback URLs
+		FrontendURL:        callbackURL, // This is used for callback URLs (backend)
 	}
 
 	h := &OAuthHandler{
@@ -303,7 +305,7 @@ func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 	}
 
 	// Generate JWT for the user
-	accessToken, err := h.tokenService.GenerateAccessToken(user.ID)
+	accessToken, err := h.tokenService.GenerateAccessToken(user.ID, user.Role)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to generate access token",
@@ -323,6 +325,7 @@ func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 	// Return only user info, not token (#002 fix - prevent token leak in response)
 	// But redirect to frontend dashboard for OAuth callback completion
 	if h.frontendRedirect != "" {
+		log.Printf("OAuth redirect: Redirecting user to %s", h.frontendRedirect+"/dashboard")
 		return c.Redirect(h.frontendRedirect + "/dashboard")
 	}
 	return c.JSON(fiber.Map{

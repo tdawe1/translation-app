@@ -91,6 +91,9 @@ func main() {
 	// Initialize token service for email verification, magic link, and password reset
 	tokenHandlerSvc := service.NewTokenService(gormDB)
 
+	// Log OAuth config for debugging
+	log.Printf("OAuth config: FrontendURL=%s, OAuthRedirectURL=%s", cfg.FrontendURL, cfg.OAuthRedirectURL)
+
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, cfg.CookieSecure)
 	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc, cfg)
@@ -98,7 +101,7 @@ func main() {
 
 	// New dedicated handlers for email verification, magic link, and password reset
 	emailVerificationHandler := handlers.NewEmailVerificationHandler(db, tokenSvc, emailSvc, tokenHandlerSvc)
-	magicLinkHandler := handlers.NewMagicLinkHandler(db, tokenSvc, emailSvc, tokenHandlerSvc, cfg.CookieSecure)
+	magicLinkHandler := handlers.NewMagicLinkHandler(db, tokenSvc, emailSvc, tokenHandlerSvc, cfg.CookieSecure, cfg.FrontendURL)
 	passwordResetHandler := handlers.NewPasswordResetHandler(db, emailSvc, tokenHandlerSvc)
 
 	// Admin handler (requires admin role)

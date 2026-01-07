@@ -20,16 +20,18 @@ type MagicLinkHandler struct {
 	tokenService    *service.TokenService
 	emailService    *email.Service
 	cookieSecure    bool
+	frontendURL     string // Frontend URL for redirects after successful auth
 }
 
 // NewMagicLinkHandler creates a new magic link handler
-func NewMagicLinkHandler(db database.Database, tokenAuthService *auth.TokenService, emailService *email.Service, tokenSvc *service.TokenService, cookieSecure bool) *MagicLinkHandler {
+func NewMagicLinkHandler(db database.Database, tokenAuthService *auth.TokenService, emailService *email.Service, tokenSvc *service.TokenService, cookieSecure bool, frontendURL string) *MagicLinkHandler {
 	return &MagicLinkHandler{
 		db:              db,
 		tokenAuthService: tokenAuthService,
 		tokenService:    tokenSvc,
 		emailService:    emailService,
 		cookieSecure:    cookieSecure,
+		frontendURL:     frontendURL,
 	}
 }
 
@@ -161,7 +163,7 @@ func (h *MagicLinkHandler) VerifyMagicLink(c *fiber.Ctx) error {
 	}
 
 	// Generate JWT token
-	accessToken, err := h.tokenAuthService.GenerateAccessToken(user.ID)
+	accessToken, err := h.tokenAuthService.GenerateAccessToken(user.ID, user.Role)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate access token",
@@ -182,8 +184,13 @@ func (h *MagicLinkHandler) VerifyMagicLink(c *fiber.Ctx) error {
 		})
 
 		// Redirect to frontend with success indicator
-		frontendURL := "http://localhost:3000/dashboard?auth=success"
-		return c.Redirect(frontendURL)
+		frontendURL := h.frontendURL
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3001/dashboard?auth=success"
+	} else {
+		frontendURL = frontendURL + "/dashboard?auth=success"
+	}
+	return c.Redirect(frontendURL)
 	}
 
 	// POST flow: return JSON response with token

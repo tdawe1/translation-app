@@ -187,8 +187,10 @@ class HttpClient {
         credentials: "include", // Send httpOnly cookies
       });
 
-      // Handle 401 Unauthorized - clear token and throw for auth store to handle
+      // Handle 401 Unauthorized - try to read error message first
       if (response.status === 401) {
+        // Try to read the actual error message from the response body
+        const data = await response.json().catch(() => ({}));
         sessionStorage.removeItem("access_token");
         // If optional mode, return null instead of throwing
         if (options.optional) {
@@ -196,7 +198,11 @@ class HttpClient {
         }
         // Don't redirect here - let the auth store handle routing
         // This prevents duplicate redirects and allows the auth store to manage state
-        throw new ApiErrorClass("Unauthorized", "UNAUTHORIZED");
+        throw new ApiErrorClass(
+          (data.error as string) || "Unauthorized",
+          (data.code as string) || "UNAUTHORIZED",
+          data.details as Record<string, unknown> | undefined
+        );
       }
 
       // Handle other errors
