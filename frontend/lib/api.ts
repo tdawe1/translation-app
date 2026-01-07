@@ -122,6 +122,15 @@ class HttpClient {
   }
 
   /**
+   * Check if request deduplication is enabled via environment variable
+   * Disabled in development by default to expose race conditions during testing
+   */
+  private get enableDeduplication(): boolean {
+    // Default to true for safety (enable deduplication) unless explicitly disabled
+    return process.env.NEXT_PUBLIC_ENABLE_REQUEST_DEDUP !== "false";
+  }
+
+  /**
    * Check if we have a token before making authenticated requests
    * Returns true if token exists, false otherwise
    */
@@ -150,11 +159,13 @@ class HttpClient {
     const method = options.method || "GET";
     const body = options.body as string | undefined;
 
-    // Check for in-flight request (deduplication)
-    const cacheKey = this.getCacheKey(method, path, body);
-    const existingRequest = this.pendingRequests.get(cacheKey) as Promise<T> | undefined;
-    if (existingRequest) {
-      return existingRequest;
+    // Check for in-flight request (deduplication) - only if enabled
+    if (this.enableDeduplication) {
+      const cacheKey = this.getCacheKey(method, path, body);
+      const existingRequest = this.pendingRequests.get(cacheKey) as Promise<T> | undefined;
+      if (existingRequest) {
+        return existingRequest;
+      }
     }
 
     // Add access token from sessionStorage if available
@@ -201,13 +212,16 @@ class HttpClient {
       return response.json() as Promise<T>;
     })();
 
-    // Store the promise for deduplication
-    this.pendingRequests.set(cacheKey, requestPromise);
+    // Store the promise for deduplication and clean up after completion
+    if (this.enableDeduplication) {
+      const cacheKey = this.getCacheKey(method, path, body);
+      this.pendingRequests.set(cacheKey, requestPromise);
 
-    // Clean up after request completes (success or failure)
-    requestPromise.finally(() => {
-      this.pendingRequests.delete(cacheKey);
-    });
+      // Clean up after request completes (success or failure)
+      requestPromise.finally(() => {
+        this.pendingRequests.delete(cacheKey);
+      });
+    }
 
     return requestPromise;
   }
@@ -311,4 +325,4 @@ export const oauthApi = {
 // Exports
 // ============================================================
 
-export { client, ApiErrorClass as ApiError };
+export { client, HttpClient, ApiErrorClass as ApiError };
