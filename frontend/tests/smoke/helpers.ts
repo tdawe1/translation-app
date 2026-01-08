@@ -1,30 +1,34 @@
 import { test as base, Page } from '@playwright/test';
 import type { TestUser } from './types';
-import { DEFAULT_TEST_PASSWORD } from './types';
+import { DEFAULT_TEST_PASSWORD, shouldFilterConsoleError } from './types';
 
 /**
- * Generate a unique test user per test run
- * Uses timestamp + random suffix to prevent email conflicts
+ * Generate a unique test admin user per test run
+ * Uses timestamp + random suffix to prevent email conflicts.
+ * Uses a fixed domain for admin users.
  */
-export function generateTestUser(): TestUser {
+export function generateTestAdmin(): TestUser {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(7);
   return {
-    email: `smoke-test-${timestamp}-${random}@example.com`,
+    email: `smoke-admin-${timestamp}-${random}@admin.local`,
     password: DEFAULT_TEST_PASSWORD,
     userId: '',
   };
 }
 
 /**
- * Create a test user via the backend API
- * Must be called before attempting to login in tests
+ * Create (or update) an admin user via the dev seed endpoint.
+ * This endpoint is only available in development and returns a valid JWT token.
+ *
+ * This is faster and more reliable than email/password registration for tests.
  *
  * @param user - TestUser object with email and password
- * @throws Error if registration fails
+ * @returns JWT access token
+ * @throws Error if seeding fails
  */
-export async function createTestUser(user: TestUser): Promise<void> {
-  const response = await fetch('http://localhost:8000/api/v1/auth/register', {
+export async function seedAdminUser(user: TestUser): Promise<string> {
+  const response = await fetch('http://localhost:8000/dev/seed-admin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -35,94 +39,67 @@ export async function createTestUser(user: TestUser): Promise<void> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Failed to create test user: ${response.statusText} - ${errorText}`);
+    throw new Error(`Failed to seed admin user: ${response.statusText} - ${errorText}`);
   }
 
   const data = await response.json();
   user.userId = data.user_id || data.id || '';
+  return data.token as string;
 }
 
 /**
- * Delete a test user via the backend API
- * Attempts cleanup even if it fails (logs error but doesn't throw)
- *
- * @param userId - UUID of the user to delete
- * @param accessToken - Valid JWT for authentication
- */
-export async function deleteTestUser(userId: string, accessToken: string): Promise<void> {
-  try {
-    await fetch(`http://localhost:8000/api/v1/users/${userId}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    });
-  } catch (error) {
-    // Log but don't throw - cleanup shouldn't fail the test
-    console.warn(`Failed to cleanup test user ${userId}:`, error);
-  }
-}
-
-/**
- * Perform login via UI and verify success
- * Handles the full login flow including redirect verification
+ * Set the JWT token in sessionStorage and wait for auth state to propagate.
+ * This bypasses the UI login flow for faster, more reliable tests.
  *
  * @param page - Playwright Page object
- * @param email - User email
- * @param password - User password
+ * @param token - JWT access token
  */
-export async function loginViaUI(
+export async function authenticateWithToken(
   page: Page,
-  email: string,
-  password: string
+  token: string
 ): Promise<void> {
-  // Navigate to login page
-  await page.goto('/auth/login');
+  // Set token in sessionStorage (where the auth store expects it)
+  await page.goto('/');
+  await page.evaluate(({ accessToken }) => {
+    sessionStorage.setItem('access_token', accessToken);
+  }, { accessToken: token });
 
-  // Fill credentials
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
+  // Trigger auth state refresh by reloading the page
+  // This ensures the Zustand auth store picks up the token
+  await page.reload();
 
-  // Submit form
-  await page.click('button[type="submit"]');
+  // Navigate to dashboard to verify authentication worked
+  await page.goto('/dashboard');
 
-  // Wait for redirect to dashboard
-  await page.waitForURL('/dashboard', { timeout: 10000 });
-
-  // Verify login succeeded (no error toast visible)
-  const errorToast = page.locator('[data-testid="error-toast"], [role="alert"]').first();
-  if (await errorToast.isVisible({ timeout: 1000 }).catch(() => false)) {
-    const errorText = await errorToast.textContent();
-    throw new Error(`Login failed: error toast displayed - ${errorText}`);
-  }
+  // Wait for dashboard heading by data-testid (more specific than h2)
+  // Using getByTestId is more reliable as it won't match unexpected elements
+  await page.waitForSelector('[data-testid="dashboard-heading"]', { timeout: 10000 });
+  await page.waitForLoadState('domcontentloaded');
 }
 
 /**
- * Extended test fixture with authenticated page
- * Automatically creates a test user and logs in before each test
+ * Extended test fixture with authenticated page using admin token.
+ * Automatically seeds an admin user and authenticates before each test.
+ *
+ * This uses the dev-only seed endpoint which is faster than UI-based login
+ * and provides a consistent admin user for all smoke tests.
  */
 export const test = base.extend<{ authenticatedPage: Page }>({
   authenticatedPage: async ({ page }, use) => {
-    const user = generateTestUser();
-    await createTestUser(user);
+    const adminUser = generateTestAdmin();
+    const token = await seedAdminUser(adminUser);
 
-    // Login via UI
-    await loginViaUI(page, user.email, user.password);
+    // Authenticate by setting token directly (bypasses UI login)
+    await authenticateWithToken(page, token);
 
     // Store user info on page for potential cleanup
-    (page as any).__testUser = user;
+    (page as any).__testUser = adminUser;
 
     await use(page);
 
-    // Cleanup: Attempt to delete test user after test
-    // Note: This is best-effort cleanup - tests should be isolated via unique emails
-    const accessToken = await page.evaluate(() =>
-      sessionStorage.getItem('access_token')
-    );
-    if (accessToken && user.userId) {
-      await deleteTestUser(user.userId, accessToken);
-    }
+    // Note: We don't delete admin users after tests since they're
+    // created with unique emails each run and may be useful for debugging.
+    // The database can be reset via `docker-compose down -v` if needed.
   },
 });
 
@@ -130,3 +107,6 @@ export const test = base.extend<{ authenticatedPage: Page }>({
  * Re-export base test for non-authenticated tests
  */
 export { expect } from '@playwright/test';
+
+// Re-export console error filter from types for convenience
+export { shouldFilterConsoleError };

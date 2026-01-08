@@ -65,6 +65,26 @@ func (w *databaseWrapper) Update(column string, value interface{}) *gorm.DB {
 	return w.db.Update(column, value)
 }
 
+func (w *databaseWrapper) Delete(value interface{}, conds ...interface{}) *gorm.DB {
+	return w.db.Delete(value, conds...)
+}
+
+func (w *databaseWrapper) Offset(offset int) *gorm.DB {
+	return w.db.Offset(offset)
+}
+
+func (w *databaseWrapper) Limit(limit int) *gorm.DB {
+	return w.db.Limit(limit)
+}
+
+func (w *databaseWrapper) Order(value interface{}) *gorm.DB {
+	return w.db.Order(value)
+}
+
+func (w *databaseWrapper) Count(count *int64) *gorm.DB {
+	return w.db.Count(count)
+}
+
 // setupTestDB creates a test database connection for handler tests
 func setupTestDB(t *testing.T) *gorm.DB {
 	dsn := "host=localhost port=5433 user=gengo password=devpass dbname=gengowatcher_test sslmode=disable"

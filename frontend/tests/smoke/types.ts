@@ -24,6 +24,7 @@ export function shouldFilterConsoleError(message: string): boolean {
     'favicon.ico',
     'third-party-domain.com',
     'DevTools failed to load',
+    'Failed to load resource: the server responded with a status of 401',  // Auth check on unauthenticated pages
   ];
 
   return filteredPatterns.some(pattern => message.includes(pattern));
