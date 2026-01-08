@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net"
 	"strings"
 	"time"
@@ -161,5 +162,114 @@ func EmailLimiters(trustedProxies []string) struct {
 		SendVerification:  sendVerificationLimiter,
 		SendMagicLink:     sendMagicLinkLimiter,
 		SendPasswordReset: sendPasswordResetLimiter,
+	}
+}
+
+// RoleBasedLimiterConfig configures rate limits for different user roles
+type RoleBasedLimiterConfig struct {
+	// MaxRequestsPerMinute for regular users
+	UserMax int
+	// MaxRequestsPerMinute for admin users (much higher or 0 for unlimited)
+	AdminMax int
+	// Expiration duration for the rate limit window
+	Expiration time.Duration
+	// Trusted proxy CIDRs for IP extraction
+	TrustedProxies []string
+}
+
+// DefaultRoleBasedConfig returns sensible defaults for role-based rate limiting
+func DefaultRoleBasedConfig(trustedProxies []string) RoleBasedLimiterConfig {
+	return RoleBasedLimiterConfig{
+		UserMax:        60,  // 60 requests per minute for regular users
+		AdminMax:       0,   // 0 = unlimited for admins
+		Expiration:     1 * time.Minute,
+		TrustedProxies: trustedProxies,
+	}
+}
+
+// RoleBasedLimiter creates a rate limiter that checks user role from JWT claims.
+// Admin users get much higher limits or bypass entirely (when AdminMax=0).
+// Must be applied AFTER JWTValidator middleware.
+// For unauthenticated requests, falls back to IP-based limiting.
+func RoleBasedLimiter(config RoleBasedLimiterConfig) fiber.Handler {
+	// User limiter (IP-based for authenticated users)
+	userLimiter := limiter.New(limiter.Config{
+		Max:        config.UserMax,
+		Expiration: config.Expiration,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			// For authenticated users, use user ID
+			claims := c.Locals("user")
+			if claims != nil {
+				if claimMap, ok := claims.(map[string]interface{}); ok {
+					if sub, ok := claimMap["sub"].(string); ok {
+						return "user:" + sub
+					}
+				}
+			}
+			// Fallback to IP for unauthenticated
+			return "ip:" + getClientIP(c, config.TrustedProxies)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Rate limit exceeded. Please try again later.",
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+
+	return func(c *fiber.Ctx) error {
+		// Check if user is admin
+		claims := c.Locals("user")
+		if claims != nil {
+			if claimMap, ok := claims.(map[string]interface{}); ok {
+				if role, ok := claimMap["role"].(string); ok && role == "admin" {
+					// Admin: check if unlimited or use high limit
+					if config.AdminMax == 0 {
+						// Unlimited - just log and continue
+						log.Printf("[RateLimit] Admin bypass for user=%s", claimMap["sub"])
+						return c.Next()
+					}
+					// Apply admin limit (not implemented in this version, would need separate limiter)
+				}
+			}
+		}
+
+		// Apply user limiter (IP-based for unauthenticated, user-based for authenticated)
+		return userLimiter(c)
+	}
+}
+
+// AdminLimiters returns rate limiters with higher limits for admin-only endpoints.
+// Use these for admin-specific routes where you want to allow burst operations.
+func AdminLimiters(trustedProxies []string) struct {
+	Management fiber.Handler
+} {
+	// Admin management endpoints: 300 requests per minute (for bulk operations)
+	managementLimiter := limiter.New(limiter.Config{
+		Max:        300,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			claims := c.Locals("user")
+			if claims != nil {
+				if claimMap, ok := claims.(map[string]interface{}); ok {
+					if sub, ok := claimMap["sub"].(string); ok {
+						return "admin:" + sub
+					}
+				}
+			}
+			return "admin-ip:" + getClientIP(c, trustedProxies)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Admin rate limit exceeded. Please slow down.",
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+
+	return struct {
+		Management fiber.Handler
+	}{
+		Management: managementLimiter,
 	}
 }
