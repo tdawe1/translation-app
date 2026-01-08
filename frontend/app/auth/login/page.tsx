@@ -83,6 +83,7 @@ export default function LoginPage() {
               </label>
               <input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="you@example.com"
                 value={email}
@@ -102,6 +103,7 @@ export default function LoginPage() {
               </label>
               <input
                 id="password"
+                name="password"
                 type="password"
                 placeholder="••••••••"
                 value={password}
@@ -120,6 +122,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
+              name="submit"
               disabled={isLoading}
               className="w-full py-3 bg-neutral-900 text-white text-sm transition-colors duration-150 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >

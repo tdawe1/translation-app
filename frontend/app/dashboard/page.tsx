@@ -22,9 +22,14 @@ export default function DashboardPage() {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const logout = async () => {
-    await authApi.logout();
-    sessionStorage.removeItem("access_token");
-    window.location.href = "/";
+    try {
+      await authApi.logout();
+    } catch (err) {
+      // Continue with logout even if API call fails
+    } finally {
+      sessionStorage.removeItem("access_token");
+      window.location.href = "/";
+    }
   };
 
   // Watcher state and actions
@@ -130,16 +135,18 @@ export default function DashboardPage() {
               GengoWatcher
             </h1>
             <div className="flex items-center gap-4">
-              <span className="font-mono text-xs text-neutral-500 uppercase tracking-widest">
+              <span data-testid="user-email" className="font-mono text-xs text-neutral-500 uppercase tracking-widest">
                 {user?.email}
               </span>
               <Link
+                data-testid="settings-link"
                 href="/settings"
                 className="font-mono text-xs text-neutral-500 uppercase tracking-widest hover:text-blue-600"
               >
                 Settings
               </Link>
               <button
+                data-testid="sign-out-button"
                 onClick={logout}
                 className="font-mono text-xs text-neutral-900 uppercase tracking-widest hover:text-blue-600"
               >
@@ -152,7 +159,7 @@ export default function DashboardPage() {
         {/* Dashboard Content */}
         <div className="max-w-6xl mx-auto px-6 py-12">
           <div className="mb-8">
-            <h2 className="text-4xl font-light tracking-tighter mb-2">
+            <h2 data-testid="dashboard-heading" className="text-4xl font-light tracking-tighter mb-2">
               Dashboard
             </h2>
             <p className="text-neutral-500 font-mono text-xs uppercase tracking-widest">
@@ -173,6 +180,7 @@ export default function DashboardPage() {
                 )}
               </div>
               <p
+                data-testid="watcher-status"
                 role="status"
                 aria-live="polite"
                 className={`text-3xl font-light ${statusDisplay.color}`}
@@ -263,6 +271,7 @@ export default function DashboardPage() {
               </h3>
               <div className="space-y-3">
                 <button
+                  data-testid="start-watcher-button"
                   onClick={handleStart}
                   disabled={isRunning || stateLoading}
                   className="w-full py-3 bg-neutral-900 text-white text-sm transition-colors duration-150 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -270,6 +279,7 @@ export default function DashboardPage() {
                   {stateLoading ? "Loading..." : "Start Watcher"}
                 </button>
                 <button
+                  data-testid="stop-watcher-button"
                   onClick={handleStop}
                   disabled={!isRunning || stateLoading}
                   className="w-full py-3 border border-neutral-300 text-sm transition-colors duration-150 hover:border-red-600 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -277,6 +287,7 @@ export default function DashboardPage() {
                   {stateLoading ? "Loading..." : "Stop Watcher"}
                 </button>
                 <button
+                  data-testid="configure-button"
                   onClick={() => setConfigModalOpen(true)}
                   className="w-full py-3 border border-neutral-300 text-sm transition-colors duration-150 hover:border-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   title="Keyboard shortcut: Ctrl+K"
