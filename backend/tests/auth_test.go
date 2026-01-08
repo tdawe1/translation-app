@@ -15,6 +15,7 @@ import (
 
 	"github.com/tdawe1/translation-app/internal/auth"
 	"github.com/tdawe1/translation-app/internal/config"
+	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/email"
 	"github.com/tdawe1/translation-app/internal/handlers"
 	"github.com/tdawe1/translation-app/internal/middleware"
@@ -28,7 +29,7 @@ func TestMagicLink_AtomicConsume(t *testing.T) {
 	redisClient := RequireRedis(t)
 	require.NotNil(t, redisClient, "Redis required for magic link tests")
 
-	wrappedDB := &databaseWrapper{db: db}
+	wrappedDB := database.Wrap(db)
 
 	// Clean up any leftover magic link tokens from previous test runs
 	ctx := context.Background()
@@ -232,7 +233,7 @@ func TestMagicLink_AtomicConsume(t *testing.T) {
 // TestPasswordChange verifies the password change endpoint
 func TestPasswordChange(t *testing.T) {
 	db := RequireDB(t)
-	wrappedDB := &databaseWrapper{db: db}
+	wrappedDB := database.Wrap(db)
 
 	cfg := &config.Config{
 		JWTSecret:    "test-secret-for-testing-only-32-chars-min",
@@ -335,7 +336,7 @@ func TestPasswordChange(t *testing.T) {
 // TestUserResponse_IncludesOAuthAccounts verifies that user responses include OAuth account data
 func TestUserResponse_IncludesOAuthAccounts(t *testing.T) {
 	db := RequireDB(t)
-	wrappedDB := &databaseWrapper{db: db}
+	wrappedDB := database.Wrap(db)
 
 	cfg := &config.Config{
 		JWTSecret:    "test-secret-for-testing-only-32-chars-min",

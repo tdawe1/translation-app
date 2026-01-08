@@ -21,6 +21,7 @@ const (
 	ErrUserNotFound  ErrorCode = "USER_NOT_FOUND"
 	ErrCreateError   ErrorCode = "CREATE_ERROR"
 	ErrUpdateError   ErrorCode = "UPDATE_ERROR"
+	ErrDeleteError   ErrorCode = "DELETE_ERROR"
 	ErrConfigError   ErrorCode = "CONFIG_ERROR"
 	ErrStateError    ErrorCode = "STATE_ERROR"
 

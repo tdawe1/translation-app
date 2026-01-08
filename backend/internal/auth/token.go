@@ -32,15 +32,17 @@ func NewTokenService(secret string) *TokenService {
 }
 
 // GenerateAccessToken creates a new access token for a user
-func (s *TokenService) GenerateAccessToken(userID uuid.UUID) (string, error) {
+// The role is included in claims to enable role-based access control
+func (s *TokenService) GenerateAccessToken(userID uuid.UUID, role string) (string, error) {
 	now := time.Now()
 
 	claims := jwt.MapClaims{
-		"sub": userID.String(),
-		"exp": now.Add(s.accessTTL).Unix(),
-		"iat": now.Unix(),
+		"sub":  userID.String(),
+		"role": role,
+		"exp":  now.Add(s.accessTTL).Unix(),
+		"iat":  now.Unix(),
 		"type": "access",
-		"iss": s.issuer,
+		"iss":  s.issuer,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

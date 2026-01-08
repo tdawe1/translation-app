@@ -115,8 +115,8 @@ func (s *UserService) Register(req RegisterRequest) (*AuthResult, error) {
 		return nil, apperrors.New(apperrors.ErrCommitError, "Failed to commit transaction")
 	}
 
-	// Generate access token
-	accessToken, err := s.tokenSvc.GenerateAccessToken(user.ID)
+	// Generate access token with user role
+	accessToken, err := s.tokenSvc.GenerateAccessToken(user.ID, user.Role)
 	if err != nil {
 		return nil, apperrors.New(apperrors.ErrTokenError, "Failed to generate token")
 	}
@@ -146,8 +146,8 @@ func (s *UserService) Login(req LoginRequest) (*AuthResult, error) {
 		return nil, ErrInactiveUser
 	}
 
-	// Generate access token
-	accessToken, err := s.tokenSvc.GenerateAccessToken(user.ID)
+	// Generate access token with user role
+	accessToken, err := s.tokenSvc.GenerateAccessToken(user.ID, user.Role)
 	if err != nil {
 		return nil, apperrors.New(apperrors.ErrTokenError, "Failed to generate token")
 	}

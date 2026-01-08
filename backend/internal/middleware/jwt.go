@@ -94,7 +94,7 @@ func getJWTConfig() *JWTConfig {
 
 	jwtConfig = &JWTConfig{
 		Secret:      secret,
-		Lookup:      "header:Authorization",
+		Lookup:      "cookie:session_token",
 		AuthScheme:  "Bearer",
 		ContextKey:  "user",
 	}
@@ -156,7 +156,7 @@ type JWTConfig struct {
 func NewJWTConfig(options ...func(*JWTConfig)) *JWTConfig {
 	config := &JWTConfig{
 		Secret:     validateJWTSecret(os.Getenv("JWT_SECRET")),
-		Lookup:     "header:Authorization",
+		Lookup:     "cookie:session_token",
 		AuthScheme: "Bearer",
 		ContextKey:  "user",
 	}
@@ -183,33 +183,39 @@ func WithSecret(secret string) func(*JWTConfig) {
 }
 
 // JWTValidator returns a Fiber middleware that validates JWT tokens
+// Supports multiple token sources: cookie, header, and query parameter
+// Tries cookie first (httpOnly), then Authorization header (for sessionStorage)
 func JWTValidator(config *JWTConfig) fiber.Handler {
 	if config == nil {
 		config = getJWTConfig()
 	}
 
-	// Extract parts from lookup string
-	parts := strings.Split(config.Lookup, ":")
-	extractor := extractTokenFromHeader
-
-	switch parts[0] {
-	case "header":
-		if len(parts) < 2 {
-			break
-		}
-		switch parts[1] {
-		case "Authorization":
-			extractor = extractTokenFromHeader
-		case "Cookie":
-			extractor = extractTokenFromCookie
-		}
-	case "query":
-		extractor = extractTokenFromQuery
-	}
-
 	return func(c *fiber.Ctx) error {
-		token, err := extractor(c, config)
-		if err != nil {
+		var token string
+		var err error
+
+		// Try each source in order: cookie -> header -> query
+		// This supports both httpOnly cookies (secure) and Authorization header (convenience)
+
+		// 1. Try cookie first (most secure - httpOnly)
+		token = c.Cookies("session_token")
+		if token != "" {
+			log.Printf("[JWT] Token extracted from cookie")
+		} else {
+			// 2. Try Authorization header (for sessionStorage compatibility)
+			auth := c.Get("Authorization")
+			if auth != "" {
+				parts := strings.Split(auth, " ")
+				if len(parts) == 2 && parts[0] == config.AuthScheme {
+					token = parts[1]
+					log.Printf("[JWT] Token extracted from Authorization header")
+				}
+			}
+		}
+
+		// 3. No token found in any source
+		if token == "" {
+			err = ErrMissingToken
 			if config.ErrorHandler != nil {
 				return config.ErrorHandler(c, err)
 			}
@@ -222,6 +228,7 @@ func JWTValidator(config *JWTConfig) fiber.Handler {
 		// Validate token
 		claims, err := validateToken(token, config.Secret)
 		if err != nil {
+			log.Printf("[JWT] Token validation failed: %v", err)
 			if config.ErrorHandler != nil {
 				return config.ErrorHandler(c, err)
 			}
@@ -231,6 +238,7 @@ func JWTValidator(config *JWTConfig) fiber.Handler {
 			})
 		}
 
+		log.Printf("[JWT] Token validated successfully for user=%v", claims["sub"])
 		// Store user info in context
 		c.Locals(config.ContextKey, claims)
 		return c.Next()

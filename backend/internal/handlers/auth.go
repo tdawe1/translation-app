@@ -184,7 +184,7 @@ func (h *AuthHandler) getMeLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 
 // Logout handles logout
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
-	ClearSessionCookie(c)
+	ClearSessionCookie(c, h.secureCookie)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -284,7 +284,7 @@ func (h *AuthHandler) VerifyMagicLink(c *fiber.Ctx) error {
 	}
 
 	// Generate session token
-	accessToken, err := h.tokenService.GenerateAccessToken(user.ID)
+	accessToken, err := h.tokenService.GenerateAccessToken(user.ID, user.Role)
 	if err != nil {
 		log.Printf("Failed to generate token: %v", err)
 		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrTokenError, "Failed to create session")
