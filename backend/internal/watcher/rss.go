@@ -72,20 +72,30 @@ func (m *RSSMonitor) GetMinReward() float64 {
 
 // Start begins monitoring the RSS feed
 func (m *RSSMonitor) Start(ctx context.Context, jobChan chan<- Job) error {
-	ticker := time.NewTicker(30 * time.Second) // Poll every 30 seconds
+	pollInterval := 30 * time.Second // Poll every 30 seconds
+	log.Printf("[RSS] Starting monitor for user %s (feed: %s, poll_interval: %v, min_reward: $%.2f)",
+		m.UserID, m.FeedURL, pollInterval, m.MinReward)
+
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	// Initial fetch
+	log.Printf("[RSS] Performing initial fetch for user %s", m.UserID)
 	if err := m.Fetch(ctx, jobChan); err != nil {
 		log.Printf("[RSS] Initial fetch error for user %s: %v", m.UserID, err)
+	} else {
+		log.Printf("[RSS] Initial fetch completed for user %s", m.UserID)
 	}
 
+	pollCount := 0
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("[RSS] Monitor stopped for user %s", m.UserID)
+			log.Printf("[RSS] Monitor stopped for user %s (completed %d polls)", m.UserID, pollCount)
 			return nil
 		case <-ticker.C:
+			pollCount++
+			log.Printf("[RSS] Poll #%d for user %s", pollCount, m.UserID)
 			if err := m.Fetch(ctx, jobChan); err != nil {
 				log.Printf("[RSS] Fetch error for user %s: %v", m.UserID, err)
 			}
@@ -117,13 +127,20 @@ func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
 		return fmt.Errorf("parse failed: %w", err)
 	}
 
+	// Log feed info
+	log.Printf("[RSS] User %s: Fetched feed with %d items (title: %s)",
+		m.UserID, len(feed.Items), feed.Title)
+
 	// Process each item
 	newJobs := 0
+	filteredCount := 0
+	seenCount := 0
 	for _, item := range feed.Items {
 		jobID := m.extractJobID(item)
 
 		// Skip if already seen
 		if m.seenIDs[jobID] {
+			seenCount++
 			continue
 		}
 
@@ -132,8 +149,9 @@ func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
 
 		// Filter by reward range
 		if reward < m.MinReward || reward > m.MaxReward {
-			log.Printf("[RSS] User %s: Job %s filtered by reward ($%.2f vs $%.2f-$%.2f)",
-				m.UserID, jobID, reward, m.MinReward, m.MaxReward)
+			log.Printf("[RSS] User %s: Job %s filtered by reward ($%.2f vs $%.2f-$%.2f) - %s",
+				m.UserID, jobID, reward, m.MinReward, m.MaxReward, item.Title)
+			filteredCount++
 			m.seenIDs[jobID] = true
 			continue
 		}
@@ -151,13 +169,18 @@ func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
 		select {
 		case jobChan <- job:
 			newJobs++
-			log.Printf("[RSS] User %s: New job found - %s ($%.2f)", m.UserID, item.Title, reward)
+			log.Printf("[RSS] User %s: New job found - ID=%s, Title=%s, Reward=$%.2f",
+				m.UserID, jobID, item.Title, reward)
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 
 		m.seenIDs[jobID] = true
 	}
+
+	// Log summary
+	log.Printf("[RSS] User %s: Poll complete - new=%d, seen=%d, filtered=%d, total=%d",
+		m.UserID, newJobs, seenCount, filteredCount, len(feed.Items))
 
 	if newJobs > 0 {
 		log.Printf("[RSS] User %s: %d new jobs found this poll", m.UserID, newJobs)

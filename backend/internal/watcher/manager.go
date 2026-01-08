@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -43,7 +45,7 @@ func NewTestManager(db database.Database) *UserWatcherManager {
 // minimalTestDB is a minimal database.Database implementation for testing
 type minimalTestDB struct{}
 
-func (m *minimalTestDB) Create(value interface{}) *gorm.DB                      { return nil }
+func (m *minimalTestDB) Create(value interface{}) *gorm.DB                        { return nil }
 func (m *minimalTestDB) First(dest interface{}, conds ...interface{}) *gorm.DB  { return nil }
 func (m *minimalTestDB) Where(query interface{}, args ...interface{}) *gorm.DB  { return nil }
 func (m *minimalTestDB) Model(value interface{}) *gorm.DB                       { return nil }
@@ -53,6 +55,11 @@ func (m *minimalTestDB) Save(value interface{}) *gorm.DB                        
 func (m *minimalTestDB) Updates(values interface{}) *gorm.DB                    { return nil }
 func (m *minimalTestDB) UpdateColumn(column string, value interface{}) *gorm.DB { return nil }
 func (m *minimalTestDB) Update(column string, value interface{}) *gorm.DB       { return nil }
+func (m *minimalTestDB) Delete(value interface{}, conds ...interface{}) *gorm.DB { return nil }
+func (m *minimalTestDB) Offset(offset int) *gorm.DB                             { return nil }
+func (m *minimalTestDB) Limit(limit int) *gorm.DB                               { return nil }
+func (m *minimalTestDB) Order(value interface{}) *gorm.DB                       { return nil }
+func (m *minimalTestDB) Count(count *int64) *gorm.DB                             { return nil }
 
 // Job represents a detected job from RSS or WebSocket
 type Job struct {
@@ -126,6 +133,10 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 		return fmt.Errorf("failed to load user: %w", err)
 	}
 
+	log.Printf("[WATCHER] Starting watcher for user %s (email: %s)", userID, user.Email)
+	log.Printf("[WATCHER] Config: RSS=%s, MinReward=$%.2f, MaxReward=$%.2f, AutoAccept=%v",
+		config.RSSFeedURL, config.MinReward, config.MaxReward, config.AutoAcceptEnabled)
+
 	// Create context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -146,21 +157,23 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 
 	m.watchers[userID] = instance
 
+	log.Printf("[WATCHER] Watcher instance created for user %s", userID)
+
 	// Start monitoring in background
 	go m.runWatcher(instance)
 
 	// Update state
 	if err := m.stateManager.UpdateStatus(userID, StatusRunning); err != nil {
-		// Log but don't fail
-		fmt.Printf("Failed to update state: %v", err)
+		log.Printf("[WATCHER] Failed to update state for user %s: %v", userID, err)
 	}
 
 	// Notify user
 	ctx = context.Background()
 	if err := m.jobProcessor.PublishEvent(ctx, userID, EventTypeWatcherStarted); err != nil {
-		fmt.Printf("Failed to publish event: %v", err)
+		log.Printf("[WATCHER] Failed to publish start event for user %s: %v", userID, err)
 	}
 
+	log.Printf("[WATCHER] Watcher started successfully for user %s at %s", userID, time.Now().Format(time.RFC3339))
 	return nil
 }
 
@@ -173,6 +186,8 @@ func (m *UserWatcherManager) StopWatcher(userID uuid.UUID) error {
 	if !exists {
 		return fmt.Errorf("no watcher running for user %s", userID)
 	}
+
+	log.Printf("[WATCHER] Stopping watcher for user %s", userID)
 
 	instance.Cancel()
 	instance.Running = false
@@ -188,6 +203,7 @@ func (m *UserWatcherManager) StopWatcher(userID uuid.UUID) error {
 		return fmt.Errorf("failed to publish event: %w", err)
 	}
 
+	log.Printf("[WATCHER] Watcher stopped for user %s at %s", userID, time.Now().Format(time.RFC3339))
 	return nil
 }
 
@@ -210,30 +226,56 @@ func (m *UserWatcherManager) GetStatus(userID uuid.UUID) (string, error) {
 
 // runWatcher runs the monitoring loop for a watcher instance
 func (m *UserWatcherManager) runWatcher(instance *WatcherInstance) {
+	log.Printf("[WATCHER] Starting monitoring loop for user %s", instance.UserID)
+
 	// Create job channel for this instance
 	jobChan := make(chan Job, 100)
 
-	// Start RSS monitor
+	// Start RSS monitor with panic recovery
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[WATCHER] RSS monitor PANIC for user %s: %v", instance.UserID, r)
+				m.jobProcessor.PublishError(instance.Context, instance.UserID, fmt.Sprintf("RSS monitor panic: %v", r))
+			}
+		}()
+		log.Printf("[WATCHER] RSS monitor started for user %s (feed: %s)", instance.UserID, instance.RSS.GetFeedURL())
 		if err := instance.RSS.Start(instance.Context, jobChan); err != nil {
+			log.Printf("[WATCHER] RSS monitor error for user %s: %v", instance.UserID, err)
 			m.jobProcessor.PublishError(instance.Context, instance.UserID, err.Error())
 		}
+		log.Printf("[WATCHER] RSS monitor stopped for user %s", instance.UserID)
 	}()
 
-	// Start WebSocket monitor
+	// Start WebSocket monitor with panic recovery
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[WATCHER] WebSocket monitor PANIC for user %s: %v", instance.UserID, r)
+				m.jobProcessor.PublishError(instance.Context, instance.UserID, fmt.Sprintf("WebSocket monitor panic: %v", r))
+			}
+		}()
+		wsEnabled := instance.Config.GengoSessionToken != "" && instance.Config.GengoUserKey != ""
+		log.Printf("[WATCHER] WebSocket monitor starting for user %s (enabled: %v)", instance.UserID, wsEnabled)
 		instance.WebSocket.Start(instance.Context, jobChan)
+		log.Printf("[WATCHER] WebSocket monitor stopped for user %s", instance.UserID)
 	}()
 
-	// Process jobs from channel
+	// Process jobs from channel with panic recovery
+	jobCount := 0
 	for {
 		select {
 		case <-instance.Context.Done():
+			log.Printf("[WATCHER] Monitoring loop ended for user %s (processed %d jobs)", instance.UserID, jobCount)
 			return
 		case job := <-jobChan:
+			jobCount++
+			log.Printf("[WATCHER] Processing job #%d for user %s: %s (%s, $%.2f)",
+				jobCount, instance.UserID, job.ID, job.Source, job.Reward)
 			if err := m.jobProcessor.ProcessJob(instance.Context, job); err != nil {
-				// Log error but continue processing
-				fmt.Printf("Error processing job: %v\n", err)
+				log.Printf("[WATCHER] Error processing job for user %s: %v", instance.UserID, err)
+			} else {
+				log.Printf("[WATCHER] Job processed successfully for user %s: %s", instance.UserID, job.ID)
 			}
 		}
 	}

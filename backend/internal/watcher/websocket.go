@@ -52,7 +52,9 @@ type WebSocketMonitor struct {
 
 	// Metrics
 	lastPongTime time.Time
+	lastPingTime time.Time
 	pingLatency  time.Duration
+	pingCount    int64
 }
 
 // NewWebSocketMonitor creates a new WebSocket monitor
@@ -121,6 +123,16 @@ func (m *wsMessage) UnmarshalJSON(data []byte) error {
 
 // Start begins monitoring the WebSocket connection
 func (m *WebSocketMonitor) Start(ctx context.Context, jobChan chan<- Job) {
+	// Check if WebSocket is properly configured
+	if m.UserSession == "" || m.UserKey == "" {
+		log.Printf("[WS] User %s: WebSocket not configured (missing session token or user key)", m.UserID)
+		log.Printf("[WS] User %s: WebSocket monitor disabled (requires Gengo credentials)", m.UserID)
+		return
+	}
+
+	log.Printf("[WS] Starting monitor for user %s (gengo_id=%s, heartbeat=%v, pong_wait=%v)",
+		m.UserID, m.GengoUserID, m.HeartbeatInterval, m.PongWait)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -147,6 +159,7 @@ func (m *WebSocketMonitor) Start(ctx context.Context, jobChan chan<- Job) {
 // connectAndMonitor establishes a connection and monitors for jobs
 func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<- Job) error {
 	m.setStatus("connecting")
+	log.Printf("[WS] Connecting to %s for user %s", gengoWebSocketURL, m.UserID)
 
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 15 * time.Second,
@@ -159,11 +172,20 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 	defer conn.Close()
 
 	m.conn = conn
+	log.Printf("[WS] Connection established for user %s", m.UserID)
 
-	conn.SetPongHandler(func(string) error {
+	conn.SetPongHandler(func(appData string) error {
 		m.mu.Lock()
-		m.lastPongTime = time.Now()
-		m.mu.Unlock()
+		defer m.mu.Unlock()
+		now := time.Now()
+		// Calculate round-trip time from last ping
+		if !m.lastPingTime.IsZero() {
+			rtt := now.Sub(m.lastPingTime)
+			m.pingLatency = rtt
+			// Log pong with round-trip time
+			log.Printf("[WS] Pong received for user %s (RTT: %v)", m.UserID, rtt)
+		}
+		m.lastPongTime = now
 		return nil
 	})
 
@@ -243,10 +265,15 @@ func (m *WebSocketMonitor) sendPing() error {
 	}
 
 	m.mu.Lock()
-	m.pingLatency = time.Since(start)
+	m.lastPingTime = start
+	m.pingCount++
+	count := m.pingCount
 	m.mu.Unlock()
 
-	log.Printf("[WS] Sent ping for user %s (latency: %v)", m.UserID, m.pingLatency)
+	// Log every 10th ping to reduce verbosity, or if latency is high
+	if count%10 == 0 {
+		log.Printf("[WS] Ping #%d sent for user %s", count, m.UserID)
+	}
 	return nil
 }
 

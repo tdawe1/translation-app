@@ -2,7 +2,6 @@ package tests
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
@@ -10,8 +9,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
+	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/handlers"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/watcher"
@@ -22,7 +21,7 @@ func TestWatcher_CompleteFlow(t *testing.T) {
 	db := TestDB(t)
 
 	// Wrap DB to implement database.Database interface
-	wrappedDB := &databaseWrapper{db: db}
+	wrappedDB := database.Wrap(db)
 
 	manager := watcher.NewTestManager(wrappedDB)
 
@@ -171,7 +170,7 @@ func TestWatcher_CompleteFlow(t *testing.T) {
 // TestWatcher_UnauthorizedAccess rejects requests without auth
 func TestWatcher_UnauthorizedAccess(t *testing.T) {
 	db := TestDB(t)
-	wrappedDB := &databaseWrapper{db: db}
+	wrappedDB := database.Wrap(db)
 	manager := watcher.NewTestManager(wrappedDB)
 
 	app := fiber.New(fiber.Config{
@@ -206,7 +205,7 @@ func TestWatcher_UnauthorizedAccess(t *testing.T) {
 // TestWatcher_ConcurrentStart ensures only one watcher runs per user
 func TestWatcher_ConcurrentStart(t *testing.T) {
 	db := TestDB(t)
-	wrappedDB := &databaseWrapper{db: db}
+	wrappedDB := database.Wrap(db)
 	manager := watcher.NewTestManager(wrappedDB)
 
 	app := fiber.New(fiber.Config{
@@ -254,51 +253,6 @@ func TestWatcher_ConcurrentStart(t *testing.T) {
 	// Only the first start should succeed; subsequent starts fail because
 	// the watcher is already running. This is the correct behavior.
 	assert.Equal(t, 1, successCount, "Only one start should succeed, others should fail")
-}
-
-// databaseWrapper wraps gorm.DB to implement database.Database
-type databaseWrapper struct {
-	db *gorm.DB
-}
-
-func (w *databaseWrapper) Create(value interface{}) *gorm.DB {
-	return w.db.Create(value)
-}
-
-func (w *databaseWrapper) First(dest interface{}, conds ...interface{}) *gorm.DB {
-	return w.db.First(dest, conds...)
-}
-
-func (w *databaseWrapper) Where(query interface{}, args ...interface{}) *gorm.DB {
-	return w.db.Where(query, args...)
-}
-
-func (w *databaseWrapper) Model(value interface{}) *gorm.DB {
-	return w.db.Model(value)
-}
-
-func (w *databaseWrapper) Begin(opts ...*sql.TxOptions) *gorm.DB {
-	return w.db.Begin(opts...)
-}
-
-func (w *databaseWrapper) Exec(sql string, values ...interface{}) *gorm.DB {
-	return w.db.Exec(sql, values...)
-}
-
-func (w *databaseWrapper) Save(value interface{}) *gorm.DB {
-	return w.db.Save(value)
-}
-
-func (w *databaseWrapper) Updates(values interface{}) *gorm.DB {
-	return w.db.Updates(values)
-}
-
-func (w *databaseWrapper) UpdateColumn(column string, value interface{}) *gorm.DB {
-	return w.db.UpdateColumn(column, value)
-}
-
-func (w *databaseWrapper) Update(column string, value interface{}) *gorm.DB {
-	return w.db.Update(column, value)
 }
 
 // Helper functions
