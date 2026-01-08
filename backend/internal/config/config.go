@@ -43,7 +43,8 @@ type Config struct {
 	GoogleOAuthClientSecret string
 	GitHubOAuthClientID     string
 	GitHubOAuthClientSecret string
-	OAuthRedirectURL       string // Base URL for OAuth callbacks
+	OAuthRedirectURL       string // Base URL for OAuth callbacks (backend)
+	FrontendURL            string // Frontend URL for redirects after successful login
 
 	// CORS
 	AllowedOrigins string // Comma-separated list
@@ -80,7 +81,8 @@ func Load() *Config {
 		GoogleOAuthClientSecret:   getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
 		GitHubOAuthClientID:       getEnv("GITHUB_OAUTH_CLIENT_ID", ""),
 		GitHubOAuthClientSecret:   getEnv("GITHUB_OAUTH_CLIENT_SECRET", ""),
-		OAuthRedirectURL:         getEnv("OAUTH_REDIRECT_URL", "http://localhost:3000"),
+		OAuthRedirectURL:         getEnv("OAUTH_REDIRECT_URL", "http://localhost:8000"),
+		FrontendURL:              getEnv("FRONTEND_URL", "http://localhost:3001"),
 		AllowedOrigins:            getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001"),
 		TrustedProxies:           getEnv("TRUSTED_PROXIES", ""), // Empty = don't trust any proxy
 		CookieSecure:              getEnv("ENV", "development") == "production",

@@ -79,8 +79,18 @@ func SetSessionCookie(c *fiber.Ctx, token string, secure bool) {
 }
 
 // ClearSessionCookie clears the session cookie
-func ClearSessionCookie(c *fiber.Ctx) {
-	c.ClearCookie(CookieName)
+// For httpOnly cookies, we must set it with an expiration in the past
+// using the same Domain/Secure/SameSite settings as when it was set
+func ClearSessionCookie(c *fiber.Ctx, secure bool) {
+	c.Cookie(&fiber.Cookie{
+		Name:     CookieName,
+		Value:    "",
+		Domain:   CookieDomain,
+		HTTPOnly: true,
+		Secure:   secure, // Must match the Secure setting used to set the cookie
+		SameSite: "Lax",
+		Expires:  time.Now().Add(-1 * time.Hour), // Set to past to ensure deletion
+	})
 }
 
 // UserToResponse converts a User model to UserResponse

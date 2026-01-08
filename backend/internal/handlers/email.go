@@ -328,7 +328,7 @@ func (h *EmailHandler) VerifyMagicLink(c *fiber.Ctx) error {
 	h.db.Save(&magicLinkToken)
 
 	// Generate JWT token
-	accessToken, err := h.tokenService.GenerateAccessToken(user.ID)
+	accessToken, err := h.tokenService.GenerateAccessToken(user.ID, user.Role)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate access token",

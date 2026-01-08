@@ -37,6 +37,16 @@ type Database interface {
 	UpdateColumn(column string, value interface{}) *gorm.DB
 	// Update updates a single column
 	Update(column string, value interface{}) *gorm.DB
+	// Delete deletes a record with optional conditions
+	Delete(value interface{}, conds ...interface{}) *gorm.DB
+	// Offset sets the offset for pagination
+	Offset(offset int) *gorm.DB
+	// Limit sets the limit for query results
+	Limit(limit int) *gorm.DB
+	// Order sets the order clause
+	Order(value interface{}) *gorm.DB
+	// Count counts the records
+	Count(count *int64) *gorm.DB
 }
 
 // gormDB wraps gorm.DB to implement our Database interface
@@ -122,4 +132,10 @@ func GetPool(db Database) (*gorm.DB, bool) {
 		return g.DB, true
 	}
 	return nil, false
+}
+
+// Wrap creates a Database interface from an existing *gorm.DB
+// Useful for tests that have a raw *gorm.DB and need the Database interface
+func Wrap(db *gorm.DB) Database {
+	return &gormDB{DB: db}
 }
