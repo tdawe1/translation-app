@@ -52,7 +52,7 @@ backend_start() {
     cd "$project_root/backend" || return 1
 
     # Show environment being loaded
-    show_env_vars ".env"
+    show_env_vars "$project_root/.env"
 
     # Build first to ensure we have the binary
     if [ ! -f "server" ]; then
@@ -63,7 +63,8 @@ backend_start() {
     fi
 
     # Construct the start command for display
-    local start_cmd="set -a && source .env && set +a && ./server"
+    # Source .env from project root (not backend directory)
+    local start_cmd="set -a && source $project_root/.env && set +a && ./server"
     log_command "$start_cmd"
 
     # Start server in background with logging

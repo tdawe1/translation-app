@@ -1,15 +1,12 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:17-alpine
     container_name: gengowatcher-postgres
+    network_mode: host
     environment:
       POSTGRES_DB: gengowatcher
       POSTGRES_USER: gengo
       POSTGRES_PASSWORD: devpass
-    ports:
-      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,9 +18,8 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: gengowatcher-redis
+    network_mode: host
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-devpass}
-    ports:
-      - "127.0.0.1:6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -34,28 +30,7 @@ services:
 
   mailhog:
     image: mailhog/mailhog:latest
-    container_name: gengowatcher-mailhog
-    ports:
-      - "1025:1025"  # SMTP
-      - "8025:8025"  # Web UI
-
-  # Go backend service
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: gengowatcher-backend
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgres://gengo:devpass@postgres:5432/gengowatcher
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-devpass}@redis:6379/0
-      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+    network_mode: host
 
 volumes:
   postgres_data:

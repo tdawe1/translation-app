@@ -64,7 +64,7 @@ docker_up() {
     log_info "Waiting for services to become healthy..."
 
     # Wait for PostgreSQL (max 30 seconds)
-    log_info "Waiting for PostgreSQL (port 5433)..."
+    log_info "Waiting for PostgreSQL (port 5432)..."
     local count=0
     while [ $count -lt 30 ]; do
         if $compose_cmd ps -q postgres 2>/dev/null | xargs -r docker inspect --format='{{.State.Health.Status}}' 2>/dev/null | grep -q "healthy"; then
@@ -85,7 +85,7 @@ docker_up() {
     fi
 
     # Wait for Redis (max 15 seconds)
-    log_info "Waiting for Redis (port 6380)..."
+    log_info "Waiting for Redis (port 6379)..."
     count=0
     while [ $count -lt 15 ]; do
         if $compose_cmd ps -q redis 2>/dev/null | xargs -r docker inspect --format='{{.State.Status}}' 2>/dev/null | grep -q "running"; then
@@ -107,8 +107,8 @@ docker_up() {
 
     # Show service URLs
     log_success "Docker services started"
-    echo -e "  ${C_DIM}PostgreSQL:${C_RESET} localhost:5433"
-    echo -e "  ${C_DIM}Redis:${C_RESET}      localhost:6380"
+    echo -e "  ${C_DIM}PostgreSQL:${C_RESET} localhost:5432"
+    echo -e "  ${C_DIM}Redis:${C_RESET}      localhost:6379"
     echo -e "  ${C_DIM}MailHog UI:${C_RESET} http://localhost:8025"
 
     return 0
@@ -205,8 +205,8 @@ docker_status() {
         # Show service URLs
         echo ""
         echo -e "${C_DIM}Service URLs:${C_RESET}"
-        echo "  PostgreSQL:  localhost:5433"
-        echo "  Redis:       localhost:6380"
+        echo "  PostgreSQL:  localhost:5432"
+        echo "  Redis:       localhost:6379"
         echo "  MailHog UI:  http://localhost:8025"
 
         # Show helpful commands

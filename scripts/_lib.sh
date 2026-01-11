@@ -324,7 +324,7 @@ kill_pid() {
 # This is a fallback cleanup that doesn't rely on PID files
 # Returns: 0 always (errors are logged but don't fail)
 cleanup_ports() {
-    local ports=(8000 3001)  # Managed by our processes (Docker handles its own)
+    local ports=(8000 3001 5432 6379)  # Include Docker DB ports for host networking
     local killed_any=0
 
     log_info "Checking for orphaned processes on managed ports..."
@@ -415,7 +415,7 @@ is_port_in_use() {
 # check_required_ports - Verify all required ports are available
 # Usage: check_required_ports
 check_required_ports() {
-    local ports=(5433 6380 8000 3001)
+    local ports=(5432 6379 8000 3001)
     local conflicts=()
 
     for port in "${ports[@]}"; do
