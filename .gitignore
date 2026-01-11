@@ -35,6 +35,9 @@ frontend/playwright-report/
 frontend/test-results/
 backend/test_start.go
 
+# Test database volumes
+postgres-test-data/
+
 # IDE
 .vscode/
 .idea/
