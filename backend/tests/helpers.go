@@ -30,7 +30,7 @@ func init() {
 func TestDB(t *testing.T) *gorm.DB {
 	// Construct DSN from individual env vars or use defaults
 	dbHost := getEnv("TEST_DB_HOST", "localhost")
-	dbPort := getEnv("TEST_DB_PORT", "5433")
+	dbPort := getEnv("TEST_DB_PORT", "5432")
 	dbUser := getEnv("TEST_DB_USER", "gengo")
 	dbPass := getEnv("TEST_DB_PASSWORD", "devpass")
 	dbName := getEnv("TEST_DB_NAME", "gengowatcher_test")
@@ -192,7 +192,7 @@ func RequireRedis(t *testing.T) *redis.Client {
 func RequireDB(t *testing.T) *gorm.DB {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
-		dsn = "host=localhost port=5433 user=gengo password=devpass dbname=gengowatcher_test sslmode=disable"
+		dsn = "host=localhost port=5432 user=gengo password=devpass dbname=gengowatcher_test sslmode=disable"
 	}
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
