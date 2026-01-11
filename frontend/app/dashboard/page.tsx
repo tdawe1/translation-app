@@ -8,10 +8,12 @@ import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
 import { useWatcherStore } from "@/store/watcher";
 import { useWatcherWebSocket } from "@/hooks/use-watcher-websocket";
+import { useRealtimeStore } from "@/store/realtime";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Modal } from "@/components/ui/modal";
 import { WatcherConfigForm } from "@/components/watcher/config-form";
 import { JobList } from "@/components/watcher/job-list";
+import { RealtimeSection } from "@/components/realtime";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { authApi } from "@/lib/api";
 import { toast } from "@/store/toast";
@@ -71,12 +73,39 @@ export default function DashboardPage() {
   }, [configModalOpen]);
 
   // Set up WebSocket for real-time updates
-  const { connected } = useWatcherWebSocket({
+  const { connected, uptime, lastMessageTime } = useWatcherWebSocket({
     enabled: !!user,
     onEvent: (event, data) => {
       // Refresh state when watcher starts/stops
       if (event === "watcher.started" || event === "watcher.stopped") {
         fetchState();
+      }
+
+      // Add events to realtime store for the feed
+      const { addEvent } = useRealtimeStore.getState();
+
+      switch (event) {
+        case "watcher.started":
+          addEvent("watcher.started", "Watcher monitoring started");
+          break;
+        case "watcher.stopped":
+          addEvent("watcher.stopped", "Watcher monitoring stopped");
+          break;
+        case "job.detected":
+          if (data && typeof data === "object" && "title" in data) {
+            addEvent("job.detected", `Job detected: ${data.title}`, data);
+          }
+          break;
+        case "job.accepted":
+          if (data && typeof data === "object" && "title" in data) {
+            addEvent("job.accepted", `Auto-accepted: ${data.title}`, data);
+          }
+          break;
+        case "job.filtered":
+          if (data && typeof data === "object" && "title" in data) {
+            addEvent("job.filtered", `Filtered out: ${data.title}`, data);
+          }
+          break;
       }
     },
   });
@@ -339,6 +368,15 @@ export default function DashboardPage() {
               </p>
             </div>
           )}
+
+          {/* Realtime Section */}
+          <div className="mt-12">
+            <RealtimeSection
+              connected={connected}
+              uptime={uptime}
+              lastMessageTime={lastMessageTime}
+            />
+          </div>
 
           {/* Job List */}
           <div className="mt-8">
