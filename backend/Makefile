@@ -1,4 +1,4 @@
-.PHONY: test test-verbose clean
+.PHONY: test test-verbose test-coverage clean test-db-up test-db-down test-db-logs test-setup test-with-setup test-db-create
 
 # Run tests with default settings
 test:
@@ -16,3 +16,35 @@ test-coverage:
 # Clean test artifacts
 clean:
 	rm -f coverage.out coverage.html
+
+# Test Infrastructure
+.PHONY: test-db-up test-db-down test-db-logs test-with-setup test-db-create
+
+# Start test database (runs in background)
+test-db-up:
+	docker-compose -f docker-compose.test.yml up -d
+	@echo "Waiting for PostgreSQL to be ready..."
+	@until docker-compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U gengo > /dev/null 2>&1; do \
+		echo "Waiting for postgres..."; \
+		sleep 1; \
+	done
+	@echo "Test database is ready on port 5433"
+
+# Stop test database
+test-db-down:
+	docker-compose -f docker-compose.test.yml down
+
+# View test database logs
+test-db-logs:
+	docker-compose -f docker-compose.test.yml logs -f
+
+# Run tests with database setup
+test-with-setup: test-db-up
+	@$(MAKE) test
+	@$(MAKE) test-db-down
+
+# Create test database (for manual testing)
+test-db-create:
+	docker-compose -f docker-compose.test.yml up -d
+	@sleep 3
+	docker-compose -f docker-compose.test.yml exec -T postgres-test psql -U gengo -c "SELECT 1"
