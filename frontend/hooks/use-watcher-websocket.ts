@@ -94,6 +94,9 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | undefined>(undefined);
   const reconnectAttemptsRef = useRef(0);
+  // Explicit connection state ref to avoid race condition with readyState checks
+  // This is set synchronously in onopen/onclose, ensuring consistent state
+  const isConnectedRef = useRef(false);
 
   // Connection metrics state
   const [connectionStartTime, setConnectionStartTime] = useState<number | null>(null);
@@ -181,6 +184,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
       ws.onopen = () => {
         console.log("[WS] Connected");
         reconnectAttemptsRef.current = 0;
+        isConnectedRef.current = true; // Set explicit state
         setConnectionStartTime(Date.now());
         setMessagesReceived(0);
         setLastMessageTime(null);
@@ -250,6 +254,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
       ws.onclose = (event) => {
         console.log("[WS] Connection closed:", event.code, event.reason);
         wsRef.current = null;
+        isConnectedRef.current = false; // Clear explicit state
         // Clear connection metrics on disconnect
         setConnectionStartTime(null);
 
@@ -293,7 +298,9 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
     };
   }, [enabled, connect, cleanup]);
 
-  const connected = wsRef.current?.readyState === WebSocket.OPEN;
+  // Use explicit state ref instead of deriving from readyState to avoid race conditions
+  // The ref is set synchronously in onopen/onclose handlers for consistent state
+  const connected = isConnectedRef.current;
   const reconnecting = reconnectAttemptsRef.current > 0 && !connected;
 
   return {
