@@ -19,18 +19,20 @@ type MagicLinkHandler struct {
 	tokenAuthService *auth.TokenService
 	tokenService    *service.TokenService
 	emailService    *email.Service
-	cookieSecure    bool
+	sessionConfig   SessionConfig // Cookie configuration for set/clear operations
 	frontendURL     string // Frontend URL for redirects after successful auth
 }
 
-// NewMagicLinkHandler creates a new magic link handler
-func NewMagicLinkHandler(db database.Database, tokenAuthService *auth.TokenService, emailService *email.Service, tokenSvc *service.TokenService, cookieSecure bool, frontendURL string) *MagicLinkHandler {
+// NewMagicLinkHandler creates a new magic link handler with the given session config.
+// The session config ensures that cookie attributes (Domain, Secure, SameSite)
+// are consistent across all cookie operations.
+func NewMagicLinkHandler(db database.Database, tokenAuthService *auth.TokenService, emailService *email.Service, tokenSvc *service.TokenService, sessionConfig SessionConfig, frontendURL string) *MagicLinkHandler {
 	return &MagicLinkHandler{
 		db:              db,
 		tokenAuthService: tokenAuthService,
 		tokenService:    tokenSvc,
 		emailService:    emailService,
-		cookieSecure:    cookieSecure,
+		sessionConfig:   sessionConfig,
 		frontendURL:     frontendURL,
 	}
 }
@@ -173,13 +175,14 @@ func (h *MagicLinkHandler) VerifyMagicLink(c *fiber.Ctx) error {
 
 	// Check if this is a GET request (redirect flow from email link)
 	if c.Method() == "GET" {
-		// Set httpOnly cookie and redirect to frontend
+		// Set httpOnly cookie with proper session config
 		c.Cookie(&fiber.Cookie{
-			Name:     "refresh_token",
+			Name:     CookieName,
 			Value:    accessToken,
 			HTTPOnly: true,
-			Secure:   h.cookieSecure,
-			SameSite: "lax",
+			Secure:   h.sessionConfig.Secure,
+			SameSite: h.sessionConfig.SameSite,
+			Domain:   h.sessionConfig.Domain,
 			MaxAge:   7 * 24 * 60 * 60, // 7 days
 		})
 
@@ -193,13 +196,14 @@ func (h *MagicLinkHandler) VerifyMagicLink(c *fiber.Ctx) error {
 	return c.Redirect(frontendURL)
 	}
 
-	// POST flow: return JSON response with token
+	// POST flow: return JSON response with token, using proper session config
 	c.Cookie(&fiber.Cookie{
-		Name:     "refresh_token",
+		Name:     CookieName,
 		Value:    accessToken,
 		HTTPOnly: true,
-		Secure:   h.cookieSecure,
-		SameSite: "lax",
+		Secure:   h.sessionConfig.Secure,
+		SameSite: h.sessionConfig.SameSite,
+		Domain:   h.sessionConfig.Domain,
 		MaxAge:   7 * 24 * 60 * 60, // 7 days
 	})
 

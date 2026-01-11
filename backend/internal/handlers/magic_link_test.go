@@ -35,7 +35,8 @@ func setupMagicLinkTest(t *testing.T) (*fiber.App, *service.TokenService, *gorm.
 		BaseURL:   "http://localhost:3000",
 	})
 
-	handler := NewMagicLinkHandler(wrappedDB, tokenAuthSvc, emailSvc, tokenSvc, false, "http://localhost:3001")
+	sessionConfig := DefaultSessionConfig()
+	handler := NewMagicLinkHandler(wrappedDB, tokenAuthSvc, emailSvc, tokenSvc, sessionConfig, "http://localhost:3001")
 
 	app := fiber.New(fiber.Config{
 		AppName:               "MagicLink Test",

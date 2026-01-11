@@ -94,14 +94,18 @@ func main() {
 	// Log OAuth config for debugging
 	log.Printf("OAuth config: FrontendURL=%s, OAuthRedirectURL=%s", cfg.FrontendURL, cfg.OAuthRedirectURL)
 
+	// Create session config for cookie operations (ensures Set and Clear use matching attributes)
+	sessionConfig := handlers.SessionConfigFromEnv(cfg.CookieDomain, cfg.CookieSecure, cfg.CookieSameSite)
+	log.Printf("Cookie config: Domain=%q, Secure=%v, SameSite=%q", sessionConfig.Domain, sessionConfig.Secure, sessionConfig.SameSite)
+
 	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, cfg.CookieSecure)
+	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, sessionConfig)
 	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc, cfg)
 	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret, db)
 
 	// New dedicated handlers for email verification, magic link, and password reset
 	emailVerificationHandler := handlers.NewEmailVerificationHandler(db, tokenSvc, emailSvc, tokenHandlerSvc)
-	magicLinkHandler := handlers.NewMagicLinkHandler(db, tokenSvc, emailSvc, tokenHandlerSvc, cfg.CookieSecure, cfg.FrontendURL)
+	magicLinkHandler := handlers.NewMagicLinkHandler(db, tokenSvc, emailSvc, tokenHandlerSvc, sessionConfig, cfg.FrontendURL)
 	passwordResetHandler := handlers.NewPasswordResetHandler(db, emailSvc, tokenHandlerSvc)
 
 	// Admin handler (requires admin role)

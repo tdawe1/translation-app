@@ -54,7 +54,10 @@ func TestMagicLink_AtomicConsume(t *testing.T) {
 		BaseURL:   "http://localhost:3000",
 	})
 
-	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, cfg.CookieSecure)
+	// Create session config for test (uses development defaults)
+	sessionConfig := handlers.DefaultSessionConfig()
+	sessionConfig.Secure = cfg.CookieSecure
+	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, sessionConfig)
 
 	// Create test app
 	app := fiber.New(fiber.Config{
@@ -243,7 +246,10 @@ func TestPasswordChange(t *testing.T) {
 	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
 	userSvc := auth.NewUserService(wrappedDB, tokenSvc)
 
-	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, nil, nil, cfg.CookieSecure)
+	// Create session config for test
+	sessionConfig := handlers.DefaultSessionConfig()
+	sessionConfig.Secure = cfg.CookieSecure
+	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, nil, nil, sessionConfig)
 
 	// Create test app
 	app := fiber.New(fiber.Config{
@@ -346,7 +352,10 @@ func TestUserResponse_IncludesOAuthAccounts(t *testing.T) {
 	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
 	userSvc := auth.NewUserService(wrappedDB, tokenSvc)
 
-	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, nil, nil, cfg.CookieSecure)
+	// Create session config for test
+	sessionConfig := handlers.DefaultSessionConfig()
+	sessionConfig.Secure = cfg.CookieSecure
+	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, nil, nil, sessionConfig)
 
 	// Create test app
 	app := fiber.New(fiber.Config{

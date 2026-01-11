@@ -38,17 +38,19 @@ type AuthHandler struct {
 	tokenService *auth.TokenService
 	emailService *email.Service
 	redis        *redis.Client
-	secureCookie bool
+	sessionConfig SessionConfig // Cookie configuration for set/clear operations
 }
 
-// NewAuthHandler creates a new auth handler
-func NewAuthHandler(userService *auth.UserService, tokenService *auth.TokenService, emailService *email.Service, redis *redis.Client, secureCookie bool) *AuthHandler {
+// NewAuthHandler creates a new auth handler with the given session config.
+// The session config ensures that SetSessionCookie and ClearSessionCookie
+// use matching Domain, Secure, and SameSite attributes.
+func NewAuthHandler(userService *auth.UserService, tokenService *auth.TokenService, emailService *email.Service, redis *redis.Client, sessionConfig SessionConfig) *AuthHandler {
 	return &AuthHandler{
 		userService:  userService,
 		tokenService: tokenService,
 		emailService: emailService,
 		redis:        redis,
-		secureCookie: secureCookie,
+		sessionConfig: sessionConfig,
 	}
 }
 
@@ -95,8 +97,8 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return RespondWithAPIError(c, status, errObj)
 	}
 
-	// Set httpOnly cookie
-	SetSessionCookie(c, result.AccessToken, h.secureCookie)
+	// Set httpOnly cookie with proper session config
+	SetSessionCookie(c, result.AccessToken, h.sessionConfig)
 
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
 		AccessToken: result.AccessToken,
@@ -125,8 +127,8 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		return RespondWithAPIError(c, status, errObj)
 	}
 
-	// Set httpOnly cookie
-	SetSessionCookie(c, result.AccessToken, h.secureCookie)
+	// Set httpOnly cookie with proper session config
+	SetSessionCookie(c, result.AccessToken, h.sessionConfig)
 
 	return c.JSON(AuthResponse{
 		AccessToken: result.AccessToken,
@@ -184,7 +186,8 @@ func (h *AuthHandler) getMeLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 
 // Logout handles logout
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
-	ClearSessionCookie(c, h.secureCookie)
+	// Clear cookie with matching session config attributes (critical for production)
+	ClearSessionCookie(c, h.sessionConfig)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -290,8 +293,8 @@ func (h *AuthHandler) VerifyMagicLink(c *fiber.Ctx) error {
 		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrTokenError, "Failed to create session")
 	}
 
-	// Set session cookie
-	SetSessionCookie(c, accessToken, h.secureCookie)
+	// Set session cookie with proper session config
+	SetSessionCookie(c, accessToken, h.sessionConfig)
 
 	// Redirect to dashboard
 	return c.Redirect("/dashboard", fiber.StatusTemporaryRedirect)
