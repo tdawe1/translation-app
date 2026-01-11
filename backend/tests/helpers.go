@@ -208,10 +208,11 @@ func RequireRedis(t *testing.T) *redis.Client {
 }
 
 // RequireDB is a test helper that skips the test if PostgreSQL is not available
+// Uses port 5433 for the isolated test database (from docker-compose.test.yml)
 func RequireDB(t *testing.T) *gorm.DB {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
-		dsn = "host=localhost port=5432 user=gengo password=devpass dbname=gengowatcher_test sslmode=disable"
+		dsn = "host=localhost port=5433 user=gengo password=devpass dbname=gengowatcher_test sslmode=disable"
 	}
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
