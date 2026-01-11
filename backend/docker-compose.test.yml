@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  postgres-test:
+    image: postgres:17-alpine
+    container_name: gengowatcher-postgres-test
+    environment:
+      POSTGRES_DB: gengowatcher_test
+      POSTGRES_USER: gengo
+      POSTGRES_PASSWORD: devpass
+    ports:
+      - "5433:5432"  # Use 5433 to avoid conflicts with dev DB on 5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gengo"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
