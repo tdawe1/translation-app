@@ -197,14 +197,9 @@ func RoleBasedLimiter(config RoleBasedLimiterConfig) fiber.Handler {
 		Max:        config.UserMax,
 		Expiration: config.Expiration,
 		KeyGenerator: func(c *fiber.Ctx) string {
-			// For authenticated users, use user ID
-			claims := c.Locals("user")
-			if claims != nil {
-				if claimMap, ok := claims.(map[string]interface{}); ok {
-					if sub, ok := claimMap["sub"].(string); ok {
-						return "user:" + sub
-					}
-				}
+			// For authenticated users, use user ID (typed helper)
+			if userID, ok := GetUserID(c); ok {
+				return "user:" + userID
 			}
 			// Fallback to IP for unauthenticated
 			return "ip:" + getClientIP(c, config.TrustedProxies)
@@ -218,20 +213,17 @@ func RoleBasedLimiter(config RoleBasedLimiterConfig) fiber.Handler {
 	})
 
 	return func(c *fiber.Ctx) error {
-		// Check if user is admin
-		claims := c.Locals("user")
-		if claims != nil {
-			if claimMap, ok := claims.(map[string]interface{}); ok {
-				if role, ok := claimMap["role"].(string); ok && role == "admin" {
-					// Admin: check if unlimited or use high limit
-					if config.AdminMax == 0 {
-						// Unlimited - just log and continue
-						log.Printf("[RateLimit] Admin bypass for user=%s", claimMap["sub"])
-						return c.Next()
-					}
-					// Apply admin limit (not implemented in this version, would need separate limiter)
+		// Check if user is admin using typed helper
+		if IsAdmin(c) {
+			// Admin: check if unlimited
+			if config.AdminMax == 0 {
+				// Unlimited - just log and continue
+				if userID, ok := GetUserID(c); ok {
+					log.Printf("[RateLimit] Admin bypass for user=%s", userID)
 				}
+				return c.Next()
 			}
+			// Apply admin limit (not implemented in this version, would need separate limiter)
 		}
 
 		// Apply user limiter (IP-based for unauthenticated, user-based for authenticated)
@@ -249,13 +241,9 @@ func AdminLimiters(trustedProxies []string) struct {
 		Max:        300,
 		Expiration: 1 * time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {
-			claims := c.Locals("user")
-			if claims != nil {
-				if claimMap, ok := claims.(map[string]interface{}); ok {
-					if sub, ok := claimMap["sub"].(string); ok {
-						return "admin:" + sub
-					}
-				}
+			// Use typed helper to get user ID
+			if userID, ok := GetUserID(c); ok {
+				return "admin:" + userID
 			}
 			return "admin-ip:" + getClientIP(c, trustedProxies)
 		},

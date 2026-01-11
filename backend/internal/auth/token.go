@@ -16,8 +16,14 @@ type TokenService struct {
 }
 
 // TokenClaims represents the JWT claims structure
+// Matches the claims generated in GenerateAccessToken:
+// - sub: user ID (UUID string)
+// - role: user role ("user", "admin", etc.)
+// - type: token type ("access", "refresh", etc.)
+// - exp, iat, iss: standard JWT claims
 type TokenClaims struct {
 	UserID string `json:"sub"`
+	Role   string `json:"role"`
 	Type   string `json:"type"`
 	jwt.RegisteredClaims
 }
@@ -65,10 +71,12 @@ func (s *TokenService) ValidateToken(tokenString string) (*TokenClaims, error) {
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		userID, _ := claims["sub"].(string)
+		role, _ := claims["role"].(string)
 		tokenType, _ := claims["type"].(string)
 
 		return &TokenClaims{
 			UserID: userID,
+			Role:   role,
 			Type:   tokenType,
 		}, nil
 	}
