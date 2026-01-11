@@ -13,11 +13,42 @@ import (
 const (
 	// CookieName is the name of the session cookie
 	CookieName = "session_token"
-	// CookieDomain for production (empty for localhost)
-	CookieDomain = ""
 	// DefaultCookieExpiration is the default session token expiration
 	DefaultCookieExpiration = 7 * 24 * time.Hour
 )
+
+// SessionConfig holds cookie configuration for session management.
+// This ensures that SetSessionCookie and ClearSessionCookie use matching
+// cookie attributes (domain, secure, sameSite), which is critical for
+// proper cookie clearing in production environments.
+type SessionConfig struct {
+	Domain   string        // Cookie domain (empty for localhost, ".example.com" for prod)
+	Secure   bool          // Whether to set the Secure flag (HTTPS only)
+	SameSite string        // SameSite policy: "Lax", "Strict", or "None"
+	Expires  time.Duration // Cookie expiration duration (for Set only, not Clear)
+}
+
+// DefaultSessionConfig returns a SessionConfig with development-friendly defaults.
+// For production, use config-based values with proper domain and Secure=true.
+func DefaultSessionConfig() SessionConfig {
+	return SessionConfig{
+		Domain:   "",            // Current host only (localhost)
+		Secure:   false,         // HTTP in development
+		SameSite: "Lax",
+		Expires:  DefaultCookieExpiration,
+	}
+}
+
+// SessionConfigFromEnv creates a SessionConfig from environment-based values.
+// Use this in production to ensure proper domain matching and security flags.
+func SessionConfigFromEnv(domain string, secure bool, sameSite string) SessionConfig {
+	return SessionConfig{
+		Domain:   domain,
+		Secure:   secure,
+		SameSite: sameSite,
+		Expires:  DefaultCookieExpiration,
+	}
+}
 
 // ErrorResponse represents a standardized error response
 type ErrorResponse struct {
@@ -65,32 +96,51 @@ func RespondWithAPIError(c *fiber.Ctx, status int, apiErr *apperrors.APIError) e
 	})
 }
 
-// SetSessionCookie sets the httpOnly session cookie
-func SetSessionCookie(c *fiber.Ctx, token string, secure bool) {
+// SetSessionCookie sets the httpOnly session cookie with the given configuration.
+// The config parameter ensures all cookie attributes (domain, secure, sameSite)
+// are properly set and can be matched when clearing the cookie.
+func SetSessionCookie(c *fiber.Ctx, token string, config SessionConfig) {
 	c.Cookie(&fiber.Cookie{
 		Name:     CookieName,
 		Value:    token,
-		Domain:   CookieDomain,
+		Domain:   config.Domain,
 		HTTPOnly: true,
-		Secure:   secure,
-		SameSite: "Lax",
-		Expires:  time.Now().Add(DefaultCookieExpiration),
+		Secure:   config.Secure,
+		SameSite: config.SameSite,
+		Expires:  time.Now().Add(config.Expires),
 	})
 }
 
-// ClearSessionCookie clears the session cookie
-// For httpOnly cookies, we must set it with an expiration in the past
-// using the same Domain/Secure/SameSite settings as when it was set
-func ClearSessionCookie(c *fiber.Ctx, secure bool) {
+// SetSessionCookieWithDefaults is a convenience function that uses default session config.
+// For development use only. In production, use SetSessionCookie with config from env.
+func SetSessionCookieWithDefaults(c *fiber.Ctx, token string, secure bool) {
+	config := DefaultSessionConfig()
+	config.Secure = secure
+	SetSessionCookie(c, token, config)
+}
+
+// ClearSessionCookie clears the session cookie.
+// IMPORTANT: Must use the same Domain/Secure/SameSite values as when the cookie was set.
+// For httpOnly cookies, we must set it with an expiration in the past.
+// The config parameter ensures the cookie attributes match the original SetSessionCookie call.
+func ClearSessionCookie(c *fiber.Ctx, config SessionConfig) {
 	c.Cookie(&fiber.Cookie{
 		Name:     CookieName,
 		Value:    "",
-		Domain:   CookieDomain,
+		Domain:   config.Domain,
 		HTTPOnly: true,
-		Secure:   secure, // Must match the Secure setting used to set the cookie
-		SameSite: "Lax",
+		Secure:   config.Secure,
+		SameSite: config.SameSite,
 		Expires:  time.Now().Add(-1 * time.Hour), // Set to past to ensure deletion
 	})
+}
+
+// ClearSessionCookieWithDefaults is a convenience function that uses default session config.
+// For development use only. In production, use ClearSessionCookie with config from env.
+func ClearSessionCookieWithDefaults(c *fiber.Ctx, secure bool) {
+	config := DefaultSessionConfig()
+	config.Secure = secure
+	ClearSessionCookie(c, config)
 }
 
 // UserToResponse converts a User model to UserResponse

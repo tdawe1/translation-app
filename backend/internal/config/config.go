@@ -53,7 +53,9 @@ type Config struct {
 	TrustedProxies string // Comma-separated list of CIDR ranges
 
 	// Cookies
-	CookieSecure bool // Set Secure flag on cookies
+	CookieSecure  bool   // Set Secure flag on cookies
+	CookieDomain  string // Domain for cookies (empty for localhost, ".example.com" for prod)
+	CookieSameSite string // SameSite policy: "Lax", "Strict", or "None"
 }
 
 // Load reads configuration from environment variables
@@ -63,7 +65,7 @@ func Load() *Config {
 		Port:                 getEnv("PORT", "8000"),
 		Env:                  getEnv("ENV", "development"),
 		DBHost:               getEnv("DB_HOST", "localhost"),
-		DBPort:               getEnv("DB_PORT", "5433"),
+		DBPort:               getEnv("DB_PORT", "5432"),
 		DBUser:               getEnv("DB_USER", "gengo"),
 		DBPassword:           getEnv("DB_PASSWORD", "devpass"),
 		DBName:               getEnv("DB_NAME", "gengowatcher"),
@@ -86,6 +88,8 @@ func Load() *Config {
 		AllowedOrigins:            getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001"),
 		TrustedProxies:           getEnv("TRUSTED_PROXIES", ""), // Empty = don't trust any proxy
 		CookieSecure:              getEnv("ENV", "development") == "production",
+		CookieDomain:              getEnv("COOKIE_DOMAIN", ""),    // Empty = current host only
+		CookieSameSite:            getEnv("COOKIE_SAMESITE", "Lax"),
 	}
 
 	// Validate required secrets in production
