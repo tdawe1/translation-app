@@ -29,8 +29,9 @@ func init() {
 // Uses PostgreSQL test database - runs migrations for realistic testing
 func TestDB(t *testing.T) *gorm.DB {
 	// Construct DSN from individual env vars or use defaults
+	// Default to port 5433 for test database (from docker-compose.test.yml)
 	dbHost := getEnv("TEST_DB_HOST", "localhost")
-	dbPort := getEnv("TEST_DB_PORT", "5432")
+	dbPort := getEnv("TEST_DB_PORT", "5433") // Changed: was 5432, now 5433
 	dbUser := getEnv("TEST_DB_USER", "gengo")
 	dbPass := getEnv("TEST_DB_PASSWORD", "devpass")
 	dbName := getEnv("TEST_DB_NAME", "gengowatcher_test")
@@ -41,7 +42,25 @@ func TestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
-	require.NoError(t, err, "Failed to connect to test database")
+	require.NoError(t, err, "Failed to connect to test database. Run: docker-compose -f docker-compose.test.yml up -d")
+
+	// Run migrations to ensure schema is up to date
+	err = db.AutoMigrate(
+		&models.User{},
+		&models.OAuthAccount{},
+		&models.APIKey{},
+		&models.RefreshToken{},
+		&models.WatcherConfig{},
+		&models.WatcherState{},
+		&models.SubscriptionPlan{},
+		&models.Subscription{},
+		&models.BillingEvent{},
+		&models.AuditLog{},
+		&models.EmailVerificationToken{},
+		&models.MagicLinkToken{},
+		&models.PasswordResetToken{},
+	)
+	require.NoError(t, err, "Failed to run migrations")
 
 	// Clean up any existing data
 	db.Exec("DELETE FROM audit_logs WHERE 1=1")
