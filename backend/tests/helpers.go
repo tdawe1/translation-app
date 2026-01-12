@@ -230,6 +230,26 @@ func RequireDB(t *testing.T) *gorm.DB {
 		return nil
 	}
 
+	// Run migrations to ensure schema is up to date
+	err = db.AutoMigrate(
+		&models.User{},
+		&models.OAuthAccount{},
+		&models.APIKey{},
+		&models.RefreshToken{},
+		&models.WatcherConfig{},
+		&models.WatcherState{},
+		&models.SubscriptionPlan{},
+		&models.Subscription{},
+		&models.BillingEvent{},
+		&models.AuditLog{},
+		&models.EmailVerificationToken{},
+		&models.MagicLinkToken{},
+		&models.PasswordResetToken{},
+	)
+	if err != nil {
+		t.Fatalf("Failed to run migrations: %v", err)
+	}
+
 	// Clean up any existing data
 	db.Exec("DELETE FROM audit_logs WHERE 1=1")
 	db.Exec("DELETE FROM billing_events WHERE 1=1")

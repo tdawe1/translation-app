@@ -24,7 +24,7 @@ clean:
 test-db-up:
 	docker-compose -f docker-compose.test.yml up -d
 	@echo "Waiting for PostgreSQL to be ready..."
-	@until docker-compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U gengo > /dev/null 2>&1; do \
+	@until docker exec gengowatcher-postgres-test pg_isready -U gengo -p 5433 > /dev/null 2>&1; do \
 		echo "Waiting for postgres..."; \
 		sleep 1; \
 	done
@@ -47,4 +47,4 @@ test-with-setup: test-db-up
 test-db-create:
 	docker-compose -f docker-compose.test.yml up -d
 	@sleep 3
-	docker-compose -f docker-compose.test.yml exec -T postgres-test psql -U gengo -c "SELECT 1"
+	docker exec gengowatcher-postgres-test psql -U gengo -p 5433 -c "SELECT 1"

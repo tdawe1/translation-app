@@ -40,7 +40,7 @@ echo "Waiting for database to be ready..."
 MAX_TRIES=30
 COUNT=0
 while [ $COUNT -lt $MAX_TRIES ]; do
-    if docker exec gengowatcher-postgres-test pg_isready -U gengo &> /dev/null; then
+    if docker exec gengowatcher-postgres-test pg_isready -U gengo -p 5433 &> /dev/null; then
         echo "Database is ready!"
         break
     fi

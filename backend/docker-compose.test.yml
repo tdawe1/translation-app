@@ -1,17 +1,18 @@
-version: "3.8"
-
 services:
   postgres-test:
     image: postgres:17-alpine
     container_name: gengowatcher-postgres-test
+    network_mode: host  # Bypass Docker bridge networking for sandbox environments
     environment:
       POSTGRES_DB: gengowatcher_test
       POSTGRES_USER: gengo
       POSTGRES_PASSWORD: devpass
-    ports:
-      - "5433:5432"  # Use 5433 to avoid conflicts with dev DB on 5432
+    command:
+      - "postgres"
+      - "-p"  # Listen on specific port instead of default
+      - "5433"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gengo"]
+      test: ["CMD-SHELL", "pg_isready -U gengo -p 5433"]
       interval: 3s
       timeout: 5s
       retries: 5
