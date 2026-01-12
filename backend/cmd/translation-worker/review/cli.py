@@ -55,6 +55,22 @@ _SHORT_TO_INTERNAL = {
 MAX_BATCH_FILE_SIZE_MB = 10  # Megabytes
 MAX_BATCH_FILE_SIZE = MAX_BATCH_FILE_SIZE_MB * 1024 * 1024  # Bytes
 
+# Error message templates for consistency
+ERROR_TEMPLATES = {
+    "cli_not_found": "CLI tool '{tool}' not found in PATH.\n\nInstall instructions:\n{install}",
+    "mutual_exclusive": "Cannot specify both --{opt1} and --{opt2}. Use {suggestion}.",
+    "missing_required": "Must specify either --{opt1} or --{opt2}.",
+    "file_too_large": "Input file too large: {size_mb:.1f}MB. Maximum is {max_mb}MB.",
+}
+
+# Installation instructions for CLI tools
+CLI_INSTALL_INSTRUCTIONS = {
+    "claude": "  claude: npm install -g @anthropic-ai/claude-code",
+    "codex": "  codex: npm install -g @github-copilot/codex-cli",
+    "gemini": "  gemini: npm install -g @google/generative-ai-cli",
+    "ollama": "  ollama: curl -fsSL https://ollama.com/install.sh | sh",
+}
+
 
 def _get_api_key(provider: str) -> Optional[str]:
     """Get API key from environment variable."""
@@ -97,15 +113,12 @@ def _get_cli_provider(tool: str) -> "CLIProvider":
 
     # Check if command is available
     if not shutil.which(base_command):
-        install_hints = {
-            "claude": "npm install -g @anthropic-ai/claude-code",
-            "codex": "npm install -g @github-copilot/codex-cli",
-            "gemini": "npm install -g @google/generative-ai-cli",
-            "ollama": "curl -fsSL https://ollama.com/install.sh | sh",
-        }
-        hint = install_hints.get(tool, f"Install {base_command}")
+        hint = CLI_INSTALL_INSTRUCTIONS.get(tool, f"  {tool}: Install {base_command}")
         raise click.ClickException(
-            f"CLI tool '{base_command}' not found in PATH.\nInstall it first:\n  - {tool}: {hint}"
+            ERROR_TEMPLATES["cli_not_found"].format(
+                tool=base_command,
+                install=hint
+            )
         )
 
     # Create ProviderConfig with dummy API key (CLI tools don't need it)
@@ -259,13 +272,18 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
     # Validate mutual exclusivity
     if provider and cli:
         raise click.ClickException(
-            "Cannot specify both --provider and --cli. "
-            "Use --cli for local tools or --provider for API-based providers."
+            ERROR_TEMPLATES["mutual_exclusive"].format(
+                opt1="provider",
+                opt2="cli",
+                suggestion="--cli for local tools or --provider for API-based providers"
+            )
         )
     if not provider and not cli:
         raise click.ClickException(
-            "Must specify either --provider (for API) or --cli (for local tools). "
-            "Use --cli claude/codex/gemini/ollama for local tools with no API costs."
+            ERROR_TEMPLATES["missing_required"].format(
+                opt1="provider (for API)",
+                opt2="cli (for local tools)"
+            )
         )
 
     # Handle dry-run for CLI tools
@@ -372,8 +390,11 @@ def judge(source: str, candidate_a: str, candidate_b: str, provider: Optional[st
     # Validate mutual exclusivity and set defaults
     if provider and cli:
         raise click.ClickException(
-            "Cannot specify both --provider and --cli. "
-            "Use --cli for local tools or --provider for API-based providers."
+            ERROR_TEMPLATES["mutual_exclusive"].format(
+                opt1="provider",
+                opt2="cli",
+                suggestion="--cli for local tools or --provider for API-based providers"
+            )
         )
     if not provider and not cli:
         # Default to API provider for backward compatibility
@@ -515,12 +536,18 @@ def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
     # Validate mutual exclusivity
     if provider and cli:
         raise click.ClickException(
-            "Cannot specify both --provider and --cli. "
-            "Use --cli for local tools or --provider for API-based providers."
+            ERROR_TEMPLATES["mutual_exclusive"].format(
+                opt1="provider",
+                opt2="cli",
+                suggestion="--cli for local tools or --provider for API-based providers"
+            )
         )
     if not provider and not cli:
         raise click.ClickException(
-            "Must specify either --provider (for API) or --cli (for local tools)."
+            ERROR_TEMPLATES["missing_required"].format(
+                opt1="provider (for API)",
+                opt2="cli (for local tools)"
+            )
         )
 
     # Read input with size check (prevent unbounded memory usage)
@@ -531,8 +558,10 @@ def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
     if file_size > MAX_BATCH_FILE_SIZE:
         size_mb = file_size / (1024 * 1024)
         raise click.ClickException(
-            f"Input file too large: {size_mb:.1f}MB. "
-            f"Maximum size is {MAX_BATCH_FILE_SIZE_MB}MB."
+            ERROR_TEMPLATES["file_too_large"].format(
+                size_mb=size_mb,
+                max_mb=MAX_BATCH_FILE_SIZE_MB
+            )
         )
 
     sources = input_path.read_text(encoding="utf-8").strip().split("\n")
