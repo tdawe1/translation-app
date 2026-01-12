@@ -29,9 +29,12 @@ try:
     from .judge import TranslationJudge
     from .models import TranslationCandidate
     CLI_AVAILABLE = True
+    # Access DEFAULT_COMMANDS through the class
+    DEFAULT_COMMANDS = CLIProvider.DEFAULT_COMMANDS if CLIProvider else {}
 except ImportError:
     CLI_AVAILABLE = False
     CLIProvider = None  # type: ignore
+    DEFAULT_COMMANDS = {}  # type: ignore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,8 +55,11 @@ def _get_cli_provider(tool: str) -> "CLIProvider":
     Maps CLI tool names ("claude", "codex", "gemini", "ollama")
     to CLIProvider instances.
 
+    Uses DEFAULT_COMMANDS from review/llm/cli.py as the single source
+    of truth for tool name to base_command mappings.
+
     Args:
-        tool: CLI tool name
+        tool: CLI tool name (short form like "claude", "codex")
 
     Returns:
         Configured CLIProvider instance
@@ -66,23 +72,24 @@ def _get_cli_provider(tool: str) -> "CLIProvider":
 
     from .llm.base import ProviderConfig
 
-    # Map CLI tool names to CLIProvider configurations
-    # For "claude", we need a custom command: ["claude", "code", "exec"]
-    # CLIProvider expects a simple command, so we pass just the base
-    # and let the caller handle command construction for dry-run
-    tool_mapping = {
-        "claude": ("claude_code", "claude"),  # tool_name, base_command
-        "codex": ("codex", "codex"),
-        "gemini": ("gemini_cli", "gemini-cli"),
-        "ollama": ("ollama", "ollama"),
+    # Map short CLI names to internal tool names used by DEFAULT_COMMANDS
+    # This is the ONLY place where short names map to internal names
+    SHORT_TO_INTERNAL = {
+        "claude": "claude_code",
+        "codex": "codex",
+        "gemini": "gemini_cli",
+        "ollama": "ollama",
     }
 
-    if tool not in tool_mapping:
+    if tool not in SHORT_TO_INTERNAL:
         raise click.ClickException(
-            f"Unknown CLI tool: {tool}. Use: {list(tool_mapping.keys())}"
+            f"Unknown CLI tool: {tool}. Use: {list(SHORT_TO_INTERNAL.keys())}"
         )
 
-    tool_name, base_command = tool_mapping[tool]
+    tool_name = SHORT_TO_INTERNAL[tool]
+
+    # Get base command from DEFAULT_COMMANDS (single source of truth)
+    base_command = DEFAULT_COMMANDS.get(tool_name, tool)
 
     # Check if command is available
     if not shutil.which(base_command):
@@ -106,26 +113,43 @@ def _get_cli_provider(tool: str) -> "CLIProvider":
 def _build_cli_command(tool: str, prompt: str) -> List[str]:
     """Build the full command for a CLI tool (for dry-run).
 
-    This replicates the original CLI_TOOLS command structure for display.
+    Uses DEFAULT_COMMANDS from review/llm/cli.py as the single source
+    of truth for tool name to base_command mappings.
 
     Args:
-        tool: CLI tool name
+        tool: CLI tool name (short form like "claude", "codex")
         prompt: Prompt text
 
     Returns:
         Full command as list of strings
     """
-    tool_commands = {
-        "claude": ["claude", "code", "exec"],
-        "codex": ["codex", "exec"],
-        "gemini": ["gemini-cli"],
-        "ollama": ["ollama", "run", "codellama:latest"],
+    # Short to internal name mapping (must match _get_cli_provider)
+    SHORT_TO_INTERNAL = {
+        "claude": "claude_code",
+        "codex": "codex",
+        "gemini": "gemini_cli",
+        "ollama": "ollama",
     }
 
-    if tool not in tool_commands:
+    if tool not in SHORT_TO_INTERNAL:
         raise click.ClickException(f"Unknown CLI tool: {tool}")
 
-    cmd = list(tool_commands[tool])
+    # Build command based on tool type
+    # Note: These are full commands with subcommands, different from base command
+    if tool == "claude":
+        cmd = ["claude", "code", "exec"]
+    elif tool == "codex":
+        cmd = ["codex", "exec"]
+    elif tool == "gemini":
+        cmd = ["gemini-cli"]
+    elif tool == "ollama":
+        cmd = ["ollama", "run", "codellama:latest"]
+    else:
+        # Fallback: use base command from DEFAULT_COMMANDS
+        tool_name = SHORT_TO_INTERNAL[tool]
+        base_command = DEFAULT_COMMANDS.get(tool_name, tool)
+        cmd = [base_command]
+
     cmd.append(prompt)
     return cmd
 

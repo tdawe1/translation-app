@@ -23,16 +23,42 @@ logger = logging.getLogger(__name__)
 class CLIProvider(BaseProvider):
     """Provider for CLI-based translation tools.
 
-    Supports: claude_code, gemini_cli, codex
+    SINGLE SOURCE OF TRUTH for CLI tool command mappings.
+    All CLI tool configurations must be defined here.
+
+    Supported Tools:
+        Tool Name (internal)    Base Command    Description
+        --------------------    -------------    ----------------------------
+        claude_code             claude           Claude Code CLI (@anthropic-ai/claude-code)
+        gemini_cli              gemini-cli       Gemini CLI (@google/generative-ai-cli)
+        codex                   codex            GitHub Copilot Codex CLI (@github-copilot/codex-cli)
+        ollama                  ollama           Ollama CLI (local models)
+
+    How to Add a New CLI Tool:
+        1. Add an entry to DEFAULT_COMMANDS below: {"tool_name": "base_command"}
+        2. Update get_cli_provider() VALID_TOOLS list if needed
+        3. Add install hint in review/cli.py install_hints dict
+        4. Update tests in tests/test_review/test_cli.py
+
+    Usage:
+        provider = CLIProvider(tool_name="claude_code", config=config)
+        response = provider.generate("Translate this text")
+
+    The CLI tool mapping is used by:
+        - CLIProvider.__init__(): resolves base_command from tool_name
+        - review/cli.py: imports DEFAULT_COMMANDS for dry-run and validation
 
     Wraps command-line translation tools via subprocess calls.
     Returns structured results matching TranslationProvider protocol.
     """
 
+    # SINGLE SOURCE OF TRUTH: CLI tool command configurations
+    # When adding new tools, update this dictionary and document above
     DEFAULT_COMMANDS = {
-        "claude_code": "claude",
-        "gemini_cli": "gemini",
-        "codex": "codex",
+        "claude_code": "claude",      # claude code exec "prompt"
+        "gemini_cli": "gemini-cli",   # gemini-cli "prompt"
+        "codex": "codex",             # codex exec "prompt"
+        "ollama": "ollama",           # ollama run model "prompt"
     }
 
     def __init__(
@@ -176,18 +202,22 @@ class CLIProvider(BaseProvider):
 def get_cli_provider(tool_name: str, api_key: str, **kwargs) -> CLIProvider:
     """Factory function to get CLI provider instance.
 
+    Uses DEFAULT_COMMANDS as the single source of truth for valid tool names.
+
     Args:
-        tool_name: "claude_code", "gemini_cli", or "codex"
-        api_key: API key for CLI tool
+        tool_name: One of the keys from CLIProvider.DEFAULT_COMMANDS
+                   ("claude_code", "gemini_cli", "codex", "ollama")
+        api_key: API key for CLI tool (may be empty for local CLI tools)
         **kwargs: Additional config (command, timeout, etc.)
 
     Returns:
         Configured CLIProvider instance
 
     Raises:
-        ValueError: If tool_name is unknown
+        ValueError: If tool_name is unknown (not in DEFAULT_COMMANDS)
     """
-    valid_tools = ["claude_code", "gemini_cli", "codex"]
+    # Use DEFAULT_COMMANDS as single source of truth for valid tools
+    valid_tools = list(CLIProvider.DEFAULT_COMMANDS.keys())
 
     if tool_name not in valid_tools:
         raise ValueError(f"Unknown CLI tool: {tool_name}. Use: {valid_tools}")
