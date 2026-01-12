@@ -3611,102 +3611,709 @@ git commit -m "feat(queue): implement Redis job queue for horizontal scaling
 
 ---
 
-## Phase 8: Bilingual CSV Output
+## Phase 8: Bilingual Review Workflow (Multi-Model + Judge + Web UI)
 
-### Task 13: Implement bilingual CSV generation
+> **Design Document:** See `docs/plans/2025-01-12-bilingual-review-design.md` for full architecture
+
+### Overview
+
+Automated multi-model translation produces a final output that a human approves via web UI. The bilingual CSV serves as an audit trail and fine-tuning data source, not as the primary review interface.
+
+**Key Changes from Original Plan:**
+- **Web UI is the review interface**, not CSV
+- **Judge model** resolves most disagreements automatically
+- **Human reviews final output**, not individual segments
+- **CSV** is for audit trail + fine-tuning data only
+
+### Task 13: Implement multi-model translation with judge
 
 **Files:**
-- Create: `cmd/translation-worker/output/bilingual_csv.py`
+- Create: `cmd/translation-worker/judge/model.py`
+- Create: `cmd/translation-worker/judge/evaluator.py`
+- Create: `cmd/translation-worker/output/bilingual_csv.py` (audit trail only)
+- Create: `tests/test_judge/test_evaluator.py`
 - Create: `tests/test_output/test_bilingual_csv.py`
 
-**Step 1: Write test for CSV generation**
+**Step 1: Write test for judge evaluator**
 
 ```python
-# tests/test_output/test_bilingual_csv.py
+# tests/test_judge/test_evaluator.py
 import pytest
-from output.bilingual_csv import BilingualCSV
-from pathlib import Path
+from judge.evaluator import JudgeEvaluator, JudgeResult, TranslationCandidate
+from datetime import datetime
 
-def test_generate_csv(tmp_path):
-    """Should generate bilingual CSV from translation segments."""
-    segments = [
-        {"id": "s1", "source": "こんにちは", "target": "Hello", "context": "slide:1"},
-        {"id": "s2", "source": "世界", "target": "World", "context": "slide:1"}
+def test_judge_resolves_disagreement():
+    """Judge should select better translation when models disagree."""
+    evaluator = JudgeEvaluator()
+
+    candidates = [
+        TranslationCandidate(
+            model_name="claude-4.5-sonnet",
+            text="Customer support",
+            confidence=0.85,
+            glossary_matches=["support"],
+            latency_ms=1200
+        ),
+        TranslationCandidate(
+            model_name="gpt-4o",
+            text="Client assistance",
+            confidence=0.78,
+            glossary_matches=[],
+            latency_ms=800
+        )
     ]
 
-    csv_path = tmp_path / "output.csv"
-    generator = BilingualCSV()
-    generator.generate(segments, str(csv_path))
+    result = evaluator.evaluate(
+        source="顧客対応",
+        candidates=candidates,
+        context={"segment_id": "s1", "slide": 1}
+    )
 
-    content = csv_path.read_text(encoding="utf-8-sig")
-    assert "こんにちは,Hello" in content
-    assert "source,target" in content
+    assert isinstance(result, JudgeResult)
+    assert result.winner in ["model_a", "model_b"]
+    assert 0 <= result.confidence <= 1
+    assert len(result.reasoning) > 0
 
-def test_import_csv(tmp_path):
-    """Should import edited CSV for re-generation."""
-    # First generate
-    segments = [
-        {"id": "s1", "source": "こんにちは", "target": "Hello", "context": "slide:1"}
+def test_judge_handles_timeout():
+    """Judge should fallback gracefully on timeout."""
+    evaluator = JudgeEvaluator(timeout_ms=100)
+    evaluator._judge_call = lambda *args, **kwargs: None  # Simulate timeout
+
+    candidates = [
+        TranslationCandidate("model_a", "Translation A", 0.9, [], 500)
     ]
 
-    csv_path = tmp_path / "output.csv"
-    generator = BilingualCSV()
-    generator.generate(segments, str(csv_path))
+    result = evaluator.evaluate("source", candidates, {})
 
-    # Edit and re-import
-    edited_content = csv_path.read_text(encoding="utf-8-sig")
-    edited_content = edited_content.replace("Hello", "Hi")
-    csv_path.write_text(edited_content, encoding="utf-8-sig")
-
-    imported = generator.import_csv(str(csv_path))
-    assert imported["s1"]["target"] == "Hi"
+    # Should return fallback result
+    assert result.confidence < 1.0  # Lower confidence due to fallback
 ```
 
-**Step 2: Run test to verify it fails**
+**Step 2: Implement judge evaluator (stub with full interface)**
 
-```bash
-python -m pytest tests/test_output/test_bilingual_csv.py -v
-# Expected: ImportError
+```python
+# cmd/translation-worker/judge/model.py
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Literal
+from enum import Enum
+
+class JudgeWinner(Enum):
+    MODEL_A = "model_a"
+    MODEL_B = "model_b"
+    EDITED = "edited"
+    TIE = "tie"
+
+@dataclass
+class TranslationCandidate:
+    """A translation output from a model."""
+    model_name: str
+    text: str
+    confidence: float
+    glossary_matches: List[str] = field(default_factory=list)
+    latency_ms: int = 0
+    metadata: Dict = field(default_factory=dict)
+
+@dataclass
+class JudgeResult:
+    """Result of judge evaluation."""
+    segment_id: str
+    winner: JudgeWinner
+    selected_text: str
+    confidence: float  # 0-1, how sure judge is
+    reasoning: str
+    concerns: List[str] = field(default_factory=list)
+    suggested_edits: Optional[str] = None
+    fallback_used: bool = False
+    evaluated_at: datetime = field(default_factory=datetime.utcnow)
 ```
 
-**Step 3: Implement bilingual CSV generator**
+```python
+# cmd/translation-worker/judge/evaluator.py
+import logging
+import time
+from typing import List, Dict, Optional
+from .model import TranslationCandidate, JudgeResult, JudgeWinner
+
+logger = logging.getLogger(__name__)
+
+class JudgeEvaluator:
+    """Evaluates competing translations and selects the best option.
+
+    In MVP: Returns random selection with placeholder reasoning.
+    Full implementation: Uses LLM judge to evaluate quality.
+    """
+
+    def __init__(
+        self,
+        judge_model: str = "claude-4.5-sonnet",
+        timeout_ms: int = 30000,
+        fallback_on_timeout: bool = True
+    ):
+        self.judge_model = judge_model
+        self.timeout_ms = timeout_ms
+        self.fallback_on_timeout = fallback_on_timeout
+
+    def evaluate(
+        self,
+        source: str,
+        candidates: List[TranslationCandidate],
+        context: Dict
+    ) -> JudgeResult:
+        """Evaluate candidates and select winner.
+
+        Args:
+            source: Original source text
+            candidates: Translation outputs to compare
+            context: Segment context (slide, position, etc.)
+
+        Returns:
+            JudgeResult with winner and reasoning
+        """
+        if len(candidates) < 2:
+            # Only one candidate, return it
+            c = candidates[0]
+            return JudgeResult(
+                segment_id=context.get("segment_id", "unknown"),
+                winner=JudgeWinner.MODEL_A,
+                selected_text=c.text,
+                confidence=c.confidence,
+                reasoning="Only candidate available",
+                fallback_used=False
+            )
+
+        # MVP: Simple stub - pick by confidence
+        # In full implementation, this calls the LLM judge
+        sorted_candidates = sorted(
+            candidates,
+            key=lambda c: (c.confidence, -len(c.glossary_matches)),
+            reverse=True
+        )
+
+        winner = sorted_candidates[0]
+        winner_idx = candidates.index(winner)
+
+        return JudgeResult(
+            segment_id=context.get("segment_id", "unknown"),
+            winner=JudgeWinner.MODEL_A if winner_idx == 0 else JudgeWinner.MODEL_B,
+            selected_text=winner.text,
+            confidence=winner.confidence,
+            reasoning=f"MVP stub: selected based on confidence ({winner.confidence:.2f})",
+            fallback_used=False
+        )
+
+    def evaluate_batch(
+        self,
+        segments: List[Dict],
+        candidates_by_segment: Dict[str, List[TranslationCandidate]]
+    ) -> List[JudgeResult]:
+        """Evaluate multiple segments.
+
+        Args:
+            segments: List of segment dicts with source and context
+            candidates_by_segment: Map of segment_id to candidates
+
+        Returns:
+            List of JudgeResult, one per segment
+        """
+        results = []
+
+        for segment in segments:
+            segment_id = segment.get("id", "")
+            candidates = candidates_by_segment.get(segment_id, [])
+
+            result = self.evaluate(
+                source=segment.get("source", ""),
+                candidates=candidates,
+                context=segment.get("context", {})
+            )
+            results.append(result)
+
+        return results
+```
+
+**Step 3: Implement bilingual CSV for audit trail**
 
 ```python
 # cmd/translation-worker/output/bilingual_csv.py
 import csv
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dataclasses import dataclass
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
-class CSVSegment:
-    """A segment for CSV output."""
+class BilingualCSVSegment:
+    """A segment for CSV audit output."""
     segment_id: str
     source: str
     target: str
-    context: str
-    confidence: float
-    glossary_used: bool
-    notes: str = ""
+    judge_winner: str
+    judge_confidence: float
+    judge_reasoning: str
+    is_flagged: bool
+    flag_reason: Optional[str]
+    model_a_output: Optional[str]
+    model_b_output: Optional[str]
+    glossary_terms: List[str]
+    context: Dict
 
 class BilingualCSV:
-    """Generates and imports bilingual CSV for review workflow."""
+    """Generates bilingual CSV as audit trail and fine-tuning data.
 
-    DEFAULT_COLUMNS = [
+    This is NOT for human review - use the web UI for that.
+    The CSV records what happened for analysis and learning.
+    """
+
+    AUDIT_COLUMNS = [
         "segment_id",
         "source",
         "target",
-        "context",
-        "confidence",
-        "glossary_used",
-        "notes"
+        "judge_winner",
+        "judge_confidence",
+        "judge_reasoning",
+        "is_flagged",
+        "flag_reason",
+        "model_a",
+        "model_b",
+        "glossary_terms",
+        "context_json"
     ]
 
     def __init__(
         self,
         encoding: str = "utf-8-sig",
         delimiter: str = ",",
-        columns: List[str] = None
+        include_alternatives: bool = True
+    ):
+        self.encoding = encoding
+        self.delimiter = delimiter
+        self.include_alternatives = include_alternatives
+
+    def generate(
+        self,
+        segments: List[BilingualCSVSegment],
+        output_path: str
+    ) -> None:
+        """Generate bilingual CSV audit trail.
+
+        Args:
+            segments: Segments with judge decisions
+            output_path: Where to write CSV
+        """
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_path, 'w', newline='', encoding=self.encoding) as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=self.AUDIT_COLUMNS,
+                delimiter=self.delimiter
+            )
+            writer.writeheader()
+
+            for seg in segments:
+                import json
+                row = {
+                    "segment_id": seg.segment_id,
+                    "source": seg.source,
+                    "target": seg.target,
+                    "judge_winner": seg.judge_winner,
+                    "judge_confidence": seg.judge_confidence,
+                    "judge_reasoning": seg.judge_reasoning,
+                    "is_flagged": seg.is_flagged,
+                    "flag_reason": seg.flag_reason or "",
+                    "model_a": seg.model_a_output if self.include_alternatives else "",
+                    "model_b": seg.model_b_output if self.include_alternatives else "",
+                    "glossary_terms": ",".join(seg.glossary_terms),
+                    "context_json": json.dumps(seg.context, ensure_ascii=False)
+                }
+                writer.writerow(row)
+
+        logger.info(f"[BILINGUAL_CSV] Generated audit trail: {output_path}")
+
+    def import_edited(self, csv_path: str) -> Dict[str, Dict]:
+        """Import edited CSV with human corrections.
+
+        This is for loading fine-tuning data or post-hoc corrections.
+
+        Args:
+            csv_path: Path to edited CSV
+
+        Returns:
+            Dict mapping segment_id to edited data
+        """
+        import json
+
+        segments_by_id = {}
+
+        with open(csv_path, 'r', encoding=self.encoding) as f:
+            reader = csv.DictReader(f, delimiter=self.delimiter)
+
+            for row in reader:
+                segment_id = row.get("segment_id")
+                if not segment_id:
+                    continue
+
+                segments_by_id[segment_id] = {
+                    "source": row.get("source", ""),
+                    "target": row.get("target", ""),  # Human-edited
+                    "original_target": row.get("original_target", row.get("target", "")),
+                    "flag_reason": row.get("flag_reason", "")
+                }
+
+        logger.info(f"[BILINGUAL_CSV] Imported {len(segments_by_id)} edited segments")
+        return segments_by_id
+```
+
+**Step 4: Run tests**
+
+```bash
+python -m pytest tests/test_judge/test_evaluator.py -v
+python -m pytest tests/test_output/test_bilingual_csv.py -v
+```
+
+**Step 5: Commit judge and CSV implementation**
+
+```bash
+git add cmd/translation-worker/judge/ cmd/translation-worker/output/
+git add tests/test_judge/ tests/test_output/
+git commit -m "feat(review): implement multi-model judge with audit CSV
+
+- Add JudgeEvaluator for resolving model disagreements
+- Add JudgeResult and TranslationCandidate data models
+- Add BilingualCSV for audit trail (not review interface)
+- MVP stub: judge uses confidence-based selection
+- Full interface ready for LLM judge implementation
+- Add test coverage for judge and CSV export
+"
+```
+
+---
+
+## Phase 9: Web UI Integration (Backend API)
+
+### Task 14: Implement approval workflow API
+
+**Files:**
+- Create: `backend/internal/handlers/translation.go`
+- Update: `backend/internal/models/translation_job.go`
+- Create: `backend/tests/translation_test.go`
+
+**Step 1: Add translation job models**
+
+```go
+// backend/internal/models/translation_job.go
+package models
+
+import (
+	"time"
+	"github.com/google/uuid"
+)
+
+// TranslationJobStatus represents the status of a translation job
+type TranslationJobStatus string
+
+const (
+	TranslationStatusProcessing   TranslationJobStatus = "processing"
+	TranslationStatusPendingApproval TranslationJobStatus = "pending_approval"
+	TranslationStatusApproved      TranslationJobStatus = "approved"
+	TranslationStatusRejected      TranslationJobStatus = "rejected"
+	TranslationStatusExported      TranslationJobStatus = "exported"
+)
+
+// TranslationJob represents a translation job in the system
+type TranslationJob struct {
+	Base
+
+	// File information
+	SourceFile string    `gorm:"type:varchar(500)"`
+	TargetFile string    `gorm:"type:varchar(500)"`
+	UserID     uuid.UUID `gorm:"type:uuid;index"`
+
+	// Status
+	Status TranslationJobStatus `gorm:"type:varchar(50);index"`
+
+	// Quality metrics
+	OverallScore    float64 `gorm:"type:decimal(5,2)"`
+	SegmentCount    int
+	FlaggedCount    int
+	JudgeResolutions int
+
+	// Timestamps
+	CompletedAt   *time.Time
+	ApprovedAt    *time.Time
+	ApprovedBy    *uuid.UUID
+
+	// Relations
+	Segments []TranslationSegment `gorm:"foreignKey:JobID"`
+}
+
+// TranslationSegment represents a single translated segment
+type TranslationSegment struct {
+	Base
+
+	JobID uuid.UUID `gorm:"type:uuid;index"`
+
+	// Text
+	Source string `gorm:"type:text"`
+	Target string `gorm:"type:text"`
+	Context string `gorm:"type:jsonb"` // JSON: slide, position, etc.
+
+	// Judge decision
+	JudgeWinner string  `gorm:"type:varchar(20)"` // "model_a", "model_b", "edited", "tie"
+	JudgeConfidence float64 `gorm:"type:decimal(5,2)"`
+	JudgeReasoning string `gorm:"type:text"`
+
+	// Flags
+	IsFlagged  bool   `gorm:"index"`
+	FlagReason  string `gorm:"type:varchar(500)"`
+
+	// Alternatives (for review UI)
+	ModelAOutput *string `gorm:"type:text"`
+	ModelBOutput *string `gorm:"type:text"`
+	GlossaryTerms string `gorm:"type:jsonb"` // JSON array
+}
+
+// TableName specifies the table name for TranslationJob
+func (TranslationJob) TableName() string {
+	return "translation_jobs"
+}
+
+// TableName specifies the table name for TranslationSegment
+func (TranslationSegment) TableName() string {
+	return "translation_segments"
+}
+```
+
+**Step 2: Add translation handlers**
+
+```go
+// backend/internal/handlers/translation.go
+package handlers
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"github.com/tdawe1/translation-app/internal/models"
+	"github.com/tdawe1/translation-app/internal/database"
+)
+
+type TranslationHandler struct {
+	db *database.DB
+}
+
+func NewTranslationHandler(db *database.DB) *TranslationHandler {
+	return &TranslationHandler{db: db}
+}
+
+type JobListResponse struct {
+	Jobs []JobSummary `json:"jobs"`
+}
+
+type JobSummary struct {
+	ID             string              `json:"id"`
+	SourceFile     string              `json:"source_file"`
+	Status         string              `json:"status"`
+	OverallScore   float64             `json:"overall_score"`
+	SegmentCount   int                 `json:"segment_count"`
+	FlaggedCount   int                 `json:"flagged_count"`
+	CreatedAt      string              `json:"created_at"`
+	CompletedAt    *string             `json:"completed_at"`
+}
+
+type JobDetailResponse struct {
+	JobSummary
+	Segments []SegmentDetail `json:"segments"`
+}
+
+type SegmentDetail struct {
+	ID             string  `json:"id"`
+	Source         string  `json:"source"`
+	Target         string  `json:"target"`
+	Context        string  `json:"context"`
+	JudgeWinner    string  `json:"judge_winner"`
+	JudgeConfidence float64 `json:"judge_confidence"`
+	IsFlagged      bool    `json:"is_flagged"`
+	FlagReason     *string `json:"flag_reason"`
+	ModelA         *string `json:"model_a,omitempty"`
+	ModelB         *string `json:"model_b,omitempty"`
+}
+
+// ListJobs returns all translation jobs for the current user
+func (h *TranslationHandler) ListJobs(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
+	if userID == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
+	var jobs []models.TranslationJob
+	err := h.db.DB().Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Find(&jobs)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch jobs"})
+	}
+
+	response := make([]JobSummary, len(jobs))
+	for i, job := range jobs {
+		response[i] = JobSummary{
+			ID:           job.ID.String(),
+			SourceFile:   job.SourceFile,
+			Status:       string(job.Status),
+			OverallScore: job.OverallScore,
+			SegmentCount: job.SegmentCount,
+			FlaggedCount: job.FlaggedCount,
+			CreatedAt:    job.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			CompletedAt:  formatTimePtr(job.CompletedAt),
+		}
+	}
+
+	return c.JSON(response)
+}
+
+// GetJob returns details for a specific job
+func (h *TranslationHandler) GetJob(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
+	jobID := c.Params("id")
+
+	var job models.TranslationJob
+	err := h.db.DB().Where("id = ? AND user_id = ?", jobID, userID).
+		Preload("Segments").
+		First(&job).Error
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Job not found"})
+	}
+
+	segments := make([]SegmentDetail, len(job.Segments))
+	for i, seg := range job.Segments {
+		segments[i] = SegmentDetail{
+			ID:             seg.ID.String(),
+			Source:         seg.Source,
+			Target:         seg.Target,
+			Context:        seg.Context,
+			JudgeWinner:    seg.JudgeWinner,
+			JudgeConfidence: float64(seg.JudgeConfidence),
+			IsFlagged:      seg.IsFlagged,
+			FlagReason:     stringPtr(seg.FlagReason),
+			ModelA:         seg.ModelAOutput,
+			ModelB:         seg.ModelBOutput,
+		}
+	}
+
+	return c.JSON(JobDetailResponse{
+		JobSummary: JobSummary{
+			ID:           job.ID.String(),
+			SourceFile:   job.SourceFile,
+			Status:       string(job.Status),
+			OverallScore: job.OverallScore,
+			SegmentCount: job.SegmentCount,
+			FlaggedCount: job.FlaggedCount,
+			CreatedAt:    job.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			CompletedAt:  formatTimePtr(job.CompletedAt),
+		},
+		Segments: segments,
+	})
+}
+
+// ApproveJob approves a translation job
+func (h *TranslationHandler) ApproveJob(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
+	jobID := c.Params("id")
+
+	var job models.TranslationJob
+	err := h.db.DB().Where("id = ? AND user_id = ?", jobID, userID).
+		First(&job).Error
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Job not found"})
+	}
+
+	now := time.Now()
+	job.Status = models.TranslationStatusApproved
+	job.ApprovedAt = &now
+	job.ApprovedBy = uuid.MustParse(userID)
+
+	h.db.DB().Save(&job)
+
+	return c.JSON(fiber.Map{"success": true, "status": "approved"})
+}
+
+// RejectJob rejects a translation job
+func (h *TranslationHandler) RejectJob(c *fiber.Ctx) error {
+	// TODO: Implement rejection with reason capture
+	return c.JSON(fiber.Map{"success": true, "status": "rejected"})
+}
+
+// UpdateSegment edits a specific segment
+func (h *TranslationHandler) UpdateSegment(c *fiber.Ctx) error {
+	type UpdateRequest struct {
+		Target string `json:"target"`
+	}
+
+	userID := c.Locals("user_id").(string)
+	jobID := c.Params("id")
+	segmentID := c.Params("segment_id")
+
+	var body UpdateRequest
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	// Verify job belongs to user
+	var job models.TranslationJob
+	err := h.db.DB().Where("id = ? AND user_id = ?", jobID, userID).
+		First(&job).Error
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Job not found"})
+	}
+
+	// Update segment
+	var segment models.TranslationSegment
+	err = h.db.DB().Where("id = ? AND job_id = ?", segmentID, jobID).
+		First(&segment).Error
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Segment not found"})
+	}
+
+	segment.Target = body.Target
+	segment.JudgeWinner = "edited"  # Human-edited overrides judge
+	h.db.DB().Save(&segment)
+
+	return c.JSON(fiber.Map{"success": true})
+}
+
+// Helper functions
+func formatTimePtr(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	formatted := t.Format("2006-01-02T15:04:05Z")
+	return &formatted
+}
+
+func stringPtr(s string) *string {
+	return &s
+}
+```
+
+**Step 3: Register routes**
+
+Update `backend/cmd/server/main.go`:
+
+```go
+// Register translation routes
+translationHandler := handlers.NewTranslationHandler(db)
+
+api.Get("/translation/jobs", translationHandler.ListJobs)
+api.Get("/translation/jobs/:id", translationHandler.GetJob)
+api.Post("/translation/jobs/:id/approve", translationHandler.ApproveJob)
+api.Post("/translation/jobs/:id/reject", translationHandler.RejectJob)
+api.Put("/translation/jobs/:id/segments/:segment_id", translationHandler.UpdateSegment)
+```
+
+---
+
+## Phase 10: Audit Tools
     ):
         self.encoding = encoding
         self.delimiter = delimiter

@@ -13,6 +13,28 @@ export interface Job {
   timestamp?: string;
 }
 
+/** Extended job type with additional details from Gengo API */
+export interface ExtendedJob extends Job {
+  /** Optional full job description */
+  description?: string;
+  /** Source language code (e.g., "en", "ja") */
+  sourceLanguage?: string;
+  /** Target language code (e.g., "es", "fr") */
+  targetLanguage?: string;
+  /** Human-readable language pair (e.g., "English → Spanish") */
+  languagePair?: string;
+  /** Reason why job was filtered (if applicable) */
+  filterReason?: string;
+  /** Unit count for translation (words/characters) */
+  unitCount?: number;
+  /** Unit type: "words" or "characters" */
+  unitType?: "words" | "characters";
+  /** Deadline for job completion */
+  deadline?: string;
+  /** Whether job can be auto-accepted */
+  canAccept?: boolean;
+}
+
 interface JobsStoreState {
   jobs: Job[];
   maxJobs: number; // Maximum jobs to keep in memory
