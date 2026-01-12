@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
 import { authApi, oauthApi, ApiErrorClass } from "@/lib/api";
+import { setToken } from "@/lib/auth/tokens";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -41,8 +42,8 @@ export default function RegisterPage() {
     try {
       const response = await authApi.register({ email, password });
 
-      // Store access token in sessionStorage (httpOnly cookie is set by backend)
-      sessionStorage.setItem("access_token", response.access_token);
+      // Store access token using TokenService (httpOnly cookie is also set by backend)
+      setToken(response.access_token);
       setUser(response.user);
 
       // Redirect to dashboard

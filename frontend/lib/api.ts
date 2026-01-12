@@ -3,6 +3,8 @@
  * Refactored with proper separation of concerns and type safety
  */
 
+import { getToken, clearToken as clearTokenStorage } from "./auth/tokens";
+
 // ============================================================
 // Types and Interfaces
 // ============================================================
@@ -135,8 +137,7 @@ class HttpClient {
    * Returns true if token exists, false otherwise
    */
   private hasToken(): boolean {
-    return typeof sessionStorage !== "undefined" &&
-           !!sessionStorage.getItem("access_token");
+    return getToken() !== null;
   }
 
   /**
@@ -168,8 +169,8 @@ class HttpClient {
       }
     }
 
-    // Add access token from sessionStorage if available
-    const token = sessionStorage.getItem("access_token");
+    // Add access token from TokenService if available
+    const token = getToken();
     // HeadersInit is a union type, so we use a plain object for manipulation
     const headers: Record<string, string> = {
       ...(this.defaultHeaders as Record<string, string>),
@@ -191,7 +192,7 @@ class HttpClient {
       if (response.status === 401) {
         // Try to read the actual error message from the response body
         const data = await response.json().catch(() => ({}));
-        sessionStorage.removeItem("access_token");
+        clearTokenStorage(); // Use TokenService to clear token
         // If optional mode, return null instead of throwing
         if (options.optional) {
           return null as T;

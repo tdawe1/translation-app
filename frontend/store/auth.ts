@@ -6,6 +6,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { User } from "@/lib/api";
 import { authApi } from "@/lib/api";
+import { clearToken as clearTokenStorage } from "@/lib/auth/tokens";
 
 interface AuthState {
   user: User | null;
@@ -18,6 +19,7 @@ interface AuthState {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   clear: () => void;
+  clearToken: () => void;
   fetchUser: () => Promise<void>;
 }
 
@@ -47,6 +49,11 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           error: null,
         }),
+
+      clearToken: () => {
+        clearTokenStorage();
+        set({ user: null, isAuthenticated: false, error: null });
+      },
 
       fetchUser: async () => {
         try {
