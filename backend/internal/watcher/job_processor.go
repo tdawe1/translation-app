@@ -115,9 +115,16 @@ func (p *JobProcessor) matchesRewardFilter(job Job, config *models.WatcherConfig
 }
 
 // recordJob adds the job ID to the seen jobs set in Redis
+// P0-1 FIX: Set TTL of 24 hours to prevent unbounded growth
 func (p *JobProcessor) recordJob(ctx context.Context, job Job) error {
 	key := GetSeenJobsKey(job.UserID.String())
-	return p.redis.SAdd(ctx, key, job.ID).Err()
+	err := p.redis.SAdd(ctx, key, job.ID).Err()
+	if err != nil {
+		return err
+	}
+	// Set TTL to prevent unbounded growth (24 hours)
+	_ = p.redis.Expire(ctx, key, 24*time.Hour).Err()
+	return nil
 }
 
 // incrementJobCount increments the job counter for a user
