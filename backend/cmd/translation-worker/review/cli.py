@@ -4,14 +4,20 @@ Provides direct command-line access to translation and judge
 functionality without requiring a web server.
 
 Usage:
+    # Use local CLI tools (no API costs!)
+    python -m review translate "こんにちは" --cli claude
+    python -m review translate "こんにちは" --cli codex
+    python -m review translate "こんにちは" --cli gemini
+
+    # Or use API providers
     python -m review translate "こんにちは" --provider anthropic
-    python -m review judge source.txt candidate_a.txt candidate_b.txt
-    python -m review batch --input sources.txt --output translations.txt
 """
 import asyncio
 import json
 import logging
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -33,6 +39,79 @@ logging.basicConfig(
     format="[%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+# Local CLI tool commands (simple subprocess calls)
+CLI_TOOLS = {
+    "claude": ["claude", "code", "exec"],           # claude code exec "prompt"
+    "codex": ["codex", "exec"],                     # codex exec "prompt"
+    "gemini": ["gemini-cli"],                      # gemini-cli "prompt"
+    "ollama": ["ollama", "run"],                    # ollama run model "prompt"
+}
+
+
+def _translate_with_cli(text: str, cli_tool: str) -> tuple[str, dict]:
+    """Translate using local CLI tool (no API costs).
+
+    Args:
+        text: Japanese text to translate
+        cli_tool: CLI tool name ("claude", "codex", "gemini", "ollama")
+
+    Returns:
+        Tuple of (translated_text, usage_info)
+    """
+    if cli_tool not in CLI_TOOLS:
+        raise click.ClickException(
+            f"Unknown CLI tool: {cli_tool}. Use: {list(CLI_TOOLS.keys())}"
+        )
+
+    # Check if CLI tool is available
+    cmd_name = CLI_TOOLS[cli_tool][0]
+    if not shutil.which(cmd_name):
+        raise click.ClickException(
+            f"CLI tool '{cmd_name}' not found in PATH.\n"
+            f"Install it first:\n"
+            f"  - claude: npm install -g @anthropic-ai/claude-code\n"
+            f"  - codex: npm install -g @github-copilot/codex-cli\n"
+            f"  - gemini: npm install -g @google/generative-ai-cli\n"
+            f"  - ollama: curl -fsSL https://ollama.com/install.sh | sh"
+        )
+
+    # Build command
+    cmd = list(CLI_TOOLS[cli_tool])
+
+    if cli_tool == "ollama":
+        # ollama run MODEL "prompt" - use default model
+        cmd.append("codellama:latest")
+    cmd.append(f"Translate the following Japanese text to English:\n\n{text}")
+
+    # Run CLI tool
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if result.returncode != 0:
+            raise click.ClickException(
+                f"{cli_tool} CLI failed:\n{result.stderr}"
+            )
+
+        translation = result.stdout.strip()
+
+        usage = {
+            "prompt_tokens": len(text),
+            "completion_tokens": len(translation),
+            "total_tokens": len(text) + len(translation),
+            "tool": cli_tool,
+        }
+
+        return translation, usage
+
+    except subprocess.TimeoutExpired:
+        raise click.ClickException(f"{cli_tool} CLI timed out")
 
 
 def _get_api_key(provider: str) -> Optional[str]:
@@ -96,8 +175,12 @@ def cli():
 @click.option(
     "--provider", "-p",
     type=click.Choice(["anthropic", "openai", "gemini"]),
-    required=True,
-    help="LLM provider to use"
+    help="LLM provider to use (requires API key)"
+)
+@click.option(
+    "--cli",
+    type=click.Choice(["claude", "codex", "gemini", "ollama"]),
+    help="Use local CLI tool (no API costs)"
 )
 @click.option(
     "--model", "-m",
@@ -119,20 +202,49 @@ def cli():
     default=True,
     help="Use parallel execution (only affects multiple providers)"
 )
-def translate(text: str, provider: str, model: Optional[str], format: str,
+def translate(text: str, provider: Optional[str], cli: Optional[str], model: Optional[str], format: str,
              output: Optional[str], parallel: bool):
     """Translate Japanese text to English.
 
-    Example: translate "こんにちは" --provider anthropic --format json
-    """
-    provider_instance = _ensure_provider(provider, model)
+    Examples:
 
-    # Build prompt (simplified for CLI)
+        # Use local CLI tool (no API costs!)
+        translate "こんにちは" --cli claude
+        translate "こんにちは" --cli codex
+        translate "こんにちは" --cli gemini
+
+        # Or use API providers (requires API key)
+        translate "こんにちは" --provider anthropic --format json
+    """
+    # Validate mutual exclusivity
+    if provider and cli:
+        raise click.ClickException(
+            "Cannot specify both --provider and --cli. "
+            "Use --cli for local tools or --provider for API-based providers."
+        )
+    if not provider and not cli:
+        raise click.ClickException(
+            "Must specify either --provider (for API) or --cli (for local tools). "
+            "Use --cli claude/codex/gemini/ollama for local tools with no API costs."
+        )
+
+    # Build prompt
     prompt = f"Translate the following Japanese text to English:\n\n{text}"
 
     try:
-        response = provider_instance.generate(prompt)
-        translation = response.text.strip()
+        if cli:
+            # Use local CLI tool (no API costs)
+            translation, usage = _translate_with_cli(text, cli)
+            provider_name = usage.get("tool", cli)
+            model_name = usage.get("model", f"{cli}-default")
+        else:
+            # Use API provider
+            provider_instance = _ensure_provider(provider, model)
+            response = provider_instance.generate(prompt)
+            translation = response.text.strip()
+            provider_name = provider
+            model_name = response.model
+            usage = response.usage
 
         # Format output
         if format == "text":
@@ -141,14 +253,13 @@ def translate(text: str, provider: str, model: Optional[str], format: str,
             result = json.dumps({
                 "source": text,
                 "translation": translation,
-                "provider": provider,
-                "model": response.model,
-                "usage": response.usage,
-                "latency_ms": response.latency_ms
+                "provider": provider_name,
+                "model": model_name,
+                "usage": usage,
             }, indent=2, ensure_ascii=False)
         elif format == "csv":
             result = f"source,translation,provider,model\n"
-            result += f'"{text}","{translation}","{provider}","{response.model}"'
+            result += f'"{text}","{translation}","{provider_name}","{model_name}"'
 
         # Output
         if output:
@@ -263,8 +374,12 @@ Evaluate both translations and output JSON."""
 @click.option(
     "--provider", "-p",
     type=click.Choice(["anthropic", "openai", "gemini"]),
-    required=True,
-    help="LLM provider to use"
+    help="LLM provider to use (requires API key)"
+)
+@click.option(
+    "--cli",
+    type=click.Choice(["claude", "codex", "gemini", "ollama"]),
+    help="Use local CLI tool (no API costs)"
 )
 @click.option(
     "--model", "-m",
@@ -281,13 +396,30 @@ Evaluate both translations and output JSON."""
     default="text",
     help="Output format"
 )
-def batch(input: str, output: str, provider: str, model: Optional[str],
-          parallel: bool, format: str):
+def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
+          model: Optional[str], parallel: bool, format: str):
     """Batch translate texts from a file.
 
     Processes each line of the input file as a separate translation.
+
+    Examples:
+
+        # Use local CLI tool (no API costs!)
+        batch --input sources.txt --output translations.txt --cli claude
+
+        # Or use API provider
+        batch --input sources.txt --output translations.txt --provider anthropic
     """
-    provider_instance = _ensure_provider(provider, model)
+    # Validate mutual exclusivity
+    if provider and cli:
+        raise click.ClickException(
+            "Cannot specify both --provider and --cli. "
+            "Use --cli for local tools or --provider for API-based providers."
+        )
+    if not provider and not cli:
+        raise click.ClickException(
+            "Must specify either --provider (for API) or --cli (for local tools)."
+        )
 
     # Read input
     input_path = Path(input)
@@ -305,14 +437,23 @@ def batch(input: str, output: str, provider: str, model: Optional[str],
     for i, source in enumerate(sources):
         click.echo(f"[{i+1}/{len(sources)}] Processing: {source[:50]}...", err=True)
 
-        prompt = f"Translate the following Japanese text to English:\n\n{source}"
         try:
-            response = provider_instance.generate(prompt)
-            translations.append({
-                "source": source,
-                "translation": response.text.strip(),
-                "usage": response.usage
-            })
+            if cli:
+                translation, usage = _translate_with_cli(source, cli)
+                translations.append({
+                    "source": source,
+                    "translation": translation,
+                    "usage": usage
+                })
+            else:
+                provider_instance = _ensure_provider(provider, model)
+                prompt = f"Translate the following Japanese text to English:\n\n{source}"
+                response = provider_instance.generate(prompt)
+                translations.append({
+                    "source": source,
+                    "translation": response.text.strip(),
+                    "usage": response.usage
+                })
         except Exception as e:
             logger.warning(f"Failed to translate line {i+1}: {e}")
             translations.append({

@@ -62,3 +62,13 @@ build/
 firebase-debug.log
 /home/thomas/translation-app/docker-compose.production.yml
 .wakatime-project
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/

@@ -49,13 +49,15 @@ class AnthropicProvider(BaseProvider):
     - claude-opus-4-5-20251101 (Opus 4.5)
     - claude-sonnet-4-5-20250929 (Sonnet 4.5)
     - claude-haiku-4-5-20250319 (Haiku 4.5)
+
+    Supports custom base_url for local CLI tools like Claude Code.
     """
 
     DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 
-    def __init__(self, api_key: str, model: str = None):
+    def __init__(self, api_key: str, model: str = None, base_url: str = None):
         model = model or self.DEFAULT_MODEL
-        config = ProviderConfig(api_key=api_key, model=model)
+        config = ProviderConfig(api_key=api_key, model=model, base_url=base_url)
         super().__init__(config)
         self._client = None
 
@@ -65,7 +67,11 @@ class AnthropicProvider(BaseProvider):
             raise ImportError("anthropic package is required. Install: pip install anthropic")
         if self._client is None:
             import anthropic
-            self._client = anthropic.Anthropic(api_key=self.config.api_key)
+            kwargs = {"api_key": self.config.api_key}
+            if self.config.base_url:
+                # Support for local endpoints like Claude Code CLI
+                kwargs["base_url"] = self.config.base_url
+            self._client = anthropic.Anthropic(**kwargs)
         return self._client
 
     def is_available(self) -> bool:

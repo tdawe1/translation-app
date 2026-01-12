@@ -51,7 +51,8 @@ translation-app/
 ├── backend/                    # Go backend service
 │   ├── cmd/
 │   │   ├── server/            # Application entry point
-│   │   └── admin_seed/        # Admin seeding CLI tool
+│   │   ├── admin_seed/        # Admin seeding CLI tool
+│   │   └── translation-worker/ # Python translation service (docs/)
 │   ├── internal/              # Private application code
 │   │   ├── auth/              # JWT, password hashing, user service
 │   │   ├── config/            # Environment-based configuration
@@ -574,6 +575,75 @@ JWT_SECRET=test-secret-for-testing-only-32-chars-min  # For tests
 | Enterprise | $99/mo | Unlimited watchers, priority support |
 
 **Implementation**: LemonSqueezy webhooks update `Subscription` model; feature enforcement in watcher logic.
+
+---
+
+## Translation Worker
+
+The translation worker (`backend/cmd/translation-worker/`) is a Python-based service for document translation using multi-provider LLM support.
+
+### Quick Start
+
+```bash
+cd backend/cmd/translation-worker
+
+# Install dependencies
+pip install anthropic openai requests redis click
+
+# Configure (create config.toml)
+cat > config.toml << EOF
+[worker]
+id = "worker-1"
+max_concurrent = 3
+
+[translation]
+default_provider = "anthropic"
+default_model = "claude-sonnet-4-5-20250929"
+
+[cache.redis]
+host = "localhost"
+port = 6379
+
+[job_queue]
+enabled = true
+backend = "redis"
+EOF
+
+# Set API key
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Run worker
+python main.py
+```
+
+### CLI Usage
+
+```bash
+# Translate text
+python -m review translate "こんにちは" --provider anthropic
+
+# Batch process
+python -m review batch -i sources.txt -o translations.txt -p anthropic
+
+# Compare translations
+python -m review judge original.txt translation_a.txt translation_b.txt
+```
+
+### Documentation
+
+- **README**: `backend/cmd/translation-worker/README.md` - Overview and setup
+- **CLI Reference**: `backend/cmd/translation-worker/docs/CLI_REFERENCE.md` - Complete CLI guide
+- **API Reference**: `backend/cmd/translation-worker/docs/API_REFERENCE.md` - Job queue API
+- **LLM Providers**: `backend/cmd/translation-worker/docs/LLM_PROVIDERS.md` - Provider configuration
+- **Troubleshooting**: `backend/cmd/translation-worker/docs/TROUBLESHOOTING.md` - Common issues
+
+### Architecture
+
+- **Job Queue**: Redis-backed with priority support (urgent/normal/bulk)
+- **Fault Tolerance**: Checkpoint/resume for long-running jobs
+- **Parsers**: DOCX, PPTX, PDF, XLSX with layout preservation
+- **Glossary**: Term consistency across translations
+- **Cache**: Avoid re-translating identical content
 
 ---
 

@@ -4,6 +4,7 @@ import pytest
 import sys
 from pathlib import Path
 from click.testing import CliRunner
+from unittest.mock import patch, MagicMock
 
 worker_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(worker_dir))
@@ -13,12 +14,24 @@ from review.cli import cli, translate, batch
 
 
 class TestCLI:
-    def test_translate_command_requires_provider(self):
-        """Should require provider argument."""
+    def test_translate_command_requires_provider_or_cli(self):
+        """Should require either --provider or --cli argument."""
         runner = CliRunner()
         result = runner.invoke(translate, ["test"])
         # Should exit with non-zero code or show missing option error
-        assert result.exit_code != 0 or "Missing option" in result.output
+        assert result.exit_code != 0
+        assert "Must specify either --provider" in result.output or "Missing option" in result.output
+
+    def test_translate_mutually_exclusive_provider_and_cli(self):
+        """Should reject both --provider and --cli specified together."""
+        runner = CliRunner()
+        result = runner.invoke(translate, [
+            "--provider", "anthropic",
+            "--cli", "claude",
+            "test"
+        ])
+        assert result.exit_code != 0
+        assert "Cannot specify both" in result.output
 
     def test_translate_accepts_all_providers(self):
         """Should accept anthropic, openai, gemini providers."""
@@ -28,8 +41,42 @@ class TestCLI:
             # Should not error on provider validation (will fail on API key instead)
             assert "Invalid provider" not in result.output
 
-    def test_batch_command_requires_provider(self):
-        """Should require provider for batch command."""
+    def test_translate_accepts_all_cli_tools(self):
+        """Should accept claude, codex, gemini, ollama CLI tools."""
+        runner = CliRunner()
+        for cli_tool in ["claude", "codex", "gemini", "ollama"]:
+            result = runner.invoke(translate, ["--cli", cli_tool, "test"])
+            # Should not error on cli validation (will fail on tool not found instead)
+            assert "Invalid choice" not in result.output or "Invalid value" not in result.output
+
+    @patch("review.cli.subprocess.run")
+    def test_translate_with_cli_tool_success(self, mock_run):
+        """Should successfully translate using CLI tool."""
+        # Mock successful subprocess call
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Hello World"
+        mock_run.return_value = mock_result
+
+        runner = CliRunner()
+        result = runner.invoke(translate, ["--cli", "claude", "こんにちは"])
+        # Should succeed (exit code 0)
+        assert result.exit_code == 0
+        assert "Hello World" in result.output
+
+    @patch("review.cli.subprocess.run")
+    def test_translate_with_cli_tool_not_found(self, mock_run):
+        """Should show helpful error when CLI tool not found."""
+        # Mock shutil.which returning None (tool not found)
+        with patch("review.cli.shutil.which", return_value=None):
+            runner = CliRunner()
+            result = runner.invoke(translate, ["--cli", "claude", "こんにちは"])
+            # Should fail with helpful message
+            assert result.exit_code != 0
+            assert "not found in PATH" in result.output or "Install it first" in result.output
+
+    def test_batch_command_requires_provider_or_cli(self):
+        """Should require either --provider or --cli for batch command."""
         runner = CliRunner()
         with runner.isolated_filesystem():
             with open("sources.txt", "w") as f:
@@ -39,8 +86,31 @@ class TestCLI:
                 "--input", "sources.txt",
                 "--output", "translations.txt"
             ])
-            # Should require provider
-            assert result.exit_code != 0 or "Missing" in result.output
+            # Should require provider or cli
+            assert result.exit_code != 0
+            assert "Must specify either" in result.output or "Missing" in result.output
+
+    @patch("review.cli.subprocess.run")
+    def test_batch_with_cli_tool(self, mock_run):
+        """Should process batch with CLI tool."""
+        # Mock successful subprocess call
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Hello"
+        mock_run.return_value = mock_result
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            with open("sources.txt", "w") as f:
+                f.write("こんにちは\n世界")
+
+            result = runner.invoke(batch, [
+                "--input", "sources.txt",
+                "--output", "translations.txt",
+                "--cli", "claude"
+            ])
+            # Should succeed
+            assert result.exit_code == 0
 
     def test_format_json_outputs_structured(self):
         """Should output valid JSON when format=json."""
@@ -62,3 +132,4 @@ class TestCLI:
         assert "translate" in result.output
         assert "judge" in result.output
         assert "batch" in result.output
+        assert "--cli" in result.output or "local CLI tool" in result.output
