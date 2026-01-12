@@ -345,6 +345,29 @@ if err != nil {
 return c.JSON(fiber.Map{"id": user.ID.String()})
 ```
 
+### Memory Management Patterns
+
+**Use LRU Cache for tracking seen items** - prevents unbounded memory growth:
+
+```go
+import "github.com/tdawe1/translation-app/internal/watcher"
+
+// Create LRU cache with max size (evicts oldest when full)
+cache := watcher.NewLRUCache(1000)
+
+// Add returns true if already seen (deduplication)
+if exists := cache.Add(jobID); exists {
+    return nil // Skip duplicate
+}
+
+// For Redis sets, always set TTL to prevent unbounded growth
+_ = redisClient.Expire(ctx, "seen_jobs:"+userID, 24*time.Hour).Err()
+```
+
+**When to use LRU vs Redis**:
+- Use `LRUCache` for in-memory deduplication during watcher lifecycle (evicts old entries automatically)
+- Use Redis with TTL for persistent seen-job tracking across restarts (24-hour expiration)
+
 ---
 
 ## Frontend Patterns
@@ -490,9 +513,14 @@ All models inherit from `Base` (ID, CreatedAt, UpdatedAt) with UUID primary keys
 ### Required
 
 ```bash
-JWT_SECRET=                    # JWT signing (32+ chars recommended)
+JWT_SECRET=                    # JWT signing (32+ chars REQUIRED, server fails without it)
 DATABASE_URL=                  # Postgres connection string
 REDIS_URL=                     # Redis connection string
+```
+
+**IMPORTANT**: `JWT_SECRET` must be set in all non-test environments. The application will fail to start at startup if `JWT_SECRET` is missing or too short. Generate one with:
+```bash
+openssl rand -hex 32  # Produces 64-character hex string (recommended)
 ```
 
 ### Optional (with defaults)
@@ -586,10 +614,27 @@ The `docs/.agents/` directory contains files **primarily intended for AI agents*
 ### Security Considerations
 
 - **Account Enumeration**: Return generic errors to prevent email harvesting
-- **JWT Secret**: Must be 32+ characters; never use default in production
+- **JWT Secret**: Must be 32+ characters; server fails to start without `JWT_SECRET` in non-test environments
 - **httpOnly Cookies**: Used for refresh tokens; XSS protection
 - **CORS**: Configured via Fiber middleware
 - **Rate Limiting**: Not yet implemented (planned)
+- **SSRF Protection**: RSS feed URLs are validated before fetching to prevent Server-Side Request Forgery
+  - Blocks localhost, private IP ranges (RFC 1918), and invalid schemes
+  - Only HTTP/HTTPS protocols allowed
+  - DNS resolution validates actual IP addresses (prevents DNS rebinding)
+  - See `internal/watcher/url_validator.go` for implementation
+- **Memory Management**: All in-memory caches use LRU eviction; Redis sets have TTL to prevent exhaustion
+
+### Production Security Checklist
+
+Before deploying to production, ensure:
+
+- [ ] `JWT_SECRET` is set to cryptographically random value (32+ chars) - generate with `openssl rand -hex 32`
+- [ ] `JWT_SECRET` is not empty in environment (server will fail to start if missing)
+- [ ] Docker resource limits are configured in `docker-compose.production.yml`
+- [ ] Database credentials are strong and not default values
+- [ ] HTTPS/TLS is enabled (set `COOKIE_SECURE=true` in production)
+- [ ] CORS `ALLOWED_ORIGINS` only includes production domains
 
 ---
 
