@@ -1,0 +1,198 @@
+# Translation Worker Configuration
+# This file configures the hybrid translation worker that supports
+# both folder watching (for Gengo downloads) and Redis job queue (for scaling).
+
+[worker]
+# Unique identifier for this worker instance
+# If empty, generates a random UUID on startup
+id = ""
+
+# Maximum concurrent translation jobs
+max_concurrent = 3
+
+# Heartbeat interval for health reporting
+# Format: <number><unit> where unit is s, m, h
+heartbeat_interval = "10s"
+
+# Directory to watch for incoming files (for Gengo downloads)
+watch_directory = "/watch/incoming"
+
+# Directory for files being processed
+processing_directory = "/watch/processing"
+
+# Directory for completed translations
+translated_directory = "/watch/translated"
+
+# Directory for failed jobs
+failed_directory = "/watch/failed"
+
+# Supported file extensions
+supported_extensions = [".pptx", ".docx", ".xlsx", ".pdf"]
+
+[translation]
+# Default LLM provider
+default_provider = "anthropic"
+
+# Default model to use
+default_model = "claude-4.5-sonnet"
+
+# Source language (ISO 639-1 code)
+source_language = "ja"
+
+# Target language (ISO 639-1 code)
+target_language = "en"
+
+[translation.retry]
+# Retry configuration for transient failures
+max_attempts = 3
+base_delay = "1s"
+max_delay = "60s"
+multiplier = 2.0
+jitter = true
+
+# Provider-specific configuration
+[translation.providers.anthropic]
+enabled = true
+api_key_env = "ANTHROPIC_API_KEY"
+base_url = "https://api.anthropic.com"
+max_tokens = 8192
+timeout = "120s"
+
+[translation.providers.openai]
+enabled = true
+api_key_env = "OPENAI_API_KEY"
+base_url = "https://api.openai.com/v1"
+max_tokens = 4096
+timeout = "120s"
+
+[glossary]
+# Glossary system configuration
+enabled = true
+
+# Path to glossary JSON file
+# File format: {"entries": [{"source": "...", "target": "..."}]}
+file = "/config/glossary.json"
+
+# Matching mode: "exact", "fuzzy", "both"
+matching_mode = "both"
+
+# Threshold for fuzzy matching (0.0-1.0)
+fuzzy_threshold = 0.85
+
+# Enable part-of-speech aware matching
+pos_matching = true
+
+# Skip particles and function words from translation
+skip_particles = true
+
+[cache]
+# Translation cache configuration
+enabled = true
+
+# Cache backend: "file" or "redis"
+backend = "file"
+
+# File cache directory
+directory = "/watch/cache"
+
+# Cache TTL (time-to-live)
+# Format: <number><unit> where unit is s, m, h, d
+ttl = "720h"  # 30 days
+
+# Redis configuration (when backend = "redis")
+[cache.redis]
+host = "localhost"
+port = 6379
+db = 0
+key_prefix = "trans:"
+
+[layout.preservation]
+# Layout preservation for JA→EN expansion
+strategy = "autofit"  # "autofit", "truncate", "overflow"
+
+# Minimum font size as percentage of original
+min_font_size_pct = 60
+
+# Warning threshold for expansion (0.0-1.0)
+# Warn if expansion ratio exceeds this
+warn_threshold = 0.95
+
+[output.bilingual_csv]
+# Bilingual CSV output for review workflow
+enabled = true
+
+# Output directory for bilingual CSVs
+path = "/watch/bilingual/"
+
+# CSV file encoding
+encoding = "utf-8-sig"
+
+# Include original text column
+include_source = true
+
+# Include segment IDs
+include_segment_ids = true
+
+[output.audit]
+# Audit output configuration
+enabled = true
+
+# Generate JSON audit reports
+json_reports = true
+
+# Generate COMET quality scores
+comet_scores = true
+
+[job_queue]
+# Redis job queue configuration
+enabled = true
+
+# Queue backend: "redis"
+backend = "redis"
+
+# Maximum concurrent jobs from queue
+max_concurrent = 3
+
+# Poll interval for queue (when not using pub/sub)
+poll_interval = "1s"
+
+# Maximum time per job
+job_timeout = "30m"
+
+# Queue name patterns
+[job_queue.queues]
+pending = "trans:jobs:pending"
+processing = "trans:jobs:processing"
+completed = "trans:jobs:completed"
+failed = "trans:jobs:failed"
+
+[checkpoint]
+# Checkpoint/resume configuration for fault tolerance
+enabled = true
+
+# Directory for checkpoint files
+directory = "/watch/checkpoints/"
+
+# Checkpoint interval (save progress every N segments)
+interval_segments = 10
+
+# Maximum checkpoint file age before cleanup
+max_age = "168h"  # 7 days
+
+[logging]
+# Logging configuration
+level = "INFO"  # DEBUG, INFO, WARNING, ERROR
+format = "json"  # "json" or "text"
+
+# Log file paths
+[logging.files]
+main = "/logs/worker.log"
+error = "/logs/error.log"
+audit = "/logs/audit.log"
+
+[plugins]
+# Plugin configuration
+directories = ["/app/plugins", "/config/plugins"]
+
+# Auto-load plugins on startup
+auto_load = true

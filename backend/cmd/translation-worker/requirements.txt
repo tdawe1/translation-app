@@ -1,0 +1,60 @@
+# Translation Worker - Python Dependencies
+# Python 3.11+ required
+
+# === Core Dependencies ===
+# Configuration (TOML parsing)
+tomli>=2.0.0
+
+# Process monitoring
+psutil>=5.9.0
+
+# === File Watching ===
+# File system event monitoring
+watchdog>=4.0.0
+
+# === Database & Caching ===
+# Redis client
+redis>=5.0.0
+
+# === Japanese NLP ===
+# Japanese tokenizer (MeCab wrapper)
+fugashi>=1.3.0
+
+# === PDF Processing ===
+# Fast PDF library (C-backed, ~10x faster than PyPDF2)
+pymupdf>=1.23.0
+
+# === Document Processing ===
+# PowerPoint (PPTX) manipulation
+python-pptx>=0.6.21
+
+# Word (DOCX) manipulation
+python-docx>=1.1.0
+
+# Excel (XLSX) manipulation
+openpyxl>=3.1.0
+
+# === Quality Assessment ===
+# COMET quality metric for translation evaluation
+unbabel-comet>=2.2.0
+
+# === Fuzzy Matching ===
+# Levenshtein distance for glossary fuzzy matching
+Levenshtein>=0.23.0
+
+# === LLM Clients ===
+# Anthropic Claude API
+anthropic>=0.40.0
+
+# OpenAI API (for GPT models)
+openai>=1.0.0
+
+# === Utilities ===
+# Request retry with exponential backoff
+tenacity>=8.2.0
+
+# Progress bars
+tqdm>=4.65.0
+
+# Date parsing
+python-dateutil>=2.8.0
