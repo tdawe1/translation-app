@@ -14,6 +14,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    # P0-3 FIX: Add resource limits to prevent host DoS
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   redis:
     image: redis:7.4-alpine
@@ -27,10 +36,28 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    # P0-3 FIX: Add resource limits to prevent host DoS
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   mailhog:
     image: mailhog/mailhog:latest
     network_mode: host
+    # P0-3 FIX: Add resource limits to prevent host DoS
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
 
 volumes:
   postgres_data:
