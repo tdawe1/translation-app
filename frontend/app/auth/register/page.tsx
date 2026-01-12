@@ -11,6 +11,7 @@ import { useAuthStore } from "@/store/auth";
 import { authApi, oauthApi, ApiErrorClass } from "@/lib/api";
 import { setToken } from "@/lib/auth/tokens";
 import { AuthForm } from "@/components/auth/AuthForm";
+import { navigateToOAuth } from "@/lib/navigation";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -46,8 +47,8 @@ export default function RegisterPage() {
     setError("");
     try {
       const response = await oauthApi.authorize(provider);
-      // Redirect to OAuth provider's authorization page
-      window.location.href = response.auth_url;
+      // Redirect to OAuth provider's authorization page (full page load required)
+      navigateToOAuth(response.auth_url);
     } catch (err) {
       if (err instanceof ApiErrorClass) {
         setError(err.message);

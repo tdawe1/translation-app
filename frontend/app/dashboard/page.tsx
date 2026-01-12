@@ -18,6 +18,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { authApi } from "@/lib/api";
 import { toast } from "@/store/toast";
 import { useEffect, useState } from "react";
+import { navigateToHome } from "@/lib/navigation";
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
@@ -30,7 +31,7 @@ export default function DashboardPage() {
       // Continue with logout even if API call fails
     } finally {
       sessionStorage.removeItem("access_token");
-      window.location.href = "/";
+      navigateToHome(); // Full page redirect to clear state after logout
     }
   };
 

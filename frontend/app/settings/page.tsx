@@ -14,6 +14,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { authApi, oauthApi, type User } from "@/lib/api";
 import { toast } from "@/store/toast";
 import Link from "next/link";
+import { navigateToOAuth } from "@/lib/navigation";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -340,7 +341,7 @@ function ConnectedAccounts({ user }: { user: User | null }) {
     setIsLinking(true);
     try {
       const response = await oauthApi.authorize(provider);
-      window.location.href = response.auth_url;
+      navigateToOAuth(response.auth_url); // Full page redirect to OAuth provider
     } catch {
       // Silently fail - user can try again
     }
