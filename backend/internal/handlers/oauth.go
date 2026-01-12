@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/tdawe1/translation-app/internal/auth"
 	"github.com/tdawe1/translation-app/internal/config"
 	"github.com/tdawe1/translation-app/internal/database"
+	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/oauth"
 )
 
@@ -279,17 +281,36 @@ func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 
 // GetLinkedAccounts returns the user's linked OAuth accounts
 func (h *OAuthHandler) GetLinkedAccounts(c *fiber.Ctx) error {
-	userID := c.Locals("user_id")
-	if userID == nil {
+	// Extract user ID from JWT claims (set by JWTValidator middleware)
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "unauthorized",
 			"code":  "UNAUTHORIZED",
 		})
 	}
 
-	// TODO: Fetch linked accounts
+	// Parse UUID
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid user id",
+			"code":  "INVALID_USER_ID",
+		})
+	}
+
+	// Fetch linked accounts via service
+	accounts, err := h.oauthService.GetLinkedAccounts(userUUID)
+	if err != nil {
+		log.Printf("Error fetching linked accounts: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to fetch linked accounts",
+			"code":  "DATABASE_ERROR",
+		})
+	}
+
 	return c.JSON(fiber.Map{
-		"linked_accounts": []string{},
+		"linked_accounts": accounts,
 	})
 }
 
@@ -303,14 +324,34 @@ func (h *OAuthHandler) UnlinkAccount(c *fiber.Ctx) error {
 		})
 	}
 
-	userID := c.Locals("user_id")
-	if userID == nil {
+	// Extract user ID from JWT claims (set by JWTValidator middleware)
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "unauthorized",
 			"code":  "UNAUTHORIZED",
 		})
 	}
 
-	// TODO: Unlink account
+	// Parse UUID
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid user id",
+			"code":  "INVALID_USER_ID",
+		})
+	}
+
+	// Unlink the account via service (idempotent - no error if not found)
+	err = h.oauthService.UnlinkOAuthAccount(userUUID, oauth.Provider(provider))
+	if err != nil {
+		log.Printf("Error unlinking OAuth account: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to unlink account",
+			"code":  "DATABASE_ERROR",
+		})
+	}
+
+	// Return 204 No Content on success (idempotent)
 	return c.SendStatus(fiber.StatusNoContent)
 }
