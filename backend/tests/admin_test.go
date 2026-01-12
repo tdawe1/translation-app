@@ -201,11 +201,8 @@ func TestAdminHandler_UpdateUserRole(t *testing.T) {
 	})
 
 	t.Run("UpdateUserRole prevents changing own role", func(t *testing.T) {
-		// KNOWN BUG: This test documents that the admin handler does NOT prevent
-		// users from changing their own role. The comparison logic in admin.go
-		// (requestingUserID == userID.String()) appears to fail due to type issues.
-		// TODO: Fix the admin handler's self-change prevention logic.
-		// For now, the test documents the current (incorrect) behavior.
+		// SECURITY: Admin cannot change their own role to prevent privilege escalation
+		// or accidental lockout. This test verifies the UUID comparison fix.
 
 		reqBody := bytes.NewBufferString(`{"role":"user"}`)
 		req := httptest.NewRequest("PUT", "/api/v1/admin/users/"+admin.ID.String()+"/role", reqBody)
@@ -214,8 +211,7 @@ func TestAdminHandler_UpdateUserRole(t *testing.T) {
 
 		resp, err := app.Test(req)
 		require.NoError(t, err)
-		// Currently returns 200 (success) but should return 400 (bad request)
-		assert.Equal(t, 200, resp.StatusCode, "BUG: Handler allows changing own role")
+		assert.Equal(t, 400, resp.StatusCode, "Should prevent changing own role")
 	})
 
 	t.Run("UpdateUserRole requires valid role", func(t *testing.T) {
@@ -277,16 +273,15 @@ func TestAdminHandler_DeleteUser(t *testing.T) {
 	})
 
 	t.Run("DeleteUser prevents deleting own account", func(t *testing.T) {
-		// KNOWN BUG: Same as UpdateUserRole - the self-deletion prevention
-		// doesn't work due to the same type comparison issue.
+		// SECURITY: Admin cannot delete their own account to prevent lockout.
+		// This test verifies the UUID comparison fix.
 
 		req := httptest.NewRequest("DELETE", "/api/v1/admin/users/"+admin.ID.String(), nil)
 		req.Header.Set("Authorization", "Bearer "+adminToken)
 
 		resp, err := app.Test(req)
 		require.NoError(t, err)
-		// Currently returns 204 (success) but should return 400 (bad request)
-		assert.Equal(t, 204, resp.StatusCode, "BUG: Handler allows deleting own account")
+		assert.Equal(t, 400, resp.StatusCode, "Should prevent deleting own account")
 	})
 
 	t.Run("DeleteUser returns 404 for non-existent user", func(t *testing.T) {

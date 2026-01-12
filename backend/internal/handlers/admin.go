@@ -4,6 +4,8 @@ import (
 	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
 	apperrors "github.com/tdawe1/translation-app/internal/errors"
 	"github.com/tdawe1/translation-app/internal/database"
@@ -139,11 +141,26 @@ func (h *AdminHandler) UpdateUserRole(c *fiber.Ctx) error {
 	if claims == nil {
 		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Not authenticated")
 	}
-	claimMap, _ := claims.(map[string]interface{})
-	requestingUserID, _ := claimMap["sub"].(string)
+
+	// Claims are stored as jwt.MapClaims by JWTValidator
+	jwtClaims, ok := claims.(jwt.MapClaims)
+	if !ok {
+		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Invalid claims type")
+	}
+
+	requestingUserID, ok := jwtClaims["sub"].(string)
+	if !ok {
+		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "User ID not found in token")
+	}
+
+	// Parse requestingUserID as UUID for proper comparison
+	requestingUserUUID, err := uuid.Parse(requestingUserID)
+	if err != nil {
+		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Invalid user ID in token")
+	}
 
 	// Prevent users from changing their own role
-	if requestingUserID == userID.String() {
+	if requestingUserUUID == userID {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Cannot change your own role")
 	}
 
@@ -166,7 +183,7 @@ func (h *AdminHandler) UpdateUserRole(c *fiber.Ctx) error {
 
 	user.PasswordHash = "" // Clear sensitive data
 
-	log.Printf("[Admin] User %s updated role of user %s to %s", requestingUserID, userID, req.Role)
+	log.Printf("[Admin] User %s updated role of user %s to %s", requestingUserUUID, userID, req.Role)
 
 	return c.JSON(fiber.Map{
 		"message": "User role updated",
@@ -186,11 +203,26 @@ func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
 	if claims == nil {
 		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Not authenticated")
 	}
-	claimMap, _ := claims.(map[string]interface{})
-	requestingUserID, _ := claimMap["sub"].(string)
+
+	// Claims are stored as jwt.MapClaims by JWTValidator
+	jwtClaims, ok := claims.(jwt.MapClaims)
+	if !ok {
+		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Invalid claims type")
+	}
+
+	requestingUserID, ok := jwtClaims["sub"].(string)
+	if !ok {
+		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "User ID not found in token")
+	}
+
+	// Parse requestingUserID as UUID for proper comparison
+	requestingUserUUID, err := uuid.Parse(requestingUserID)
+	if err != nil {
+		return RespondWithError(c, fiber.StatusUnauthorized, apperrors.ErrNotAuthenticated, "Invalid user ID in token")
+	}
 
 	// Prevent users from deleting themselves
-	if requestingUserID == userID.String() {
+	if requestingUserUUID == userID {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Cannot delete your own account")
 	}
 
@@ -206,7 +238,7 @@ func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
 		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrDeleteError, "Failed to delete user")
 	}
 
-	log.Printf("[Admin] User %s deleted user %s (%s)", requestingUserID, userID, user.Email)
+	log.Printf("[Admin] User %s deleted user %s (%s)", requestingUserUUID, userID, user.Email)
 
 	return c.SendStatus(fiber.StatusNoContent)
 }
