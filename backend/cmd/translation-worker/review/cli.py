@@ -202,8 +202,13 @@ def cli():
     default=True,
     help="Use parallel execution (only affects multiple providers)"
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show the command that would be executed without running it (CLI tools only)"
+)
 def translate(text: str, provider: Optional[str], cli: Optional[str], model: Optional[str], format: str,
-             output: Optional[str], parallel: bool):
+             output: Optional[str], parallel: bool, dry_run: bool):
     """Translate Japanese text to English.
 
     Examples:
@@ -215,6 +220,9 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
 
         # Or use API providers (requires API key)
         translate "こんにちは" --provider anthropic --format json
+
+        # Dry-run to see what command would be executed
+        translate "こんにちは" --cli claude --dry-run
     """
     # Validate mutual exclusivity
     if provider and cli:
@@ -227,6 +235,23 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
             "Must specify either --provider (for API) or --cli (for local tools). "
             "Use --cli claude/codex/gemini/ollama for local tools with no API costs."
         )
+
+    # Handle dry-run for CLI tools
+    if dry_run:
+        if not cli:
+            raise click.ClickException(
+                "--dry-run only works with --cli (local CLI tools). "
+                "For API providers, the request goes to an external service."
+            )
+        # Build and display the command that would be run
+        cmd = list(CLI_TOOLS[cli])
+        if cli == "ollama":
+            cmd.append("codellama:latest")
+        prompt = f"Translate the following Japanese text to English:\n\n{text}"
+        cmd.append(prompt)
+        click.echo(f"Would execute: {' '.join(cmd[:2])}...")  # Show truncated for readability
+        click.echo(f"Full command: {' '.join(repr(c) if ' ' in c else c for c in cmd)}")
+        return
 
     # Build prompt
     prompt = f"Translate the following Japanese text to English:\n\n{text}"
@@ -279,8 +304,12 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
 @click.option(
     "--provider", "-p",
     type=click.Choice(["anthropic", "openai", "gemini"]),
-    default="anthropic",
-    help="LLM provider for judge"
+    help="LLM provider for judge (requires API key)"
+)
+@click.option(
+    "--cli",
+    type=click.Choice(["claude", "codex", "gemini", "ollama"]),
+    help="Use local CLI tool for judge (no API costs)"
 )
 @click.option(
     "--model", "-m",
@@ -293,13 +322,30 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
     default="text",
     help="Output format"
 )
-def judge(source: str, candidate_a: str, candidate_b: str, provider: str,
-          model: str, format: str):
+def judge(source: str, candidate_a: str, candidate_b: str, provider: Optional[str],
+          cli: Optional[str], model: str, format: str):
     """Judge which translation is better.
 
     Compare two translations and select the winner using LLM evaluation.
+
+    Examples:
+
+        # Use local CLI tool (no API costs!)
+        judge source.txt translation_a.txt translation_b.txt --cli claude
+
+        # Or use API provider
+        judge source.txt translation_a.txt translation_b.txt --provider anthropic
     """
-    provider_instance = _ensure_provider(provider, model)
+    # Validate mutual exclusivity and set defaults
+    if provider and cli:
+        raise click.ClickException(
+            "Cannot specify both --provider and --cli. "
+            "Use --cli for local tools or --provider for API-based providers."
+        )
+    if not provider and not cli:
+        # Default to API provider for backward compatibility
+        # (judge was originally API-only, prefer API over CLI for consistency)
+        provider = "anthropic"
 
     # Read files
     source_text = Path(source).read_text(encoding="utf-8").strip()
@@ -330,19 +376,37 @@ Output format (JSON):
 Evaluate both translations and output JSON."""
 
     try:
-        response = provider_instance.generate(prompt)
+        if cli:
+            # Use local CLI tool for judgment
+            judgment, usage = _translate_with_cli(prompt, cli)
+            # Parse JSON from CLI output
+            try:
+                result_data = json.loads(judgment)
+            except json.JSONDecodeError:
+                result_data = {
+                    "winner": "unknown",
+                    "confidence": 0.0,
+                    "reasoning": judgment,
+                    "concerns": ["Failed to parse JSON from CLI output"]
+                }
+            provider_name = cli
+        else:
+            # Use API provider
+            provider_instance = _ensure_provider(provider, model)
+            response = provider_instance.generate(prompt)
 
-        # Parse JSON response
-        try:
-            result_data = json.loads(response.text)
-        except json.JSONDecodeError:
-            # Fallback: extract winner from text
-            result_data = {
-                "winner": "unknown",
-                "confidence": 0.0,
-                "reasoning": response.text,
-                "concerns": ["Failed to parse JSON"]
-            }
+            # Parse JSON response
+            try:
+                result_data = json.loads(response.text)
+            except json.JSONDecodeError:
+                # Fallback: extract winner from text
+                result_data = {
+                    "winner": "unknown",
+                    "confidence": 0.0,
+                    "reasoning": response.text,
+                    "concerns": ["Failed to parse JSON"]
+                }
+            provider_name = provider
 
         if format == "json":
             output = json.dumps(result_data, indent=2)
@@ -470,8 +534,10 @@ def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
     elif format == "csv":
         result = "source,translation,prompt_tokens,completion_tokens\n"
         for t in translations:
+            # Proper CSV escaping: double any quotes within fields
+            safe_source = t["source"].replace('"', '""')
             safe_translation = t["translation"].replace('"', '""')
-            result += f'"{t["source"]}","{safe_translation}",{t["usage"].get("prompt_tokens", 0)},{t["usage"].get("completion_tokens", 0)}\n'
+            result += f'"{safe_source}","{safe_translation}",{t["usage"].get("prompt_tokens", 0)},{t["usage"].get("completion_tokens", 0)}\n'
 
     # Write output
     Path(output).write_text(result, encoding="utf-8")
