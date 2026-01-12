@@ -1,4 +1,14 @@
-// Package handlers provides HTTP handlers for email verification
+// DEPRECATED: This file has been split into focused handlers:
+// - email_verification.go: Email verification handlers (EmailVerificationHandler)
+// - magic_link.go: Magic link authentication handlers (MagicLinkHandler)
+// - password_reset.go: Password reset handlers (PasswordResetHandler)
+//
+// This file is kept for backwards compatibility only. New code should use
+// the dedicated handlers above which are registered in cmd/server/main.go.
+//
+// This file will be removed in a future version once all references are migrated.
+//
+// Migration completed: 2025-01-12
 package handlers
 
 import (
