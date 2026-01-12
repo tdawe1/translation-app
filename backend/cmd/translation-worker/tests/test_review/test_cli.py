@@ -41,7 +41,7 @@ class TestCLI:
             # Should not error on provider validation (will fail on API key instead)
             assert "Invalid provider" not in result.output
 
-    @patch("review.cli.subprocess.run")
+    @patch("review.llm.cli.subprocess.run")
     @patch("review.cli.shutil.which", return_value="/usr/bin/claude")
     def test_translate_accepts_all_cli_tools(self, mock_which, mock_run):
         """Should accept claude, codex, gemini, ollama CLI tools."""
@@ -57,7 +57,7 @@ class TestCLI:
             # Should not error on cli validation (will succeed due to mocks)
             assert result.exit_code == 0
 
-    @patch("review.cli.subprocess.run")
+    @patch("review.llm.cli.subprocess.run")
     def test_translate_with_cli_tool_success(self, mock_run):
         """Should successfully translate using CLI tool."""
         # Mock successful subprocess call
@@ -72,7 +72,7 @@ class TestCLI:
         assert result.exit_code == 0
         assert "Hello World" in result.output
 
-    @patch("review.cli.subprocess.run")
+    @patch("review.llm.cli.subprocess.run")
     def test_translate_with_cli_tool_not_found(self, mock_run):
         """Should show helpful error when CLI tool not found."""
         # Mock shutil.which returning None (tool not found)
@@ -98,7 +98,7 @@ class TestCLI:
             assert result.exit_code != 0
             assert "Must specify either" in result.output or "Missing" in result.output
 
-    @patch("review.cli.subprocess.run")
+    @patch("review.llm.cli.subprocess.run")
     def test_batch_with_cli_tool(self, mock_run):
         """Should process batch with CLI tool."""
         # Mock successful subprocess call
@@ -148,7 +148,7 @@ class TestCLI:
         assert result.exit_code == 0
         assert "--cli" in result.output or "local CLI tool" in result.output
 
-    @patch("review.cli.subprocess.run")
+    @patch("review.llm.cli.subprocess.run")
     def test_batch_csv_escaping_handles_quotes(self, mock_run):
         """CSV output should properly escape quotes in both source and translation."""
         # Mock subprocess returning text with quotes
@@ -180,7 +180,7 @@ class TestCLI:
             # Should have quoted fields
             assert '"She asked ""how are you?""","He said ""hello"""' in content
 
-    @patch("review.cli.subprocess.run")
+    @patch("review.llm.cli.subprocess.run")
     @patch("review.cli.shutil.which", return_value="/usr/bin/claude")
     def test_judge_command_accepts_cli_option(self, mock_which, mock_run):
         """judge command should accept --cli option."""
@@ -209,7 +209,7 @@ class TestCLI:
             assert result.exit_code == 0
             assert "translation_a" in result.output
 
-    @patch("review.cli.subprocess.run")
+    @patch("review.llm.cli.subprocess.run")
     @patch("review.cli.shutil.which", return_value="/usr/bin/claude")
     def test_judge_command_mutually_exclusive_provider_and_cli(self, mock_which, mock_run):
         """judge command should reject both --provider and --cli."""

@@ -12,13 +12,10 @@ Usage:
     # Or use API providers
     python -m review translate "こんにちは" --provider anthropic
 """
-import asyncio
 import json
 import logging
 import os
 import shutil
-import subprocess
-import sys
 from pathlib import Path
 from typing import List, Optional
 
@@ -27,12 +24,14 @@ import click
 # Try importing optional dependencies
 try:
     from .llm import get_provider
+    from .llm.cli import CLIProvider
     from .multimodel import MultiModelTranslator
     from .judge import TranslationJudge
     from .models import TranslationCandidate
     CLI_AVAILABLE = True
 except ImportError:
     CLI_AVAILABLE = False
+    CLIProvider = None  # type: ignore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,83 +40,94 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Local CLI tool commands (simple subprocess calls)
-CLI_TOOLS = {
-    "claude": ["claude", "code", "exec"],           # claude code exec "prompt"
-    "codex": ["codex", "exec"],                     # codex exec "prompt"
-    "gemini": ["gemini-cli"],                      # gemini-cli "prompt"
-    "ollama": ["ollama", "run"],                    # ollama run model "prompt"
-}
-
-
-def _translate_with_cli(text: str, cli_tool: str) -> tuple[str, dict]:
-    """Translate using local CLI tool (no API costs).
-
-    Args:
-        text: Japanese text to translate
-        cli_tool: CLI tool name ("claude", "codex", "gemini", "ollama")
-
-    Returns:
-        Tuple of (translated_text, usage_info)
-    """
-    if cli_tool not in CLI_TOOLS:
-        raise click.ClickException(
-            f"Unknown CLI tool: {cli_tool}. Use: {list(CLI_TOOLS.keys())}"
-        )
-
-    # Check if CLI tool is available
-    cmd_name = CLI_TOOLS[cli_tool][0]
-    if not shutil.which(cmd_name):
-        raise click.ClickException(
-            f"CLI tool '{cmd_name}' not found in PATH.\n"
-            f"Install it first:\n"
-            f"  - claude: npm install -g @anthropic-ai/claude-code\n"
-            f"  - codex: npm install -g @github-copilot/codex-cli\n"
-            f"  - gemini: npm install -g @google/generative-ai-cli\n"
-            f"  - ollama: curl -fsSL https://ollama.com/install.sh | sh"
-        )
-
-    # Build command
-    cmd = list(CLI_TOOLS[cli_tool])
-
-    if cli_tool == "ollama":
-        # ollama run MODEL "prompt" - use default model
-        cmd.append("codellama:latest")
-    cmd.append(f"Translate the following Japanese text to English:\n\n{text}")
-
-    # Run CLI tool
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-
-        if result.returncode != 0:
-            raise click.ClickException(
-                f"{cli_tool} CLI failed:\n{result.stderr}"
-            )
-
-        translation = result.stdout.strip()
-
-        usage = {
-            "prompt_tokens": len(text),
-            "completion_tokens": len(translation),
-            "total_tokens": len(text) + len(translation),
-            "tool": cli_tool,
-        }
-
-        return translation, usage
-
-    except subprocess.TimeoutExpired:
-        raise click.ClickException(f"{cli_tool} CLI timed out")
-
-
 def _get_api_key(provider: str) -> Optional[str]:
     """Get API key from environment variable."""
     env_var = f"{provider.upper()}_API_KEY"
     return os.environ.get(env_var)
+
+
+def _get_cli_provider(tool: str) -> "CLIProvider":
+    """Get CLIProvider instance for a CLI tool name.
+
+    Maps CLI tool names ("claude", "codex", "gemini", "ollama")
+    to CLIProvider instances.
+
+    Args:
+        tool: CLI tool name
+
+    Returns:
+        Configured CLIProvider instance
+
+    Raises:
+        click.ClickException: If tool is unknown or not available
+    """
+    if CLIProvider is None:
+        raise click.ClickException("CLIProvider not available")
+
+    from .llm.base import ProviderConfig
+
+    # Map CLI tool names to CLIProvider configurations
+    # For "claude", we need a custom command: ["claude", "code", "exec"]
+    # CLIProvider expects a simple command, so we pass just the base
+    # and let the caller handle command construction for dry-run
+    tool_mapping = {
+        "claude": ("claude_code", "claude"),  # tool_name, base_command
+        "codex": ("codex", "codex"),
+        "gemini": ("gemini_cli", "gemini-cli"),
+        "ollama": ("ollama", "ollama"),
+    }
+
+    if tool not in tool_mapping:
+        raise click.ClickException(
+            f"Unknown CLI tool: {tool}. Use: {list(tool_mapping.keys())}"
+        )
+
+    tool_name, base_command = tool_mapping[tool]
+
+    # Check if command is available
+    if not shutil.which(base_command):
+        install_hints = {
+            "claude": "npm install -g @anthropic-ai/claude-code",
+            "codex": "npm install -g @github-copilot/codex-cli",
+            "gemini": "npm install -g @google/generative-ai-cli",
+            "ollama": "curl -fsSL https://ollama.com/install.sh | sh",
+        }
+        hint = install_hints.get(tool, f"Install {base_command}")
+        raise click.ClickException(
+            f"CLI tool '{base_command}' not found in PATH.\nInstall it first:\n  - {tool}: {hint}"
+        )
+
+    # Create ProviderConfig with dummy API key (CLI tools don't need it)
+    config = ProviderConfig(api_key="", timeout=120)
+
+    return CLIProvider(tool_name=tool_name, config=config, command=base_command)
+
+
+def _build_cli_command(tool: str, prompt: str) -> List[str]:
+    """Build the full command for a CLI tool (for dry-run).
+
+    This replicates the original CLI_TOOLS command structure for display.
+
+    Args:
+        tool: CLI tool name
+        prompt: Prompt text
+
+    Returns:
+        Full command as list of strings
+    """
+    tool_commands = {
+        "claude": ["claude", "code", "exec"],
+        "codex": ["codex", "exec"],
+        "gemini": ["gemini-cli"],
+        "ollama": ["ollama", "run", "codellama:latest"],
+    }
+
+    if tool not in tool_commands:
+        raise click.ClickException(f"Unknown CLI tool: {tool}")
+
+    cmd = list(tool_commands[tool])
+    cmd.append(prompt)
+    return cmd
 
 
 def _ensure_provider(provider: str, model: Optional[str] = None):
@@ -244,11 +254,8 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
                 "For API providers, the request goes to an external service."
             )
         # Build and display the command that would be run
-        cmd = list(CLI_TOOLS[cli])
-        if cli == "ollama":
-            cmd.append("codellama:latest")
         prompt = f"Translate the following Japanese text to English:\n\n{text}"
-        cmd.append(prompt)
+        cmd = _build_cli_command(cli, prompt)
         click.echo(f"Would execute: {' '.join(cmd[:2])}...")  # Show truncated for readability
         click.echo(f"Full command: {' '.join(repr(c) if ' ' in c else c for c in cmd)}")
         return
@@ -258,10 +265,14 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
 
     try:
         if cli:
-            # Use local CLI tool (no API costs)
-            translation, usage = _translate_with_cli(text, cli)
-            provider_name = usage.get("tool", cli)
-            model_name = usage.get("model", f"{cli}-default")
+            # Use local CLI tool (no API costs) via CLIProvider abstraction
+            cli_provider = _get_cli_provider(cli)
+            response = cli_provider.generate(prompt)
+            translation = response.text.strip()
+            usage = response.usage or {}
+            usage["tool"] = cli  # Add tool name for compatibility
+            provider_name = cli
+            model_name = response.model or f"{cli}-default"
         else:
             # Use API provider
             provider_instance = _ensure_provider(provider, model)
@@ -377,8 +388,11 @@ Evaluate both translations and output JSON."""
 
     try:
         if cli:
-            # Use local CLI tool for judgment
-            judgment, usage = _translate_with_cli(prompt, cli)
+            # Use local CLI tool for judgment via CLIProvider abstraction
+            cli_provider = _get_cli_provider(cli)
+            response = cli_provider.generate(prompt)
+            judgment = response.text.strip()
+
             # Parse JSON from CLI output
             try:
                 result_data = json.loads(judgment)
@@ -503,10 +517,15 @@ def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
 
         try:
             if cli:
-                translation, usage = _translate_with_cli(source, cli)
+                # Use local CLI tool via CLIProvider abstraction
+                cli_provider = _get_cli_provider(cli)
+                prompt = f"Translate the following Japanese text to English:\n\n{source}"
+                response = cli_provider.generate(prompt)
+                usage = response.usage or {}
+                usage["tool"] = cli  # Add tool name for compatibility
                 translations.append({
                     "source": source,
-                    "translation": translation,
+                    "translation": response.text.strip(),
                     "usage": usage
                 })
             else:
