@@ -264,3 +264,29 @@ class TestCLI:
         # Should reject dry-run with API provider
         assert result.exit_code != 0
         assert "--dry-run only works with --cli" in result.output
+
+    @patch("review.llm.cli.subprocess.run")
+    @patch("review.cli.shutil.which", return_value="/usr/bin/claude")
+    def test_batch_rejects_oversized_files(self, mock_which, mock_run):
+        """Should reject input files exceeding size limit (10MB)."""
+        # Mock successful subprocess
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Translation"
+        mock_run.return_value = mock_result
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            # Create file exceeding limit (10MB = 10,485,760 bytes)
+            large_text = "x" * (11 * 1024 * 1024)  # 11MB
+            with open("huge.txt", "w") as f:
+                f.write(large_text)
+
+            result = runner.invoke(batch, [
+                "--input", "huge.txt",
+                "--output", "out.txt",
+                "--cli", "claude"
+            ])
+
+        assert result.exit_code != 0
+        assert "too large" in result.output.lower() or "size limit" in result.output.lower()

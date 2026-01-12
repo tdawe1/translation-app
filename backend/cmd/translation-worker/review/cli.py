@@ -519,8 +519,19 @@ def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
             "Must specify either --provider (for API) or --cli (for local tools)."
         )
 
-    # Read input
+    # Read input with size check (prevent unbounded memory usage)
     input_path = Path(input)
+
+    # Check file size BEFORE reading (10MB limit)
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    file_size = input_path.stat().st_size
+    if file_size > MAX_FILE_SIZE:
+        size_mb = file_size / (1024 * 1024)
+        raise click.ClickException(
+            f"Input file too large: {size_mb:.1f}MB. "
+            f"Maximum size is {MAX_FILE_SIZE / (1024 * 1024)}MB."
+        )
+
     sources = input_path.read_text(encoding="utf-8").strip().split("\n")
 
     # Filter empty lines
