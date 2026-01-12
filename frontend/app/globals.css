@@ -14,21 +14,81 @@
   --color-violet-50: oklch(0.95 0.04 310);
 }
 
+/* ============================================================================
+   DESIGN TOKENS - CSS Custom Properties
+   ============================================================================ */
+
+:root {
+  /* Background colors */
+  --color-bg-primary: #fafafa;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #f5f5f5;
+
+  /* Text colors */
+  --color-text-primary: #171717;
+  --color-text-secondary: #525252;
+  --color-text-tertiary: #737373;
+  --color-text-muted: #a3a3a3;
+
+  /* Border colors */
+  --color-border: rgb(200, 200, 200);
+  --color-border-strong: rgb(180, 180, 180);
+  --color-border-subtle: rgb(220, 220, 220);
+
+  /* Accent colors */
+  --color-accent-blue: rgb(59, 130, 246);
+  --color-accent-red: rgb(220, 38, 38);
+  --color-accent-green: rgb(22, 163, 74);
+}
+
+/* Dark mode override */
+.dark {
+  /* Background colors */
+  --color-bg-primary: #171717;
+  --color-bg-secondary: #262626;
+  --color-bg-tertiary: #1f1f1f;
+
+  /* Text colors */
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a3a3a3;
+  --color-text-tertiary: #737373;
+  --color-text-muted: #525252;
+
+  /* Border colors */
+  --color-border: rgb(80, 80, 80);
+  --color-border-strong: rgb(100, 100, 100);
+  --color-border-subtle: rgb(60, 60, 60);
+
+  /* Accent colors (adjusted for dark mode) */
+  --color-accent-blue: rgb(96, 165, 250);
+  --color-accent-red: rgb(248, 113, 113);
+  --color-accent-green: rgb(74, 222, 128);
+}
+
 body {
   font-family: var(--font-display);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 /* Data Factory: Bento cards, precision hover, no shadow lift */
 .bento-card {
-  background: #ffffff;
-  border: 1px solid rgb(200, 200, 200);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 0;
   transition: border-color 0.15s ease;
   animation: fade-in 0.2s ease-out;
 }
 
 .bento-card:hover {
-  border-color: rgb(59, 130, 246);
+  border-color: var(--color-accent-blue);
+}
+
+/* Dark mode bento card adjustment */
+.dark .bento-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
 }
 
 /* Fade-in animation for content */

@@ -1,5 +1,7 @@
 /**
  * OAuthSection - Display and link OAuth accounts
+ *
+ * Enhanced with Data Factory base components and consistent styling.
  */
 
 "use client";
@@ -8,6 +10,7 @@ import { useState } from "react";
 import { oauthApi } from "@/lib/api";
 import type { User } from "@/lib/api";
 import { navigateToOAuth } from "@/lib/navigation";
+import { Button } from "@/components/ui/base/Button";
 
 interface OAuthSectionProps {
   user: User | null;
@@ -143,7 +146,7 @@ export function OAuthSection({ user }: OAuthSectionProps) {
               type="button"
               onClick={() => handleLinkProvider("google")}
               disabled={isLinking}
-              className="w-full flex items-center justify-between py-3 border-t border-neutral-300 group hover:bg-neutral-50 disabled:opacity-50"
+              className="w-full flex items-center justify-between py-3 border-t border-neutral-200 group hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
             >
               <div className="flex items-center gap-3">
                 {getProviderIcon("google")}
@@ -162,7 +165,7 @@ export function OAuthSection({ user }: OAuthSectionProps) {
               type="button"
               onClick={() => handleLinkProvider("github")}
               disabled={isLinking}
-              className="w-full flex items-center justify-between py-3 border-t border-neutral-300 group hover:bg-neutral-50 disabled:opacity-50"
+              className="w-full flex items-center justify-between py-3 border-t border-neutral-200 group hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
             >
               <div className="flex items-center gap-3">
                 {getProviderIcon("github")}
