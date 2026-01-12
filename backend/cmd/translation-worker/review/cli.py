@@ -226,7 +226,9 @@ def cli():
 @click.option(
     "--parallel/--sequential",
     default=True,
-    help="Use parallel execution (only affects multiple providers)"
+    # TODO: Implement parallel execution for batch processing
+    # Currently reserved for future use - has no effect on execution
+    help="Use parallel execution (reserved for future use)"
 )
 @click.option(
     "--dry-run",
@@ -482,7 +484,9 @@ Evaluate both translations and output JSON."""
 @click.option(
     "--parallel/--sequential",
     default=True,
-    help="Execution mode"
+    # TODO: Implement parallel execution for batch processing
+    # Currently reserved for future use - has no effect on execution
+    help="Use parallel execution (reserved for future use)"
 )
 @click.option(
     "--format", "-f",
