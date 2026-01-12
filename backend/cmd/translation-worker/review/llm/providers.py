@@ -5,6 +5,7 @@
 - OpenAI: max_completion_tokens (NOT max_tokens - deprecated)
 - Gemini: candidates[0].content.parts[0].text, usageMetadata
 """
+
 import asyncio
 import logging
 import os
@@ -15,7 +16,7 @@ from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type
+    retry_if_exception_type,
 )
 
 from .base import BaseProvider, ProviderConfig, ProviderResponse
@@ -25,18 +26,21 @@ logger = logging.getLogger(__name__)
 # Try importing optional dependencies
 try:
     import anthropic
+
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
 try:
     import openai
+
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
 
 try:
     import requests
+
     REQUESTS_AVAILABLE = True
 except ImportError:
     REQUESTS_AVAILABLE = False
@@ -64,9 +68,12 @@ class AnthropicProvider(BaseProvider):
     def _get_client(self):
         """Lazy client initialization."""
         if not ANTHROPIC_AVAILABLE:
-            raise ImportError("anthropic package is required. Install: pip install anthropic")
+            raise ImportError(
+                "anthropic package is required. Install: pip install anthropic"
+            )
         if self._client is None:
             import anthropic
+
             kwargs = {"api_key": self.config.api_key}
             if self.config.base_url:
                 # Support for local endpoints like Claude Code CLI
@@ -86,10 +93,7 @@ class AnthropicProvider(BaseProvider):
         retry=retry_if_exception_type((Exception,)),
     )
     def generate(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.0
+        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
         """Generate completion using Anthropic Messages API (2026)."""
         start = time.time()
@@ -101,7 +105,7 @@ class AnthropicProvider(BaseProvider):
             model=self.config.model,
             max_tokens=max_tokens,
             temperature=temperature,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         latency = int((time.time() - start) * 1000)
@@ -112,22 +116,19 @@ class AnthropicProvider(BaseProvider):
             usage={
                 "prompt_tokens": response.usage.input_tokens,
                 "completion_tokens": response.usage.output_tokens,
-                "total_tokens": response.usage.input_tokens + response.usage.output_tokens
+                "total_tokens": response.usage.input_tokens
+                + response.usage.output_tokens,
             },
-            latency_ms=latency
+            latency_ms=latency,
         )
 
     async def generate_async(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.0
+        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
         """Async version using asyncio.to_thread."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
-            None,
-            lambda: self.generate(prompt, max_tokens, temperature)
+            None, lambda: self.generate(prompt, max_tokens, temperature)
         )
 
 
@@ -135,14 +136,18 @@ class OpenAIProvider(BaseProvider):
     """OpenAI GPT API provider.
 
     2026 Models:
+    - gpt-5 (GPT-5 base)
+    - gpt-5-turbo (GPT-5 Turbo - faster, cheaper)
+    - gpt-5.1 (GPT-5.1 - improved reasoning)
+    - gpt-5.2 (GPT-5.2 - latest, January 2026)
     - gpt-4.1-2025-04-14 (GPT-4.1)
     - gpt-4.1-mini-2025-04-14 (GPT-4.1 Mini)
-    - gpt-5.2 (GPT-5.2)
+    - o3-mini (reasoning model)
 
     IMPORTANT: max_tokens is DEPRECATED - use max_completion_tokens
     """
 
-    DEFAULT_MODEL = "gpt-4.1-2025-04-14"
+    DEFAULT_MODEL = "gpt-5.2"
 
     def __init__(self, api_key: str, model: str = None):
         model = model or self.DEFAULT_MODEL
@@ -156,6 +161,7 @@ class OpenAIProvider(BaseProvider):
             raise ImportError("openai package is required. Install: pip install openai")
         if self._client is None:
             import openai
+
             self._client = openai.OpenAI(api_key=self.config.api_key)
         return self._client
 
@@ -171,10 +177,7 @@ class OpenAIProvider(BaseProvider):
         retry=retry_if_exception_type((Exception,)),
     )
     def generate(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.0
+        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
         """Generate completion using OpenAI Chat Completions API (2026)."""
         start = time.time()
@@ -186,7 +189,7 @@ class OpenAIProvider(BaseProvider):
             model=self.config.model,
             max_completion_tokens=max_tokens,  # NOT max_tokens (deprecated 2026)
             temperature=temperature,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
 
         latency = int((time.time() - start) * 1000)
@@ -197,22 +200,18 @@ class OpenAIProvider(BaseProvider):
             usage={
                 "prompt_tokens": response.usage.prompt_tokens,
                 "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens
+                "total_tokens": response.usage.total_tokens,
             },
-            latency_ms=latency
+            latency_ms=latency,
         )
 
     async def generate_async(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.0
+        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
         """Async version using asyncio.to_thread."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
-            None,
-            lambda: self.generate(prompt, max_tokens, temperature)
+            None, lambda: self.generate(prompt, max_tokens, temperature)
         )
 
 
@@ -220,8 +219,9 @@ class GeminiProvider(BaseProvider):
     """Google Gemini API provider via Vertex AI.
 
     2026 Models:
+    - gemini-3.0-flash (Gemini 3.0 Flash - fast, cheap, recommended)
     - gemini-3.0-pro (Gemini 3.0 Pro)
-    - gemini-3.0-flash (Gemini 3.0 Flash)
+    - gemini-3.0-ultra (Gemini 3.0 Ultra - highest capability)
 
     Environment Variables:
     - GEMINI_API_KEY: API key for authentication
@@ -229,7 +229,7 @@ class GeminiProvider(BaseProvider):
     - GEMINI_LOCATION: Region (default: us-central1)
     """
 
-    DEFAULT_MODEL = "gemini-3.0-pro"
+    DEFAULT_MODEL = "gemini-3.0-flash"
     DEFAULT_LOCATION = "us-central1"
 
     def __init__(
@@ -237,19 +237,23 @@ class GeminiProvider(BaseProvider):
         api_key: str,
         model: str = None,
         project_id: str = None,
-        location: str = None
+        location: str = None,
     ):
         model = model or self.DEFAULT_MODEL
         config = ProviderConfig(api_key=api_key, model=model)
         super().__init__(config)
         self.project_id = project_id or os.environ.get("GEMINI_PROJECT_ID", "")
-        self.location = location or os.environ.get("GEMINI_LOCATION", self.DEFAULT_LOCATION)
+        self.location = location or os.environ.get(
+            "GEMINI_LOCATION", self.DEFAULT_LOCATION
+        )
         self._client = None
 
     def is_available(self) -> bool:
         """Check if API key is set."""
         if not REQUESTS_AVAILABLE:
-            raise ImportError("requests package is required. Install: pip install requests")
+            raise ImportError(
+                "requests package is required. Install: pip install requests"
+            )
         if not self.config.api_key or self.config.api_key == "":
             raise ValueError("API key is required for GeminiProvider")
         return True
@@ -269,10 +273,7 @@ class GeminiProvider(BaseProvider):
         retry=retry_if_exception_type((Exception,)),
     )
     def generate(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.0
+        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
         """Generate completion using Vertex AI Gemini API (2026)."""
         import requests
@@ -283,29 +284,24 @@ class GeminiProvider(BaseProvider):
 
         # Gemini request format (2026)
         request_body = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": prompt}]
-                }
-            ],
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": temperature,
                 "maxOutputTokens": max_tokens,  # Gemini uses maxOutputTokens
-            }
+            },
         }
 
         endpoint = self._get_endpoint()
         headers = {
             "Authorization": f"Bearer {self.config.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         response = requests.post(
             f"{endpoint}:generateContent",
             json=request_body,
             headers=headers,
-            timeout=self.config.timeout
+            timeout=self.config.timeout,
         )
         response.raise_for_status()
 
@@ -323,30 +319,23 @@ class GeminiProvider(BaseProvider):
             usage={
                 "prompt_tokens": usage_metadata.get("promptTokenCount", 0),
                 "completion_tokens": usage_metadata.get("candidatesTokenCount", 0),
-                "total_tokens": usage_metadata.get("totalTokenCount", 0)
+                "total_tokens": usage_metadata.get("totalTokenCount", 0),
             },
-            latency_ms=latency
+            latency_ms=latency,
         )
 
     async def generate_async(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.0
+        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
         """Async version using asyncio.to_thread."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
-            None,
-            lambda: self.generate(prompt, max_tokens, temperature)
+            None, lambda: self.generate(prompt, max_tokens, temperature)
         )
 
 
 def get_provider(
-    provider_name: str,
-    api_key: str,
-    model: Optional[str] = None,
-    **kwargs
+    provider_name: str, api_key: str, model: Optional[str] = None, **kwargs
 ) -> BaseProvider:
     """Factory function to get provider instance.
 
@@ -369,7 +358,9 @@ def get_provider(
     }
 
     if provider_name not in models:
-        raise ValueError(f"Unknown provider: {provider_name}. Use: {list(models.keys())}")
+        raise ValueError(
+            f"Unknown provider: {provider_name}. Use: {list(models.keys())}"
+        )
 
     default_model, provider_class = models[provider_name]
     model = model or default_model

@@ -38,7 +38,7 @@ class TestCLIProviderInitialization:
         assert claude.command == "claude"
 
         gemini = CLIProvider(tool_name="gemini_cli", config=config)
-        assert gemini.command == "gemini"
+        assert gemini.command == "gemini-cli"
 
         codex = CLIProvider(tool_name="codex", config=config)
         assert codex.command == "codex"
