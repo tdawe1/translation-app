@@ -10,37 +10,20 @@ import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
 import { authApi, oauthApi, ApiErrorClass } from "@/lib/api";
 import { setToken } from "@/lib/auth/tokens";
+import { AuthForm } from "@/components/auth/AuthForm";
 
 export default function RegisterPage() {
   const router = useRouter();
   const setUser = useAuthStore((state) => state.setUser);
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (data: { email: string; password: string }) => {
     setError("");
-
-    // Validate passwords match
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-
-    // Validate password strength
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      const response = await authApi.register({ email, password });
+      const response = await authApi.register({ email: data.email, password: data.password });
 
       // Store access token using TokenService (httpOnly cookie is also set by backend)
       setToken(response.access_token);
@@ -60,6 +43,7 @@ export default function RegisterPage() {
   };
 
   const handleOAuthRegister = async (provider: "google" | "github") => {
+    setError("");
     try {
       const response = await oauthApi.authorize(provider);
       // Redirect to OAuth provider's authorization page
@@ -87,108 +71,14 @@ export default function RegisterPage() {
             </p>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="email"
-                className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2"
-              >
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-neutral-200 text-sm transition-colors duration-150 focus:outline-none focus:border-blue-500"
-                required
-                autoComplete="email"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2"
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-neutral-200 text-sm transition-colors duration-150 focus:outline-none focus:border-blue-500"
-                required
-                autoComplete="new-password"
-                minLength={8}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="confirm-password"
-                className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2"
-              >
-                Confirm Password
-              </label>
-              <input
-                id="confirm-password"
-                type="password"
-                placeholder="••••••••"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-neutral-200 text-sm transition-colors duration-150 focus:outline-none focus:border-blue-500"
-                required
-                autoComplete="new-password"
-                minLength={8}
-              />
-            </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-100 text-red-700 text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 bg-neutral-900 text-white text-sm transition-colors duration-150 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? "Creating account..." : "Create Account"}
-            </button>
-          </form>
-
-          {/* Divider */}
-          <div className="flex items-center gap-4 my-8">
-            <div className="flex-1 h-px bg-neutral-200" />
-            <span className="font-mono text-xs text-neutral-400 uppercase tracking-widest">
-              or
-            </span>
-            <div className="flex-1 h-px bg-neutral-200" />
-          </div>
-
-          {/* OAuth Options */}
-          <div className="space-y-3">
-            <button
-              type="button"
-              onClick={() => handleOAuthRegister("google")}
-              className="w-full py-3 bg-white border border-neutral-200 text-sm text-neutral-600 transition-colors duration-150 hover:border-blue-500"
-            >
-              Continue with Google
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOAuthRegister("github")}
-              className="w-full py-3 bg-white border border-neutral-200 text-sm text-neutral-600 transition-colors duration-150 hover:border-blue-500"
-            >
-              Continue with GitHub
-            </button>
-          </div>
+          {/* Auth Form */}
+          <AuthForm
+            mode="register"
+            onSubmit={handleSubmit}
+            onOAuthLogin={handleOAuthRegister}
+            errorMessage={error}
+            isLoading={isLoading}
+          />
 
           {/* Terms notice */}
           <p className="mt-6 text-xs text-neutral-500 text-center">
