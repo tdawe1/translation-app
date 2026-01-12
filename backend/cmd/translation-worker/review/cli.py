@@ -51,6 +51,10 @@ _SHORT_TO_INTERNAL = {
     "ollama": "ollama",
 }
 
+# File size limits for security (prevents DoS via large input files)
+MAX_BATCH_FILE_SIZE_MB = 10  # Megabytes
+MAX_BATCH_FILE_SIZE = MAX_BATCH_FILE_SIZE_MB * 1024 * 1024  # Bytes
+
 
 def _get_api_key(provider: str) -> Optional[str]:
     """Get API key from environment variable."""
@@ -523,13 +527,12 @@ def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
     input_path = Path(input)
 
     # Check file size BEFORE reading (10MB limit)
-    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
     file_size = input_path.stat().st_size
-    if file_size > MAX_FILE_SIZE:
+    if file_size > MAX_BATCH_FILE_SIZE:
         size_mb = file_size / (1024 * 1024)
         raise click.ClickException(
             f"Input file too large: {size_mb:.1f}MB. "
-            f"Maximum size is {MAX_FILE_SIZE / (1024 * 1024)}MB."
+            f"Maximum size is {MAX_BATCH_FILE_SIZE_MB}MB."
         )
 
     sources = input_path.read_text(encoding="utf-8").strip().split("\n")
