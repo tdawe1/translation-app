@@ -51,10 +51,10 @@ def test_lm_studio_provider_is_available_timeout(lm_studio_provider):
         assert lm_studio_provider.is_available() is False
 
 
-def test_lm_studio_provider_is_available_timeout(lm_studio_provider):
-    """Should return False on request timeout."""
+def test_lm_studio_provider_is_available_connection_error(lm_studio_provider):
+    """Should return False on connection error."""
     with patch("review.llm.lm_studio.requests.get") as mock_get:
-        mock_get.side_effect = requests.exceptions.Timeout()
+        mock_get.side_effect = requests.exceptions.ConnectionError()
 
         assert lm_studio_provider.is_available() is False
 

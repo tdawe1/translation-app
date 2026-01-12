@@ -12,7 +12,7 @@ import asyncio
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from review.llm.base import BaseProvider, ProviderResponse
+from review.llm.base import BaseProvider, ProviderConfig, ProviderResponse
 from review.llm.ollama import TranslationResult
 
 
@@ -28,8 +28,11 @@ class LMStudioConfig:
 class LMStudioProvider(BaseProvider):
     """LM Studio provider using OpenAI-compatible API."""
 
+    DEFAULT_MODEL = "local-model"
+    DEFAULT_BASE_URL = "http://localhost:1234/v1"
+
     def __init__(
-        self, base_url: str = "http://localhost:1234/v1", model: str = "local-model"
+        self, base_url: str = None, model: str = None
     ):
         """
         Initialize LM Studio provider.
@@ -38,7 +41,17 @@ class LMStudioProvider(BaseProvider):
             base_url: LM Studio API base URL (OpenAI-compatible)
             model: Model name (must match loaded model in LM Studio)
         """
-        self._config = LMStudioConfig(base_url=base_url, model=model)
+        base_url = base_url or self.DEFAULT_BASE_URL
+        model = model or self.DEFAULT_MODEL
+
+        config = ProviderConfig(
+            api_key="",  # LM Studio doesn't use API keys
+            base_url=base_url,
+            model=model
+        )
+        super().__init__(config)
+
+        self._lm_config = LMStudioConfig(base_url=base_url, model=model)
         self._executor = ThreadPoolExecutor(max_workers=3)
 
     @property
@@ -49,17 +62,17 @@ class LMStudioProvider(BaseProvider):
     @property
     def base_url(self) -> str:
         """Base URL for API requests."""
-        return self._config.base_url
+        return self._lm_config.base_url
 
     @property
     def model(self) -> str:
         """Model name."""
-        return self._config.model
+        return self._lm_config.model
 
     def is_available(self) -> bool:
         """Check if LM Studio server is running."""
         try:
-            response = requests.get(f"{self._config.base_url}/models", timeout=5)
+            response = requests.get(f"{self._lm_config.base_url}/models", timeout=5)
             return response.status_code == 200
         except requests.exceptions.RequestException:
             return False
@@ -67,7 +80,7 @@ class LMStudioProvider(BaseProvider):
     def list_models(self) -> List[str]:
         """List available models from LM Studio."""
         try:
-            response = requests.get(f"{self._config.base_url}/models", timeout=10)
+            response = requests.get(f"{self._lm_config.base_url}/models", timeout=10)
             response.raise_for_status()
             data = response.json()
             return [m["id"] for m in data.get("data", [])]
@@ -99,7 +112,7 @@ class LMStudioProvider(BaseProvider):
         headers = {"Content-Type": "application/json"}
 
         payload = {
-            "model": self._config.model,
+            "model": self._lm_config.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
         }
@@ -107,10 +120,10 @@ class LMStudioProvider(BaseProvider):
             payload["max_tokens"] = max_tokens
 
         response = requests.post(
-            f"{self._config.base_url}/chat/completions",
+            f"{self._lm_config.base_url}/chat/completions",
             json=payload,
             headers=headers,
-            timeout=self._config.timeout,
+            timeout=self._lm_config.timeout,
         )
         response.raise_for_status()
 
@@ -123,7 +136,7 @@ class LMStudioProvider(BaseProvider):
         # Return ProviderResponse to satisfy BaseProvider contract
         return ProviderResponse(
             text=text,
-            model=self._config.model,
+            model=self._lm_config.model,
             usage={
                 "prompt_tokens": data.get("usage", {}).get("prompt_tokens", len(prompt)),
                 "completion_tokens": data.get("usage", {}).get("completion_tokens", len(text)),
@@ -175,7 +188,7 @@ class LMStudioProvider(BaseProvider):
                 translated_text="",
                 confidence=0.0,
                 provider=self.name,
-                model=self._config.model,
+                model=self._lm_config.model,
                 error="LM Studio server not available",
             )
 
@@ -187,7 +200,7 @@ class LMStudioProvider(BaseProvider):
         )
 
         payload = {
-            "model": self._config.model,
+            "model": self._lm_config.model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -198,10 +211,10 @@ class LMStudioProvider(BaseProvider):
 
         try:
             response = requests.post(
-                f"{self._config.base_url}/chat/completions",
+                f"{self._lm_config.base_url}/chat/completions",
                 json=payload,
                 headers=headers,
-                timeout=self._config.timeout,
+                timeout=self._lm_config.timeout,
             )
             response.raise_for_status()
 
@@ -213,7 +226,7 @@ class LMStudioProvider(BaseProvider):
                 translated_text=translated_text.strip(),
                 confidence=0.85,  # Local models generally less consistent
                 provider=self.name,
-                model=self._config.model,
+                model=self._lm_config.model,
             )
 
         except (requests.exceptions.RequestException, KeyError, IndexError) as e:
@@ -222,7 +235,7 @@ class LMStudioProvider(BaseProvider):
                 translated_text="",
                 confidence=0.0,
                 provider=self.name,
-                model=self._config.model,
+                model=self._lm_config.model,
                 error=str(e),
             )
 
