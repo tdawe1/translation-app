@@ -5,13 +5,14 @@ LM Studio exposes an OpenAI-compatible API for locally loaded models.
 This provider connects to that API for translation tasks.
 """
 
-from typing import List
+from typing import List, Optional
 from dataclasses import dataclass
 import requests
 import asyncio
+import time
 from concurrent.futures import ThreadPoolExecutor
 
-from review.llm.base import BaseProvider
+from review.llm.base import BaseProvider, ProviderResponse
 from review.llm.ollama import TranslationResult
 
 
@@ -73,27 +74,37 @@ class LMStudioProvider(BaseProvider):
         except requests.exceptions.RequestException:
             return []
 
-    def generate(self, prompt: str, **kwargs) -> str:
+    def generate(
+        self,
+        prompt: str,
+        max_tokens: Optional[int] = None,
+        temperature: float = 0.0
+    ) -> ProviderResponse:
         """
         Generate text using LM Studio.
 
         Args:
             prompt: Input prompt
-            **kwargs: Additional parameters (temperature, max_tokens, etc.)
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
 
         Returns:
-            Generated text as string
+            ProviderResponse: Standardized response object with text, model, usage, latency
         """
         if not self.is_available():
             raise RuntimeError("LM Studio server not available")
+
+        start = time.time()
 
         headers = {"Content-Type": "application/json"}
 
         payload = {
             "model": self._config.model,
             "messages": [{"role": "user", "content": prompt}],
-            **kwargs,
+            "temperature": temperature,
         }
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
 
         response = requests.post(
             f"{self._config.base_url}/chat/completions",
@@ -104,22 +115,44 @@ class LMStudioProvider(BaseProvider):
         response.raise_for_status()
 
         data = response.json()
-        return data["choices"][0]["message"]["content"]
+        latency = int((time.time() - start) * 1000)
 
-    async def generate_async(self, prompt: str, **kwargs) -> str:
+        # Extract text from LM Studio response
+        text = data["choices"][0]["message"]["content"]
+
+        # Return ProviderResponse to satisfy BaseProvider contract
+        return ProviderResponse(
+            text=text,
+            model=self._config.model,
+            usage={
+                "prompt_tokens": data.get("usage", {}).get("prompt_tokens", len(prompt)),
+                "completion_tokens": data.get("usage", {}).get("completion_tokens", len(text)),
+                "total_tokens": data.get("usage", {}).get("total_tokens", len(prompt) + len(text)),
+            },
+            latency_ms=latency,
+            raw_response=data
+        )
+
+    async def generate_async(
+        self,
+        prompt: str,
+        max_tokens: Optional[int] = None,
+        temperature: float = 0.0
+    ) -> ProviderResponse:
         """
         Generate text asynchronously using LM Studio.
 
         Args:
             prompt: Input prompt
-            **kwargs: Additional parameters
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
 
         Returns:
-            Generated text as string
+            ProviderResponse: Standardized response object
         """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
-            self._executor, self.generate, prompt, **kwargs
+            self._executor, self.generate, prompt, max_tokens, temperature
         )
 
     def translate(

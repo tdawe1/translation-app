@@ -161,36 +161,29 @@ def test_lm_studio_provider_translate_api_error(lm_studio_provider):
 
 
 def test_lm_studio_provider_generate(lm_studio_provider):
-    """Should generate text using LM Studio."""
+    """Should generate text using LM Studio and return ProviderResponse."""
+    from review.llm.base import ProviderResponse
+
     with (
         patch("review.llm.lm_studio.requests.post") as mock_post,
         patch.object(lm_studio_provider, "is_available", return_value=True),
     ):
         mock_response = Mock()
         mock_response.json.return_value = {
-            "choices": [{"message": {"content": "Generated response"}}]
+            "choices": [{"message": {"content": "Generated response"}}],
+            "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 3,
+                "total_tokens": 8,
+            },
         }
         mock_post.return_value = mock_response
 
         result = lm_studio_provider.generate(prompt="Hello, world!", temperature=0.5)
 
-        assert result == "Generated response"
-
-
-def test_lm_studio_provider_generate_error(lm_studio_provider):
-    """Should raise RuntimeError on generation errors."""
-    with patch("review.llm.lm_studio.requests.post") as mock_post:
-        mock_response = Mock()
-        mock_response.status_code = 500
-        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError()
-        mock_post.return_value = mock_response
-
-        with pytest.raises(requests.exceptions.HTTPError):
-            lm_studio_provider.generate(prompt="Hello, world!")
-
-    result = lm_studio_provider.generate(prompt="Hello, world!", temperature=0.5)
-
-    assert result == "Generated response"
+        assert isinstance(result, ProviderResponse)
+        assert result.text == "Generated response"
+        assert result.model == "local-model"
 
 
 def test_lm_studio_provider_generate_error(lm_studio_provider):
@@ -225,3 +218,37 @@ def test_lm_studio_provider_default_config():
 
     assert provider.base_url == "http://localhost:1234/v1"
     assert provider.model == "local-model"
+
+
+def test_generate_returns_provider_response(lm_studio_provider):
+    """LMStudioProvider.generate() should return ProviderResponse, not str.
+
+    This test verifies contract compliance with BaseProvider abstract class.
+    """
+    from review.llm.base import ProviderResponse
+
+    with (
+        patch("review.llm.lm_studio.requests.post") as mock_post,
+        patch.object(lm_studio_provider, "is_available", return_value=True),
+    ):
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "Test translation"}}],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+            },
+        }
+        mock_post.return_value = mock_response
+
+        result = lm_studio_provider.generate("Translate this", temperature=0.5)
+
+        # Should return ProviderResponse, not str
+        assert isinstance(result, ProviderResponse), f"Expected ProviderResponse, got {type(result)}"
+        assert hasattr(result, "text")
+        assert hasattr(result, "model")
+        assert hasattr(result, "usage")
+        assert hasattr(result, "latency_ms")
+        assert result.text == "Test translation"
+        assert result.model == "local-model"
