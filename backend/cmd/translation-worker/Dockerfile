@@ -51,6 +51,19 @@ COPY --from=builder /install /usr/local
 # Copy application code
 COPY main.py .
 COPY config.toml .
+COPY __init__.py .
+
+# Copy all package directories
+COPY plugins/ ./plugins/
+COPY watcher/ ./watcher/
+COPY nlp/ ./nlp/
+COPY glossary/ ./glossary/
+COPY cache/ ./cache/
+COPY layout/ ./layout/
+COPY parsers/ ./parsers/
+COPY audit/ ./audit/
+COPY review/ ./review/
+COPY job_queue/ ./job_queue/
 
 # Create volume directories
 RUN mkdir -p /watch/incoming /watch/processing /watch/translated \
