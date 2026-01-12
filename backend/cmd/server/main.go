@@ -100,7 +100,7 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, sessionConfig)
-	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc, cfg)
+	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc, cfg, redisClient) // H-2 fix: Redis-backed OAuth state storage
 	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret, db)
 
 	// New dedicated handlers for email verification, magic link, and password reset

@@ -6,30 +6,23 @@ import (
 	"log"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/tdawe1/translation-app/internal/auth"
 	"github.com/tdawe1/translation-app/internal/config"
 	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/oauth"
 )
 
-// stateStore provides thread-safe storage for OAuth state tokens
-type stateStore struct {
-	sync.RWMutex
-	m map[string]time.Time
-}
-
 // OAuthHandler handles OAuth authentication
 type OAuthHandler struct {
-	oauthService  *oauth.Service
-	db            database.Database
-	tokenService  *auth.TokenService
-	states        *stateStore
-	stateExpiry   time.Duration
-	stopCleanup   chan struct{}
+	oauthService     *oauth.Service
+	db               database.Database
+	tokenService     *auth.TokenService
+	stateStore       oauth.StateStore
+	stateExpiry      time.Duration
 	frontendRedirect string // URL to redirect users to after successful OAuth
 }
 
@@ -38,7 +31,8 @@ var statePattern = regexp.MustCompile(`^[a-zA-Z0-9]{32,64}$`)
 
 // NewOAuthHandler creates a new OAuth handler
 // Receives config to ensure OAuth credentials are loaded from centralized configuration
-func NewOAuthHandler(db database.Database, tokenService *auth.TokenService, cfg *config.Config) *OAuthHandler {
+// Receives redisClient for Redis-backed OAuth state storage (H-2 fix: DoS resilience)
+func NewOAuthHandler(db database.Database, tokenService *auth.TokenService, cfg *config.Config, redisClient *redis.Client) *OAuthHandler {
 	// Backend URL for OAuth callbacks (where GitHub/Google sends the code)
 	// This should be the backend URL with the callback endpoint path
 	callbackURL := cfg.OAuthRedirectURL
@@ -62,76 +56,13 @@ func NewOAuthHandler(db database.Database, tokenService *auth.TokenService, cfg 
 		FrontendURL:        callbackURL, // This is used for callback URLs (backend)
 	}
 
-	h := &OAuthHandler{
+	return &OAuthHandler{
 		oauthService:     oauth.NewService(db, oauthConfig),
 		db:               db,
 		tokenService:     tokenService,
+		stateStore:       oauth.NewRedisStateStore(redisClient),
 		frontendRedirect: frontendURL,
-		states: &stateStore{
-			m: make(map[string]time.Time),
-		},
-		stateExpiry: 10 * time.Minute,
-		stopCleanup: make(chan struct{}),
-	}
-
-	// Start background cleanup worker (#003 fix)
-	go h.startCleanupWorker()
-
-	return h
-}
-
-// startCleanupWorker runs a background goroutine to clean up expired states
-func (h *OAuthHandler) startCleanupWorker() {
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			h.cleanupExpiredStates()
-		case <-h.stopCleanup:
-			return
-		}
-	}
-}
-
-// Stop stops the cleanup worker
-func (h *OAuthHandler) Stop() {
-	close(h.stopCleanup)
-}
-
-// setState stores a state token with thread safety (#001 fix)
-func (h *OAuthHandler) setState(key string, expiry time.Time) {
-	h.states.Lock()
-	defer h.states.Unlock()
-	h.states.m[key] = expiry
-}
-
-// getState retrieves a state token with thread safety (#001 fix)
-func (h *OAuthHandler) getState(key string) (time.Time, bool) {
-	h.states.RLock()
-	defer h.states.RUnlock()
-	val, ok := h.states.m[key]
-	return val, ok
-}
-
-// deleteState removes a state token with thread safety (#001 fix)
-func (h *OAuthHandler) deleteState(key string) {
-	h.states.Lock()
-	defer h.states.Unlock()
-	delete(h.states.m, key)
-}
-
-// cleanupExpiredStates removes expired states from the store (#003 fix)
-func (h *OAuthHandler) cleanupExpiredStates() {
-	h.states.Lock()
-	defer h.states.Unlock()
-
-	now := time.Now()
-	for state, expiry := range h.states.m {
-		if now.After(expiry) {
-			delete(h.states.m, state)
-		}
+		stateExpiry:      10 * time.Minute,
 	}
 }
 
@@ -184,8 +115,14 @@ func (h *OAuthHandler) Authorize(c *fiber.Ctx) error {
 	// Bind state to session: state = sessionID:randomState
 	state := sessionID + ":" + rawState
 
-	// Store state with expiry (thread-safe)
-	h.setState(state, time.Now().Add(h.stateExpiry))
+	// Store state with expiry in Redis (H-2 fix: DoS resilience via auto-expiring keys)
+	ctx := context.Background()
+	if err := h.stateStore.Set(ctx, state, h.stateExpiry); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to store state",
+			"code":  "STATE_STORAGE_ERROR",
+		})
+	}
 
 	// Get auth URL
 	authURL, err := h.oauthService.GetAuthURL(oauth.Provider(provider), state)
@@ -247,15 +184,23 @@ func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 		})
 	}
 
-	// Verify state (thread-safe)
-	expiry, exists := h.getState(state)
-	if !exists || time.Now().After(expiry) {
+	// Verify state exists in Redis (H-2 fix: DoS resilience)
+	ctx := context.Background()
+	exists, err := h.stateStore.Exists(ctx, state)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to verify state",
+			"code":  "STATE_VERIFICATION_ERROR",
+		})
+	}
+	if !exists {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "invalid or expired state",
 			"code":  "INVALID_STATE",
 		})
 	}
-	h.deleteState(state)
+	// Delete state after successful verification (single-use)
+	_ = h.stateStore.Delete(ctx, state)
 
 	// Clear the csrf session cookie after use
 	c.Cookie(&fiber.Cookie{
@@ -268,7 +213,6 @@ func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 	})
 
 	// Exchange code for token
-	ctx := context.Background()
 	token, err := h.oauthService.ExchangeToken(ctx, oauth.Provider(provider), code)
 	if err != nil {
 		// Don't leak internal error details (#022 fix)
