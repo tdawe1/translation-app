@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: gengowatcher
       POSTGRES_USER: gengo
-      POSTGRES_PASSWORD: devpass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpass}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
