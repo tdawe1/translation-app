@@ -2,7 +2,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -92,17 +91,18 @@ func Load() *Config {
 		CookieSameSite:            getEnv("COOKIE_SAMESITE", "Lax"),
 	}
 
-	// Validate required secrets in production
-	if cfg.Env == "production" {
-		if cfg.JWTSecret == "" {
-			panic("JWT_SECRET must be set in production")
-		}
+	// P0-4 FIX: No hardcoded JWT_SECRET in any environment (except tests)
+	// In test environment (detected by TEST_ENV=true or ENV=test), allow missing JWT_SECRET
+	isTestEnv := os.Getenv("TEST_ENV") == "true" || cfg.Env == "test"
+	if cfg.JWTSecret == "" && !isTestEnv {
+		panic("JWT_SECRET environment variable is required. " +
+			"Please set it to a random string of at least 32 characters. " +
+			"Generate one with: openssl rand -hex 32")
 	}
 
-	// Generate a warning if using default JWT secret in development
-	if cfg.Env == "development" && cfg.JWTSecret == "" {
-		cfg.JWTSecret = "dev-secret-change-in-production"
-		fmt.Println("⚠️  WARNING: Using default JWT secret. Set JWT_SECRET in production!")
+	// For tests, use a consistent test secret if not already set
+	if cfg.JWTSecret == "" && isTestEnv {
+		cfg.JWTSecret = "test-secret-for-jwt-testing-purposes-only-32chars"
 	}
 
 	return cfg

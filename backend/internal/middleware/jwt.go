@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -13,36 +12,37 @@ import (
 )
 
 // validateJWTSecretOnStartup validates JWT_SECRET at application startup.
-// Fails fast in production if secret is missing or too short.
-// Logs warnings in development but allows startup.
+// P0-4 FIX: Fails fast in ALL environments if secret is missing or too short (except tests).
+// Tests can bypass this by setting ENV=test or TEST_ENV=true.
 func ValidateJWTSecretOnStartup() {
 	env := os.Getenv("ENV")
 	secret := os.Getenv("JWT_SECRET")
 
-	switch env {
-	case "production":
-		if secret == "" || len(secret) < minSecretLength {
-			emptyStr := "false"
-			if secret == "" {
-				emptyStr = "true"
-			}
-			log.Fatal("FATAL: JWT_SECRET must be set and >= 32 characters in production. " +
-				"Current state: empty=" + emptyStr +
-				", length=" + fmt.Sprint(len(secret)))
-		}
-	case "", "development":
+	// P0-4 FIX: Check for test environment first
+	isTestEnv := env == "test" || os.Getenv("TEST_ENV") == "true"
+
+	// In test environment, just log a warning and continue
+	if isTestEnv {
 		if secret == "" {
-			log.Printf("WARNING: JWT_SECRET not set, using development default. DO NOT SHIP THIS.")
-			log.Printf("WARNING: Set JWT_SECRET to a random string of >= 32 characters.")
+			log.Printf("INFO: JWT_SECRET not set in test environment, using test default")
 		} else if len(secret) < minSecretLength {
-			log.Printf("WARNING: JWT_SECRET too short (%d chars). Use >= 32 chars for production.", len(secret))
+			log.Printf("WARNING: JWT_SECRET too short for production use (%d chars)", len(secret))
 		}
-	default:
-		// Test or other environments
-		if secret == "" {
-			log.Printf("WARNING: JWT_SECRET not set in '%s' environment", env)
-		}
+		return
 	}
+
+	// In all non-test environments, require JWT_SECRET
+	if secret == "" {
+		log.Fatal("FATAL: JWT_SECRET must be set and >= 32 characters. " +
+			"Generate one with: openssl rand -hex 32")
+	}
+
+	if len(secret) < minSecretLength {
+		log.Fatalf("FATAL: JWT_SECRET must be at least %d characters (256 bits for HS256). "+
+			"Current length: %d. Please generate a stronger secret.", minSecretLength, len(secret))
+	}
+
+	log.Printf("INFO: JWT_SECRET validated (length: %d chars)", len(secret))
 }
 
 const (
@@ -101,7 +101,8 @@ func getJWTConfig() *JWTConfig {
 	return jwtConfig
 }
 
-// validateJWTSecret validates and returns the JWT secret, using dev default if needed.
+// validateJWTSecret validates and returns the JWT secret.
+// P0-4 FIX: Require JWT_SECRET in all environments (except tests)
 // In test environment (detected by testing flag), it returns a test secret instead of fatal.
 func validateJWTSecret(secret string) string {
 	if secret == "" {
@@ -109,38 +110,28 @@ func validateJWTSecret(secret string) string {
 		if isTestEnv() {
 			return "test-secret-for-jwt-testing-purposes-only-32chars"
 		}
-		// Use development default if ENV is development
-		if os.Getenv("ENV") == "development" || os.Getenv("ENV") == "" {
-			return "dev-secret-change-in-production-do-not-use-in-deployment"
-		}
+		// P0-4 FIX: No hardcoded fallback - fail fast if JWT_SECRET is not set
 		log.Fatal("FATAL: JWT_SECRET environment variable is not set. " +
 			"Authentication cannot function without a secure secret. " +
 			"Please set JWT_SECRET to a random string of at least 32 characters.")
 	}
 	if len(secret) < minSecretLength {
-		// In tests, still validate length
+		// In tests, still validate length with warning
 		if isTestEnv() {
 			log.Printf("WARNING: JWT_SECRET is too short for production use (length: %d)", len(secret))
-		} else {
-			log.Fatalf("FATAL: JWT_SECRET must be at least %d characters (256 bits for HS256). "+
-				"Current length: %d. Please generate a stronger secret.", minSecretLength, len(secret))
+			return secret // Allow in tests for convenience
 		}
+		log.Fatalf("FATAL: JWT_SECRET must be at least %d characters (256 bits for HS256). "+
+			"Current length: %d. Please generate a stronger secret.", minSecretLength, len(secret))
 	}
 	return secret
 }
 
 // isTestEnv detects if we're running in a test environment
 func isTestEnv() bool {
-	// Check if we're in a test by looking at the test flag or common test env vars
-	// This is a simple heuristic; Go's testing package doesn't expose a direct way
-	return os.Getenv("TEST_ENV") == "true" || flagLookup("test.v")
-}
-
-// flagLookup checks if a test flag is set (used for detecting test environment)
-func flagLookup(name string) bool {
-	// Simple check: if running under go test, certain flags will be present
-	// We use a conservative approach that checks environment
-	return false
+	// P0-4 FIX: Check both TEST_ENV and ENV environment variables
+	// This is consistent with the config package approach
+	return os.Getenv("TEST_ENV") == "true" || os.Getenv("ENV") == "test"
 }
 
 // JWTConfig holds JWT middleware configuration
