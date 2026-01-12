@@ -42,6 +42,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Short name to internal tool name mapping
+# Maps CLI argument values (e.g., "claude") to internal tool names (e.g., "claude_code")
+_SHORT_TO_INTERNAL = {
+    "claude": "claude_code",
+    "codex": "codex",
+    "gemini": "gemini_cli",
+    "ollama": "ollama",
+}
+
 
 def _get_api_key(provider: str) -> Optional[str]:
     """Get API key from environment variable."""
@@ -72,21 +81,12 @@ def _get_cli_provider(tool: str) -> "CLIProvider":
 
     from .llm.base import ProviderConfig
 
-    # Map short CLI names to internal tool names used by DEFAULT_COMMANDS
-    # This is the ONLY place where short names map to internal names
-    SHORT_TO_INTERNAL = {
-        "claude": "claude_code",
-        "codex": "codex",
-        "gemini": "gemini_cli",
-        "ollama": "ollama",
-    }
-
-    if tool not in SHORT_TO_INTERNAL:
+    if tool not in _SHORT_TO_INTERNAL:
         raise click.ClickException(
-            f"Unknown CLI tool: {tool}. Use: {list(SHORT_TO_INTERNAL.keys())}"
+            f"Unknown CLI tool: {tool}. Use: {list(_SHORT_TO_INTERNAL.keys())}"
         )
 
-    tool_name = SHORT_TO_INTERNAL[tool]
+    tool_name = _SHORT_TO_INTERNAL[tool]
 
     # Get base command from DEFAULT_COMMANDS (single source of truth)
     base_command = DEFAULT_COMMANDS.get(tool_name, tool)
@@ -123,15 +123,7 @@ def _build_cli_command(tool: str, prompt: str) -> List[str]:
     Returns:
         Full command as list of strings
     """
-    # Short to internal name mapping (must match _get_cli_provider)
-    SHORT_TO_INTERNAL = {
-        "claude": "claude_code",
-        "codex": "codex",
-        "gemini": "gemini_cli",
-        "ollama": "ollama",
-    }
-
-    if tool not in SHORT_TO_INTERNAL:
+    if tool not in _SHORT_TO_INTERNAL:
         raise click.ClickException(f"Unknown CLI tool: {tool}")
 
     # Build command based on tool type
@@ -146,7 +138,7 @@ def _build_cli_command(tool: str, prompt: str) -> List[str]:
         cmd = ["ollama", "run", "codellama:latest"]
     else:
         # Fallback: use base command from DEFAULT_COMMANDS
-        tool_name = SHORT_TO_INTERNAL[tool]
+        tool_name = _SHORT_TO_INTERNAL[tool]
         base_command = DEFAULT_COMMANDS.get(tool_name, tool)
         cmd = [base_command]
 
