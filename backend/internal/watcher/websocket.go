@@ -38,8 +38,9 @@ type WebSocketMonitor struct {
 	UserSession string
 	UserKey     string
 	GengoUserID string // External Gengo user ID
-	seenIDs     map[string]bool
-	mu          sync.RWMutex
+	// P0-2 FIX: Use LRU cache instead of unbounded map to prevent memory leaks
+	seenIDs *LRUCache
+	mu      sync.RWMutex
 
 	// Timing configuration
 	HeartbeatInterval time.Duration
@@ -73,7 +74,8 @@ func NewWebSocketMonitor(userID uuid.UUID, userSession, userKey, gengoUserID str
 		UserSession:       userSession,
 		UserKey:           userKey,
 		GengoUserID:       gengoUserID,
-		seenIDs:           make(map[string]bool),
+		// P0-2 FIX: Use LRU cache with 1000 item limit to prevent unbounded memory growth
+		seenIDs:           NewLRUCache(1000),
 		status:            "disconnected",
 		HeartbeatInterval: heartbeatInterval,
 		PongWait:          pongWait,
@@ -304,14 +306,11 @@ func (m *WebSocketMonitor) handleJobAvailable(msg wsMessage, jobChan chan<- Job)
 		return fmt.Errorf("job_id missing in available_collection message")
 	}
 
-	m.mu.Lock()
-	if m.seenIDs[jobID] {
-		m.mu.Unlock()
+	// P0-2 FIX: Use LRU cache.Add which returns true if job was already seen
+	if m.seenIDs.Add(jobID) {
 		log.Printf("[WS] User %s: Job %s already seen, skipping", m.UserID, jobID)
 		return nil
 	}
-	m.seenIDs[jobID] = true
-	m.mu.Unlock()
 
 	job := Job{
 		ID:     jobID,
