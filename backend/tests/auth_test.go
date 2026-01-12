@@ -413,3 +413,100 @@ func TestUserResponse_IncludesOAuthAccounts(t *testing.T) {
 	}
 	assert.True(t, hasGitHub, "GitHub OAuth account should be included")
 }
+
+// TestLogin_TimingSafeUserNotFound verifies that login attempts with non-existent
+// users return generic error messages to prevent timing-based user enumeration.
+// Security Finding M-1: Account Enumeration via Response Analysis
+func TestLogin_TimingSafeUserNotFound(t *testing.T) {
+	db := RequireDB(t)
+	wrappedDB := database.Wrap(db)
+
+	cfg := &config.Config{
+		JWTSecret:    "test-secret-for-testing-only-32-chars-min",
+		CookieSecure: false,
+	}
+
+	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
+	userSvc := auth.NewUserService(wrappedDB, tokenSvc)
+
+	// Create a known existing user
+	_ = CreateTestUser(t, db, "existing-user@example.com")
+
+	t.Run("Non-existent user returns generic error (no 'not found' message)", func(t *testing.T) {
+		_, err := userSvc.Login(auth.LoginRequest{
+			Email:    "nonexistent@example.com",
+			Password: "some-password",
+		})
+
+		// Should return an error
+		require.Error(t, err)
+
+		// Error should be generic - must not reveal user existence
+		assert.Contains(t, err.Error(), "Invalid email or password",
+			"Error message should be generic")
+
+		// Ensure error doesn't contain revealing phrases
+		errorMsg := err.Error()
+		assert.NotContains(t, errorMsg, "not found",
+			"Error should not contain 'not found'")
+		assert.NotContains(t, errorMsg, "no user",
+			"Error should not contain 'no user'")
+		assert.NotContains(t, errorMsg, "doesn't exist",
+			"Error should not contain 'doesn't exist'")
+		assert.NotContains(t, errorMsg, "does not exist",
+			"Error should not contain 'does not exist'")
+	})
+
+	t.Run("Existing user with wrong password returns same generic error", func(t *testing.T) {
+		_, err := userSvc.Login(auth.LoginRequest{
+			Email:    "existing-user@example.com",
+			Password: "wrong-password",
+		})
+
+		// Should return an error
+		require.Error(t, err)
+
+		// Error should match the same generic error
+		assert.Contains(t, err.Error(), "Invalid email or password",
+			"Error message should be generic")
+
+		// Both cases should return the same error type
+		_, notFoundErr := userSvc.Login(auth.LoginRequest{
+			Email:    "nonexistent@example.com",
+			Password: "any-password",
+		})
+		_, wrongPassErr := userSvc.Login(auth.LoginRequest{
+			Email:    "existing-user@example.com",
+			Password: "wrong-password",
+		})
+
+		// Both should be the same error
+		assert.Equal(t, notFoundErr.Error(), wrongPassErr.Error(),
+			"Both user not found and wrong password should return identical error messages")
+	})
+
+	t.Run("Empty email/password returns generic error", func(t *testing.T) {
+		_, err := userSvc.Login(auth.LoginRequest{
+			Email:    "",
+			Password: "",
+		})
+
+		// Should return generic error even for empty inputs
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Invalid email or password")
+	})
+
+	t.Run("Successful login works correctly", func(t *testing.T) {
+		// This verifies we didn't break the happy path
+		// CreateTestUser creates users with password "password123"
+		result, err := userSvc.Login(auth.LoginRequest{
+			Email:    "existing-user@example.com",
+			Password: "password123",
+		})
+
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.NotEmpty(t, result.AccessToken)
+		assert.Equal(t, "existing-user@example.com", result.User.Email)
+	})
+}

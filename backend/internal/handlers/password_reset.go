@@ -9,6 +9,7 @@ import (
 	"github.com/tdawe1/translation-app/internal/models"
 	"github.com/tdawe1/translation-app/internal/password"
 	"github.com/tdawe1/translation-app/internal/service"
+	"github.com/tdawe1/translation-app/internal/validation"
 	"gorm.io/gorm"
 )
 
@@ -40,6 +41,14 @@ func (h *PasswordResetHandler) SendPasswordReset(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request body",
 			"code":  "INVALID_REQUEST",
+		})
+	}
+
+	// Validate email format before any database operations (M-3 fix)
+	if !validation.ValidateEmail(req.Email) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid email format",
+			"code":  "INVALID_EMAIL",
 		})
 	}
 

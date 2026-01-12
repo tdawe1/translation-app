@@ -241,7 +241,9 @@ func main() {
 	watcherGroup.Post("/stop", watcherHandler.StopWatcher)
 
 	// WebSocket ticket endpoint (protected, used to get short-lived ticket for WS connection)
-	protected.Post("/auth/ws-ticket", wsHandler.GetWSTicket)
+	// Rate limited to prevent Redis exhaustion (H-1 fix)
+	wsTicketLimiters := middleware.WSTicketLimiters(trustedProxies)
+	protected.Post("/auth/ws-ticket", wsTicketLimiters.GetTicket, wsHandler.GetWSTicket)
 
 	// Admin routes (protected + require admin role)
 	adminGroup := api.Group("/admin")
@@ -249,8 +251,8 @@ func main() {
 	adminGroup.Use(middleware.RequireAdmin())
 	adminLimiter := middleware.AdminLimiters(trustedProxies)
 	adminGroup.Get("/users", adminLimiter.Management, adminHandler.ListUsers)
-	adminGroup.Patch("/users/:id/role", adminLimiter.Management, adminHandler.UpdateUserRole)
-	adminGroup.Delete("/users/:id", adminLimiter.Management, adminHandler.DeleteUser)
+	adminGroup.Patch("/users/:id/role", adminLimiter.Destructive, adminHandler.UpdateUserRole)
+	adminGroup.Delete("/users/:id", adminLimiter.Destructive, adminHandler.DeleteUser)
 
 	// Webhook routes (public, verified via signature)
 	webhooks := api.Group("/webhooks")

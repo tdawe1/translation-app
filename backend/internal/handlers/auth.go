@@ -17,6 +17,7 @@ import (
 	"github.com/tdawe1/translation-app/internal/email"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/password"
+	"github.com/tdawe1/translation-app/internal/validation"
 )
 
 // getAPIError safely converts an error to *apperrors.APIError.
@@ -78,6 +79,14 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
 	}
 
+	// Validate email format before any database operations (M-3 fix)
+	if !validation.ValidateEmail(req.Email) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid email format",
+			"code":  "INVALID_EMAIL",
+		})
+	}
+
 	// Validate password strength (P2 fix - enforces 12+ chars, upper, lower, digit, special)
 	if err := password.ValidateStrength(req.Password); err != nil {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrWeakPassword, err.Error())
@@ -111,6 +120,14 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
+	}
+
+	// Validate email format before any database operations (M-3 fix)
+	if !validation.ValidateEmail(req.Email) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid email format",
+			"code":  "INVALID_EMAIL",
+		})
 	}
 
 	result, apiErr := h.userService.Login(auth.LoginRequest{
@@ -217,9 +234,12 @@ func (h *AuthHandler) RequestMagicLink(c *fiber.Ctx) error {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
 	}
 
-	// Validate email
-	if req.Email == "" {
-		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Email is required")
+	// Validate email format before any database operations (M-3 fix)
+	if !validation.ValidateEmail(req.Email) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid email format",
+			"code":  "INVALID_EMAIL",
+		})
 	}
 
 	// Check if email service is configured

@@ -270,3 +270,74 @@ func TestRateLimiting_Email(t *testing.T) {
 	resp, _ := app.Test(req)
 	assert.Equal(t, 429, resp.StatusCode, "Request should be rate limited")
 }
+
+func TestWSTicketLimiters(t *testing.T) {
+	trustedProxies := []string{"10.0.0.0/8"}
+	limiters := WSTicketLimiters(trustedProxies)
+
+	assert.NotNil(t, limiters.GetTicket, "GetTicket limiter should not be nil")
+}
+
+func TestRateLimiting_WSTicket(t *testing.T) {
+	app := fiber.New()
+	trustedProxies := []string{"10.0.0.0/8"}
+	limiters := WSTicketLimiters(trustedProxies)
+
+	app.Post("/ws-ticket", limiters.GetTicket, func(c *fiber.Ctx) error {
+		return c.SendStatus(200)
+	})
+
+	// First 10 requests should succeed
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest("POST", "/ws-ticket", nil)
+		resp, _ := app.Test(req)
+		assert.Equal(t, 200, resp.StatusCode, "Request %d should succeed", i+1)
+	}
+
+	// 11th request should be rate limited
+	req := httptest.NewRequest("POST", "/ws-ticket", nil)
+	resp, _ := app.Test(req)
+	assert.Equal(t, 429, resp.StatusCode, "Request should be rate limited")
+
+	// Verify error response body
+	body := make([]byte, 200)
+	_, _ = resp.Body.Read(body)
+	assert.Contains(t, string(body), "Too many ticket requests", "Error message should be descriptive")
+	assert.Contains(t, string(body), "RATE_LIMITED", "Error code should be RATE_LIMITED")
+}
+
+func TestAdminLimiters(t *testing.T) {
+	trustedProxies := []string{"10.0.0.0/8"}
+	limiters := AdminLimiters(trustedProxies)
+
+	assert.NotNil(t, limiters.Management, "Management limiter should not be nil")
+	assert.NotNil(t, limiters.Destructive, "Destructive limiter should not be nil")
+}
+
+func TestRateLimiting_AdminDestructive(t *testing.T) {
+	app := fiber.New()
+	trustedProxies := []string{"10.0.0.0/8"}
+	limiters := AdminLimiters(trustedProxies)
+
+	app.Delete("/admin/users/:id", limiters.Destructive, func(c *fiber.Ctx) error {
+		return c.SendStatus(200)
+	})
+
+	// First 5 requests should succeed
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("DELETE", "/admin/users/123", nil)
+		resp, _ := app.Test(req)
+		assert.Equal(t, 200, resp.StatusCode, "Request %d should succeed", i+1)
+	}
+
+	// 6th request should be rate limited
+	req := httptest.NewRequest("DELETE", "/admin/users/123", nil)
+	resp, _ := app.Test(req)
+	assert.Equal(t, 429, resp.StatusCode, "Request should be rate limited")
+
+	// Verify error response body
+	body := make([]byte, 200)
+	_, _ = resp.Body.Read(body)
+	assert.Contains(t, string(body), "Too many destructive admin actions", "Error message should be descriptive")
+	assert.Contains(t, string(body), "RATE_LIMITED", "Error code should be RATE_LIMITED")
+}

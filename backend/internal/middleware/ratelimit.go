@@ -235,6 +235,7 @@ func RoleBasedLimiter(config RoleBasedLimiterConfig) fiber.Handler {
 // Use these for admin-specific routes where you want to allow burst operations.
 func AdminLimiters(trustedProxies []string) struct {
 	Management fiber.Handler
+	Destructive fiber.Handler
 } {
 	// Admin management endpoints: 300 requests per minute (for bulk operations)
 	managementLimiter := limiter.New(limiter.Config{
@@ -255,9 +256,58 @@ func AdminLimiters(trustedProxies []string) struct {
 		},
 	})
 
+	// Destructive operations: 5 requests per hour (M-2 fix)
+	// Applied to DELETE and role-change PATCH operations to prevent bulk account manipulation
+	destructiveLimiter := limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 1 * time.Hour,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			// Use typed helper to get user ID with prefix for destructive operations
+			if userID, ok := GetUserID(c); ok {
+				return "admin_destructive:" + userID
+			}
+			return "admin_destructive_ip:" + getClientIP(c, trustedProxies)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Too many destructive admin actions. Please try again later.",
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+
 	return struct {
 		Management fiber.Handler
+		Destructive fiber.Handler
 	}{
 		Management: managementLimiter,
+		Destructive: destructiveLimiter,
+	}
+}
+
+// WSTicketLimiters returns rate limiters for WebSocket ticket endpoints (H-1 fix).
+// Prevents abuse of ticket generation which could exhaust Redis memory.
+func WSTicketLimiters(trustedProxies []string) struct {
+	GetTicket fiber.Handler
+} {
+	// GetTicket: 10 tickets per minute per IP
+	getTicketLimiter := limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return "wsticket:" + getClientIP(c, trustedProxies)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{
+				"error": "Too many ticket requests. Please try again later.",
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+
+	return struct {
+		GetTicket fiber.Handler
+	}{
+		GetTicket: getTicketLimiter,
 	}
 }

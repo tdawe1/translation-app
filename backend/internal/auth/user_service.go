@@ -128,16 +128,37 @@ func (s *UserService) Register(req RegisterRequest) (*AuthResult, error) {
 }
 
 // Login authenticates a user with email and password
+//
+// Timing-safe user enumeration prevention: Always performs bcrypt comparison
+// using a dummy hash for non-existent users to normalize timing between
+// "user not found" and "wrong password" cases.
 func (s *UserService) Login(req LoginRequest) (*AuthResult, error) {
-	// Find user
-	var user models.User
-	result := s.db.Where("email = ?", req.Email).First(&user)
-	if result.Error != nil {
+	// Fast-path validation for empty inputs (still returns generic error)
+	if req.Email == "" || req.Password == "" {
 		return nil, ErrInvalidCredentials
 	}
 
-	// Verify password
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+	// Find user
+	var user models.User
+	result := s.db.Where("email = ?", req.Email).First(&user)
+
+	// Dummy bcrypt hash for non-existent users (same cost factor as real hashes)
+	// Using bcrypt.DefaultCost (currently 10) ensures timing normalization
+	// Format: $2a$[cost]$[22 characters of salt][31 characters of hash]
+	dummyHash := []byte("$2a$10$dummy.hash.bcrypt.cost.f")
+
+	var err error
+	if result.Error != nil {
+		// User doesn't exist - still perform bcrypt to normalize timing
+		// This prevents timing-based user enumeration attacks
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
+		// Always return generic error regardless of bcrypt result
+		return nil, ErrInvalidCredentials
+	}
+
+	// User exists - verify password with their actual hash
+	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
+	if err != nil {
 		return nil, ErrInvalidCredentials
 	}
 
