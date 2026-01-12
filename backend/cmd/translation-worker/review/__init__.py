@@ -50,6 +50,10 @@ All components are stubbed for MVP:
 - TranslationJudge: Random selection with stubbed reasoning
 - FlaggingEngine: Confidence-based flagging functional
 - BilingualCSVExporter: Full CSV export implementation
+
+## CLI Usage
+
+For command-line interface documentation, see README.md in this directory.
 """
 
 from .models import (
