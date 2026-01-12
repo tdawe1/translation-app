@@ -14,6 +14,15 @@ import (
 	"github.com/tdawe1/translation-app/internal/watcher"
 )
 
+// newTestRSSMonitor creates a monitor with permissive URL validator for testing.
+// P0-5 FIX: Use NewPermissiveURLValidator to allow localhost URLs from httptest.NewServer
+func newTestRSSMonitor(feedURL string, userID uuid.UUID, minReward float64) *watcher.RSSMonitor {
+	monitor := watcher.NewRSSMonitor(feedURL, userID, minReward)
+	// Set permissive validator to allow localhost URLs in tests
+	monitor.SetURLValidator(watcher.NewPermissiveURLValidator())
+	return monitor
+}
+
 // TestRSSMonitor_NewRSSMonitor tests monitor creation
 func TestRSSMonitor_NewRSSMonitor(t *testing.T) {
 	userID := uuid.New()
@@ -62,6 +71,7 @@ func TestRSSMonitor_ExtractReward(t *testing.T) {
 
 // TestRSSMonitor_FetchIntegration tests the fetch method with a mock server
 func TestRSSMonitor_FetchIntegration(t *testing.T) {
+	// P0-5 FIX: Using newTestRSSMonitor with permissive URL validator for httptest.NewServer
 	// Create a test RSS feed server
 	feedContent := `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -100,7 +110,7 @@ func TestRSSMonitor_FetchIntegration(t *testing.T) {
 
 	// Create monitor with the test server URL
 	userID := uuid.New()
-	monitor := watcher.NewRSSMonitor(server.URL, userID, 5.0) // Min reward $5.00
+	monitor := newTestRSSMonitor(server.URL, userID, 5.0) // Min reward $5.00
 
 	// Create a job channel to receive results
 	jobChan := make(chan watcher.Job, 10)
@@ -186,7 +196,7 @@ func TestRSSMonitor_RewardFiltering(t *testing.T) {
 	defer server.Close()
 
 	userID := uuid.New()
-	monitor := watcher.NewRSSMonitor(server.URL, userID, 5.0)
+	monitor := newTestRSSMonitor(server.URL, userID, 5.0)
 	monitor.SetMaxReward(20.00) // Set max reward to $20.00
 
 	jobChan := make(chan watcher.Job, 10)
@@ -247,7 +257,7 @@ func TestRSSMonitor_Deduplication(t *testing.T) {
 	defer server.Close()
 
 	userID := uuid.New()
-	monitor := watcher.NewRSSMonitor(server.URL, userID, 5.0)
+	monitor := newTestRSSMonitor(server.URL, userID, 5.0)
 
 	jobChan := make(chan watcher.Job, 10)
 	ctx := context.Background()
@@ -303,7 +313,7 @@ func TestRSSMonitor_ErrorHandling(t *testing.T) {
 			defer server.Close()
 
 			userID := uuid.New()
-			monitor := watcher.NewRSSMonitor(server.URL, userID, 0)
+			monitor := newTestRSSMonitor(server.URL, userID, 0)
 
 			jobChan := make(chan watcher.Job, 1)
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

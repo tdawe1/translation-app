@@ -35,24 +35,37 @@ type RSSMonitor struct {
 	UserID     uuid.UUID
 	MinReward  float64
 	MaxReward  float64
-	seenIDs    map[string]bool
+	// P0-2 FIX: Use LRU cache instead of unbounded map to prevent memory leaks
+	seenIDs *LRUCache
+	// P0-5 FIX: URL validator to prevent SSRF attacks
+	urlValidator *URLValidator
 }
 
 // NewRSSMonitor creates a new RSS monitor
 func NewRSSMonitor(feedURL string, userID uuid.UUID, minReward float64) *RSSMonitor {
+	// P0-2 FIX: Use LRU cache with 1000 item limit to prevent unbounded memory growth
+	// This allows tracking recent jobs while evicting old ones automatically
+	// P0-5 FIX: Initialize URL validator with secure defaults (blocks private IPs, localhost)
 	return &RSSMonitor{
-		feedParser: &gofeed.Parser{},
-		FeedURL:    feedURL,
-		UserID:     userID,
-		MinReward:  minReward,
-		MaxReward:  999999, // Default max
-		seenIDs:    make(map[string]bool),
+		feedParser:   &gofeed.Parser{},
+		FeedURL:      feedURL,
+		UserID:       userID,
+		MinReward:    minReward,
+		MaxReward:    999999, // Default max
+		seenIDs:      NewLRUCache(1000),
+		urlValidator: NewURLValidator(),
 	}
 }
 
 // SetMaxReward sets the maximum reward filter
 func (m *RSSMonitor) SetMaxReward(max float64) {
 	m.MaxReward = max
+}
+
+// SetURLValidator sets a custom URL validator (for testing with permissive validator)
+// P0-5 FIX: Allows tests to use NewPermissiveURLValidator() for localhost URLs
+func (m *RSSMonitor) SetURLValidator(validator *URLValidator) {
+	m.urlValidator = validator
 }
 
 // GetFeedURL returns the RSS feed URL
@@ -105,6 +118,11 @@ func (m *RSSMonitor) Start(ctx context.Context, jobChan chan<- Job) error {
 
 // Fetch fetches and parses the RSS feed (exported for testing)
 func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
+	// P0-5 FIX: Validate URL before fetching to prevent SSRF attacks
+	if err := m.urlValidator.Validate(m.FeedURL); err != nil {
+		return fmt.Errorf("URL validation failed: %w", err)
+	}
+
 	// Create HTTP client with timeout
 	client := &http.Client{
 		Timeout: 15 * time.Second,
@@ -138,8 +156,8 @@ func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
 	for _, item := range feed.Items {
 		jobID := m.extractJobID(item)
 
-		// Skip if already seen
-		if m.seenIDs[jobID] {
+		// P0-2 FIX: Skip if already seen (LRU cache.Add returns true if exists)
+		if m.seenIDs.Add(jobID) {
 			seenCount++
 			continue
 		}
@@ -152,7 +170,8 @@ func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
 			log.Printf("[RSS] User %s: Job %s filtered by reward ($%.2f vs $%.2f-$%.2f) - %s",
 				m.UserID, jobID, reward, m.MinReward, m.MaxReward, item.Title)
 			filteredCount++
-			m.seenIDs[jobID] = true
+			// Mark filtered job as seen to avoid reprocessing
+			m.seenIDs.Add(jobID)
 			continue
 		}
 
@@ -175,7 +194,8 @@ func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
 			return ctx.Err()
 		}
 
-		m.seenIDs[jobID] = true
+		// Mark job as seen after successful send
+		m.seenIDs.Add(jobID)
 	}
 
 	// Log summary
