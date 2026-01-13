@@ -3,137 +3,160 @@
 Multi-model translation coordinator.
 
 Generates competing translations from multiple models for judge evaluation.
-
-MVP: Stub with two hard-coded models returning placeholder translations.
-Full: Configurable model registry with parallel async execution.
+Supports both CLI tools (no API costs) and API providers.
 """
 
-import asyncio
 import logging
 import time
-from typing import List, Dict, Optional, Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Dict, Optional, Callable, Any
 from .models import TranslationCandidate
 
 logger = logging.getLogger(__name__)
 
 
 class MultiModelTranslator:
-    """Coordinates translation across multiple models.
-
-    MVP: Stub implementation with placeholder translations.
-    Full: Parallel async calls to configured LLM providers.
-    """
-
-    # Default model configurations
-    DEFAULT_MODELS = {
-        "model_a": {
-            "name": "claude-4.5-sonnet",
-            "provider": "anthropic",
-            "description": "Primary model - balanced quality and speed"
-        },
-        "model_b": {
-            "name": "gpt-4o",
-            "provider": "openai",
-            "description": "Secondary model - fast and cost-effective"
-        }
-    }
+    """Coordinates translation across multiple models using real LLM providers."""
 
     def __init__(
         self,
-        models: Optional[Dict[str, dict]] = None,
-        parallel: bool = True
+        providers: Optional[List[Any]] = None,
+        system_prompt: Optional[str] = None,
+        parallel: bool = True,
+        max_workers: int = 3,
     ):
-        """Initialize the multi-model translator.
+        """Initialize with configured providers.
 
         Args:
-            models: Mapping of model_key to model config
+            providers: List of LLM provider instances (CLIProvider or cloud provider)
+            system_prompt: Optional system prompt to prepend to all translations
             parallel: Whether to execute translations in parallel
+            max_workers: Maximum parallel workers for translation
         """
-        self.models = models or self.DEFAULT_MODELS
+        self.providers = providers or []
+        self.system_prompt = system_prompt
         self.parallel = parallel
+        self.max_workers = max_workers
+        self._base_prompt = """Translate the following Japanese text to natural, fluent US English.
+Preserve any formatting, numbers, and proper nouns.
+IMPORTANT: Use natural phrasing. Avoid em-dashes without spaces (use ' - ' with spaces if needed).
+
+Japanese text:
+"""
 
     def translate(
         self,
         source: str,
         glossary_terms: Optional[List[str]] = None,
-        context: Optional[dict] = None
+        context: Optional[dict] = None,
     ) -> List[TranslationCandidate]:
-        """Generate translations from all configured models.
+        """Generate translations from all configured providers."""
+        if not self.providers:
+            logger.warning("[MULTI] No providers configured, returning empty list")
+            return []
 
-        Args:
-            source: Source text to translate
-            glossary_terms: Optional glossary terms to apply
-            context: Optional translation context
-
-        Returns:
-            List of TranslationCandidate, one per model
-        """
-        if self.parallel:
+        if self.parallel and len(self.providers) > 1:
             return self._translate_parallel(source, glossary_terms, context)
         else:
             return self._translate_sequential(source, glossary_terms, context)
 
-    def _translate_sequential(
-        self,
-        source: str,
-        glossary_terms: Optional[List[str]],
-        context: Optional[dict]
-    ) -> List[TranslationCandidate]:
-        """Translate sequentially (MVP stub)."""
-        candidates = []
+    def _build_prompt(self, source: str, glossary_terms: Optional[List[str]]) -> str:
+        """Build the full translation prompt."""
+        prompt_parts = []
 
-        for key, config in self.models.items():
-            start = time.time()
-            result = self._stub_translate(source, key, glossary_terms)
+        if self.system_prompt:
+            prompt_parts.append(self.system_prompt)
+            prompt_parts.append("\n\n")
+
+        prompt_parts.append(self._base_prompt)
+        prompt_parts.append(source)
+
+        if glossary_terms:
+            prompt_parts.append(
+                f"\n\nGlossary terms to use: {', '.join(glossary_terms)}"
+            )
+
+        prompt_parts.append("\n\nEnglish translation:")
+
+        return "".join(prompt_parts)
+
+    def _translate_with_provider(
+        self,
+        provider: Any,
+        prompt: str,
+        model_key: str,
+    ) -> TranslationCandidate:
+        """Translate using a single provider."""
+        start = time.time()
+        try:
+            response = provider.generate(prompt)
+            text = (
+                response.text.strip()
+                if hasattr(response, "text")
+                else str(response).strip()
+            )
             latency = int((time.time() - start) * 1000)
 
-            candidates.append(TranslationCandidate(
-                model_name=key,
-                text=result,
-                confidence=0.9,  # Stub confidence
-                glossary_matches=glossary_terms or [],
-                latency_ms=latency
-            ))
+            return TranslationCandidate(
+                model_name=model_key,
+                text=text,
+                confidence=0.9,
+                glossary_matches=[],
+                latency_ms=latency,
+            )
+        except Exception as e:
+            logger.error(f"[MULTI] Provider {model_key} failed: {e}")
+            latency = int((time.time() - start) * 1000)
+            return TranslationCandidate(
+                model_name=model_key,
+                text=f"[TRANSLATION ERROR: {e}]",
+                confidence=0.0,
+                glossary_matches=[],
+                latency_ms=latency,
+            )
+
+    def _translate_sequential(
+        self, source: str, glossary_terms: Optional[List[str]], context: Optional[dict]
+    ) -> List[TranslationCandidate]:
+        """Translate sequentially through all providers."""
+        candidates = []
+        prompt = self._build_prompt(source, glossary_terms)
+
+        for idx, provider in enumerate(self.providers):
+            model_key = f"model_{chr(97 + idx)}"
+            candidate = self._translate_with_provider(provider, prompt, model_key)
+            candidates.append(candidate)
 
         return candidates
 
     def _translate_parallel(
-        self,
-        source: str,
-        glossary_terms: Optional[List[str]],
-        context: Optional[dict]
+        self, source: str, glossary_terms: Optional[List[str]], context: Optional[dict]
     ) -> List[TranslationCandidate]:
-        """Translate in parallel using asyncio (MVP stub)."""
-        # MVP: Still sequential but with async structure
-        # Full: Use asyncio.gather() for true parallelism
-        return self._translate_sequential(source, glossary_terms, context)
+        """Translate in parallel using ThreadPoolExecutor."""
+        candidates = []
+        prompt = self._build_prompt(source, glossary_terms)
 
-    def _stub_translate(
-        self,
-        source: str,
-        model_key: str,
-        glossary_terms: Optional[List[str]]
-    ) -> str:
-        """Stub translation for MVP.
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = {}
+            for idx, provider in enumerate(self.providers):
+                model_key = f"model_{chr(97 + idx)}"
+                future = executor.submit(
+                    self._translate_with_provider, provider, prompt, model_key
+                )
+                futures[future] = model_key
 
-        Returns a placeholder translation indicating the model used.
-        """
-        # Check for glossary terms to apply
-        if glossary_terms:
-            glossary_str = ", ".join(glossary_terms)
-            return f"[{model_key}] {source} (glossary: {glossary_str})"
+            for future in as_completed(futures):
+                candidate = future.result()
+                candidates.append(candidate)
 
-        # Simple placeholder translation
-        if model_key == "model_a":
-            return f"[Model A] {source}"
-        else:
-            return f"[Model B] {source}"
+        candidates.sort(key=lambda c: c.model_name)
+        return candidates
 
     def translate_batch(
         self,
         sources: List[str],
         glossary_terms: Optional[List[str]] = None,
-        context: Optional[dict] = None
+        context: Optional[dict] = None,
     ) -> Dict[str, List[TranslationCandidate]]:
         """Translate multiple source segments.
 
@@ -152,7 +175,9 @@ class MultiModelTranslator:
                 source_id = f"seg_{hash(source) % 10000:04d}"
                 source_text = source
             else:
-                source_id = source.get("id", f"seg_{hash(source.get('text', '')) % 10000:04d}")
+                source_id = source.get(
+                    "id", f"seg_{hash(source.get('text', '')) % 10000:04d}"
+                )
                 source_text = source.get("text", source)
 
             candidates = self.translate(source_text, glossary_terms, context)
@@ -165,7 +190,7 @@ class MultiModelTranslator:
         self,
         source: str,
         glossary_terms: Optional[List[str]] = None,
-        context: Optional[dict] = None
+        context: Optional[dict] = None,
     ) -> List[TranslationCandidate]:
         """Async version of translate.
 
@@ -177,9 +202,7 @@ class MultiModelTranslator:
         return self.translate(source, glossary_terms, context)
 
     def set_translation_function(
-        self,
-        model_key: str,
-        func: Callable[[str, List[str]], str]
+        self, model_key: str, func: Callable[[str, List[str]], str]
     ) -> None:
         """Register a custom translation function for a model.
 
@@ -195,8 +218,7 @@ class MultiModelTranslator:
 
 
 def create_multimodel_translator(
-    models: Optional[Dict[str, dict]] = None,
-    parallel: bool = True
+    models: Optional[Dict[str, dict]] = None, parallel: bool = True
 ) -> MultiModelTranslator:
     """Factory function to create a MultiModelTranslator.
 
@@ -207,7 +229,4 @@ def create_multimodel_translator(
     Returns:
         Configured MultiModelTranslator instance
     """
-    return MultiModelTranslator(
-        models=models,
-        parallel=parallel
-    )
+    return MultiModelTranslator(models=models, parallel=parallel)

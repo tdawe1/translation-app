@@ -55,10 +55,10 @@ class CLIProvider(BaseProvider):
     # SINGLE SOURCE OF TRUTH: CLI tool command configurations
     # When adding new tools, update this dictionary and document above
     DEFAULT_COMMANDS = {
-        "claude_code": "claude",      # claude code exec "prompt"
-        "gemini_cli": "gemini-cli",   # gemini-cli "prompt"
-        "codex": "codex",             # codex exec "prompt"
-        "ollama": "ollama",           # ollama run model "prompt"
+        "claude_code": "claude",  # claude code exec "prompt"
+        "gemini_cli": "gemini",  # gemini "prompt" (npm: @google/gemini-cli)
+        "codex": "codex",  # codex exec "prompt"
+        "ollama": "ollama",  # ollama run model "prompt"
     }
 
     def __init__(

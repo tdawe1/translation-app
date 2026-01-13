@@ -242,6 +242,114 @@ Reasoning: Translation A captures the nuance better while maintaining accuracy.
 
 ---
 
+### `document` - Translate Document Files
+
+Translates document files (xlsx, docx, pptx) with optional full review workflow.
+
+#### Syntax
+
+```bash
+python -m review document INPUT_FILE [OPTIONS]
+```
+
+#### Arguments
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `INPUT_FILE` | path | Yes | Document to translate (.xlsx, .docx, .pptx) |
+
+#### Options
+
+| Option | Short | Type | Required | Default | Description |
+|--------|-------|------|----------|---------|-------------|
+| `--output` | `-o` | path | No | input_translated.ext | Output file path |
+| `--provider` | `-p` | choice | No* | - | API provider (can specify twice for review) |
+| `--cli` | - | choice | No* | - | CLI tool (can specify twice for review) |
+| `--model` | `-m` | string | No | provider default | Model identifier |
+| `--style-guide` | `-s` | path | No | - | Gengo style guide markdown file |
+| `--check-style/--no-check-style` | - | flag | No | True | Run style checker on translations |
+| `--review/--no-review` | - | flag | No | False | Enable full review workflow |
+| `--csv-output` | - | path | No | same as output | Directory for bilingual CSV |
+| `--format` | `-f` | choice | No | text | Progress format: text, json |
+
+*Must specify either `--provider` or `--cli` (at least one).
+
+#### Review Workflow
+
+When `--review` is enabled with 2+ providers:
+
+1. **Multi-model translation**: Each segment translated by all providers
+2. **Judge evaluation**: LLM compares translations and picks winner
+3. **Flagging**: Low-confidence segments marked for human review
+4. **CSV export**: Bilingual audit trail with all alternatives
+5. **Document render**: Final document with winning translations
+
+#### Examples
+
+```bash
+# Simple translation with one CLI tool
+python -m review document menu.xlsx --cli gemini
+
+# Full review workflow with two CLI tools
+python -m review document menu.xlsx --cli claude --cli gemini --review
+
+# With Gengo style guide
+python -m review document contract.docx --cli claude -s /path/to/style_guide.md
+
+# Review mode with API providers
+python -m review document slides.pptx --provider anthropic --provider openai --review
+
+# Custom output paths
+python -m review document input.xlsx --cli gemini -o output.xlsx --csv-output ./review/
+```
+
+#### Review Mode Output
+
+```
+REVIEW MODE: Using 2 providers
+[1/64] Translating: 本日のおすすめメニュー...
+  Winner: model_a (conf=0.92)
+[2/64] Translating: 季節の前菜盛り合わせ...
+  FLAGGED: Low confidence (0.65 < 0.70)
+  Winner: model_b (conf=0.65)
+...
+
+Bilingual CSV exported: /path/to/doc_menu_20260113_133700.csv
+
+============================================================
+REVIEW WORKFLOW COMPLETE
+============================================================
+Segments translated: 64
+Flagged for review:  5
+Overall score:       0.87
+Output document:     menu_translated.xlsx
+Bilingual CSV:       /path/to/doc_menu_20260113_133700.csv
+
+WARNING: 5 segments need human review before final use!
+Check the CSV file for flagged segments and their alternatives.
+```
+
+#### CSV Export Format
+
+The bilingual CSV contains all translation data for human review:
+
+| Column | Description |
+|--------|-------------|
+| segment_id | Unique segment identifier |
+| source | Original Japanese text |
+| target | Winning translation |
+| judge_winner | Which model won (model_a, model_b) |
+| judge_confidence | Confidence score (0.0-1.0) |
+| judge_reasoning | Why this translation was chosen |
+| is_flagged | 1 if needs review, 0 otherwise |
+| flag_reason | Why it was flagged |
+| model_a_output | First model's translation |
+| model_b_output | Second model's translation |
+| glossary_terms | Applied glossary terms |
+| context | Additional context |
+
+---
+
 ## Exit Codes
 
 | Code | Meaning |

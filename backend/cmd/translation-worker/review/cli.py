@@ -12,6 +12,7 @@ Usage:
     # Or use API providers
     python -m review translate "こんにちは" --provider anthropic
 """
+
 import json
 import logging
 import os
@@ -28,6 +29,7 @@ try:
     from .multimodel import MultiModelTranslator
     from .judge import TranslationJudge
     from .models import TranslationCandidate
+
     CLI_AVAILABLE = True
     # Access DEFAULT_COMMANDS through the class
     DEFAULT_COMMANDS = CLIProvider.DEFAULT_COMMANDS if CLIProvider else {}
@@ -36,10 +38,7 @@ except ImportError:
     CLIProvider = None  # type: ignore
     DEFAULT_COMMANDS = {}  # type: ignore
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(levelname)s] %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 # Short name to internal tool name mapping
@@ -115,10 +114,7 @@ def _get_cli_provider(tool: str) -> "CLIProvider":
     if not shutil.which(base_command):
         hint = CLI_INSTALL_INSTRUCTIONS.get(tool, f"  {tool}: Install {base_command}")
         raise click.ClickException(
-            ERROR_TEMPLATES["cli_not_found"].format(
-                tool=base_command,
-                install=hint
-            )
+            ERROR_TEMPLATES["cli_not_found"].format(tool=base_command, install=hint)
         )
 
     # Create ProviderConfig with dummy API key (CLI tools don't need it)
@@ -216,44 +212,51 @@ def cli():
 @cli.command()
 @click.argument("text")
 @click.option(
-    "--provider", "-p",
+    "--provider",
+    "-p",
     type=click.Choice(["anthropic", "openai", "gemini"]),
-    help="LLM provider to use (requires API key)"
+    help="LLM provider to use (requires API key)",
 )
 @click.option(
     "--cli",
     type=click.Choice(["claude", "codex", "gemini", "ollama"]),
-    help="Use local CLI tool (no API costs)"
+    help="Use local CLI tool (no API costs)",
 )
 @click.option(
-    "--model", "-m",
-    help="Model identifier (uses provider default if not specified)"
+    "--model", "-m", help="Model identifier (uses provider default if not specified)"
 )
 @click.option(
-    "--format", "-f",
+    "--format",
+    "-f",
     type=click.Choice(["text", "json", "csv"]),
     default="text",
-    help="Output format"
+    help="Output format",
 )
 @click.option(
-    "--output", "-o",
-    type=click.Path(),
-    help="Write output to file instead of stdout"
+    "--output", "-o", type=click.Path(), help="Write output to file instead of stdout"
 )
 @click.option(
     "--parallel/--sequential",
     default=True,
     # TODO: Implement parallel execution for batch processing
     # Currently reserved for future use - has no effect on execution
-    help="Use parallel execution (reserved for future use)"
+    help="Use parallel execution (reserved for future use)",
 )
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Show the command that would be executed without running it (CLI tools only)"
+    help="Show the command that would be executed without running it (CLI tools only)",
 )
-def translate(text: str, provider: Optional[str], cli: Optional[str], model: Optional[str], format: str,
-             output: Optional[str], parallel: bool, dry_run: bool):
+def translate(
+    text: str,
+    provider: Optional[str],
+    cli: Optional[str],
+    model: Optional[str],
+    format: str,
+    output: Optional[str],
+    parallel: bool,
+    dry_run: bool,
+):
     """Translate Japanese text to English.
 
     Examples:
@@ -275,14 +278,13 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
             ERROR_TEMPLATES["mutual_exclusive"].format(
                 opt1="provider",
                 opt2="cli",
-                suggestion="--cli for local tools or --provider for API-based providers"
+                suggestion="--cli for local tools or --provider for API-based providers",
             )
         )
     if not provider and not cli:
         raise click.ClickException(
             ERROR_TEMPLATES["missing_required"].format(
-                opt1="provider (for API)",
-                opt2="cli (for local tools)"
+                opt1="provider (for API)", opt2="cli (for local tools)"
             )
         )
 
@@ -296,7 +298,9 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
         # Build and display the command that would be run
         prompt = f"Translate the following Japanese text to English:\n\n{text}"
         cmd = _build_cli_command(cli, prompt)
-        click.echo(f"Would execute: {' '.join(cmd[:2])}...")  # Show truncated for readability
+        click.echo(
+            f"Would execute: {' '.join(cmd[:2])}..."
+        )  # Show truncated for readability
         click.echo(f"Full command: {' '.join(repr(c) if ' ' in c else c for c in cmd)}")
         return
 
@@ -326,13 +330,17 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
         if format == "text":
             result = translation
         elif format == "json":
-            result = json.dumps({
-                "source": text,
-                "translation": translation,
-                "provider": provider_name,
-                "model": model_name,
-                "usage": usage,
-            }, indent=2, ensure_ascii=False)
+            result = json.dumps(
+                {
+                    "source": text,
+                    "translation": translation,
+                    "provider": provider_name,
+                    "model": model_name,
+                    "usage": usage,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
         elif format == "csv":
             result = f"source,translation,provider,model\n"
             result += f'"{text}","{translation}","{provider_name}","{model_name}"'
@@ -353,28 +361,33 @@ def translate(text: str, provider: Optional[str], cli: Optional[str], model: Opt
 @click.argument("candidate_a", type=click.Path(exists=True))
 @click.argument("candidate_b", type=click.Path(exists=True))
 @click.option(
-    "--provider", "-p",
+    "--provider",
+    "-p",
     type=click.Choice(["anthropic", "openai", "gemini"]),
-    help="LLM provider for judge (requires API key)"
+    help="LLM provider for judge (requires API key)",
 )
 @click.option(
     "--cli",
     type=click.Choice(["claude", "codex", "gemini", "ollama"]),
-    help="Use local CLI tool for judge (no API costs)"
+    help="Use local CLI tool for judge (no API costs)",
 )
+@click.option("--model", "-m", default="claude-4.5-sonnet", help="Judge model")
 @click.option(
-    "--model", "-m",
-    default="claude-4.5-sonnet",
-    help="Judge model"
-)
-@click.option(
-    "--format", "-f",
+    "--format",
+    "-f",
     type=click.Choice(["text", "json"]),
     default="text",
-    help="Output format"
+    help="Output format",
 )
-def judge(source: str, candidate_a: str, candidate_b: str, provider: Optional[str],
-          cli: Optional[str], model: str, format: str):
+def judge(
+    source: str,
+    candidate_a: str,
+    candidate_b: str,
+    provider: Optional[str],
+    cli: Optional[str],
+    model: str,
+    format: str,
+):
     """Judge which translation is better.
 
     Compare two translations and select the winner using LLM evaluation.
@@ -393,7 +406,7 @@ def judge(source: str, candidate_a: str, candidate_b: str, provider: Optional[st
             ERROR_TEMPLATES["mutual_exclusive"].format(
                 opt1="provider",
                 opt2="cli",
-                suggestion="--cli for local tools or --provider for API-based providers"
+                suggestion="--cli for local tools or --provider for API-based providers",
             )
         )
     if not provider and not cli:
@@ -444,7 +457,7 @@ Evaluate both translations and output JSON."""
                     "winner": "unknown",
                     "confidence": 0.0,
                     "reasoning": judgment,
-                    "concerns": ["Failed to parse JSON from CLI output"]
+                    "concerns": ["Failed to parse JSON from CLI output"],
                 }
             provider_name = cli
         else:
@@ -461,7 +474,7 @@ Evaluate both translations and output JSON."""
                     "winner": "unknown",
                     "confidence": 0.0,
                     "reasoning": response.text,
-                    "concerns": ["Failed to parse JSON"]
+                    "concerns": ["Failed to parse JSON"],
                 }
             provider_name = provider
 
@@ -481,46 +494,54 @@ Evaluate both translations and output JSON."""
 
 @cli.command()
 @click.option(
-    "--input", "-i",
+    "--input",
+    "-i",
     type=click.Path(exists=True),
     required=True,
-    help="Input file with source texts (one per line)"
+    help="Input file with source texts (one per line)",
 )
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     type=click.Path(),
     required=True,
-    help="Output file for translations"
+    help="Output file for translations",
 )
 @click.option(
-    "--provider", "-p",
+    "--provider",
+    "-p",
     type=click.Choice(["anthropic", "openai", "gemini"]),
-    help="LLM provider to use (requires API key)"
+    help="LLM provider to use (requires API key)",
 )
 @click.option(
     "--cli",
     type=click.Choice(["claude", "codex", "gemini", "ollama"]),
-    help="Use local CLI tool (no API costs)"
+    help="Use local CLI tool (no API costs)",
 )
-@click.option(
-    "--model", "-m",
-    help="Model identifier"
-)
+@click.option("--model", "-m", help="Model identifier")
 @click.option(
     "--parallel/--sequential",
     default=True,
     # TODO: Implement parallel execution for batch processing
     # Currently reserved for future use - has no effect on execution
-    help="Use parallel execution (reserved for future use)"
+    help="Use parallel execution (reserved for future use)",
 )
 @click.option(
-    "--format", "-f",
+    "--format",
+    "-f",
     type=click.Choice(["text", "json", "csv"]),
     default="text",
-    help="Output format"
+    help="Output format",
 )
-def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
-          model: Optional[str], parallel: bool, format: str):
+def batch(
+    input: str,
+    output: str,
+    provider: Optional[str],
+    cli: Optional[str],
+    model: Optional[str],
+    parallel: bool,
+    format: str,
+):
     """Batch translate texts from a file.
 
     Processes each line of the input file as a separate translation.
@@ -539,14 +560,13 @@ def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
             ERROR_TEMPLATES["mutual_exclusive"].format(
                 opt1="provider",
                 opt2="cli",
-                suggestion="--cli for local tools or --provider for API-based providers"
+                suggestion="--cli for local tools or --provider for API-based providers",
             )
         )
     if not provider and not cli:
         raise click.ClickException(
             ERROR_TEMPLATES["missing_required"].format(
-                opt1="provider (for API)",
-                opt2="cli (for local tools)"
+                opt1="provider (for API)", opt2="cli (for local tools)"
             )
         )
 
@@ -559,8 +579,7 @@ def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
         size_mb = file_size / (1024 * 1024)
         raise click.ClickException(
             ERROR_TEMPLATES["file_too_large"].format(
-                size_mb=size_mb,
-                max_mb=MAX_BATCH_FILE_SIZE_MB
+                size_mb=size_mb, max_mb=MAX_BATCH_FILE_SIZE_MB
             )
         )
 
@@ -576,37 +595,43 @@ def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
 
     translations = []
     for i, source in enumerate(sources):
-        click.echo(f"[{i+1}/{len(sources)}] Processing: {source[:50]}...", err=True)
+        click.echo(f"[{i + 1}/{len(sources)}] Processing: {source[:50]}...", err=True)
 
         try:
             if cli:
                 # Use local CLI tool via CLIProvider abstraction
                 cli_provider = _get_cli_provider(cli)
-                prompt = f"Translate the following Japanese text to English:\n\n{source}"
+                prompt = (
+                    f"Translate the following Japanese text to English:\n\n{source}"
+                )
                 response = cli_provider.generate(prompt)
                 usage = response.usage or {}
                 usage["tool"] = cli  # Add tool name for compatibility
-                translations.append({
-                    "source": source,
-                    "translation": response.text.strip(),
-                    "usage": usage
-                })
+                translations.append(
+                    {
+                        "source": source,
+                        "translation": response.text.strip(),
+                        "usage": usage,
+                    }
+                )
             else:
                 provider_instance = _ensure_provider(provider, model)
-                prompt = f"Translate the following Japanese text to English:\n\n{source}"
+                prompt = (
+                    f"Translate the following Japanese text to English:\n\n{source}"
+                )
                 response = provider_instance.generate(prompt)
-                translations.append({
-                    "source": source,
-                    "translation": response.text.strip(),
-                    "usage": response.usage
-                })
+                translations.append(
+                    {
+                        "source": source,
+                        "translation": response.text.strip(),
+                        "usage": response.usage,
+                    }
+                )
         except Exception as e:
-            logger.warning(f"Failed to translate line {i+1}: {e}")
-            translations.append({
-                "source": source,
-                "translation": f"[ERROR: {e}]",
-                "usage": {}
-            })
+            logger.warning(f"Failed to translate line {i + 1}: {e}")
+            translations.append(
+                {"source": source, "translation": f"[ERROR: {e}]", "usage": {}}
+            )
 
     # Format output
     if format == "text":
@@ -626,9 +651,459 @@ def batch(input: str, output: str, provider: Optional[str], cli: Optional[str],
     click.echo(f"Translated {len(translations)} texts → {output}")
 
 
-# For python -m review compatibility
+@cli.command()
+@click.argument("input_file", type=click.Path(exists=True))
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Output file path (default: input_translated.ext)",
+)
+@click.option(
+    "--provider",
+    "-p",
+    type=click.Choice(["anthropic", "openai", "gemini"]),
+    multiple=True,
+    help="LLM provider(s) to use. Specify twice for review mode.",
+)
+@click.option(
+    "--cli",
+    multiple=True,
+    type=click.Choice(["claude", "codex", "gemini", "ollama"]),
+    help="CLI tool(s) to use. Specify twice for review mode.",
+)
+@click.option("--model", "-m", help="Model identifier")
+@click.option(
+    "--style-guide",
+    "-s",
+    type=click.Path(exists=True),
+    help="Path to Gengo style guide markdown file",
+)
+@click.option(
+    "--check-style/--no-check-style",
+    default=True,
+    help="Run style checker on translations",
+)
+@click.option(
+    "--review/--no-review",
+    default=False,
+    help="Enable full review workflow: multi-model + judge + flagging + CSV export",
+)
+@click.option(
+    "--csv-output",
+    type=click.Path(),
+    help="Directory for bilingual CSV export (default: same as output)",
+)
+@click.option(
+    "--format",
+    "-f",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Progress output format",
+)
+def document(
+    input_file: str,
+    output: Optional[str],
+    provider: tuple,
+    cli: tuple,
+    model: Optional[str],
+    style_guide: Optional[str],
+    check_style: bool,
+    review: bool,
+    csv_output: Optional[str],
+    format: str,
+):
+    """Translate a document file (xlsx, docx, pptx).
+
+    Parses the document, translates each segment, optionally validates
+    against a style guide, and renders the translated document.
+
+    Use --review for full workflow: multi-model translation, judge evaluation,
+    flagging low-confidence segments, and CSV export for human review.
+
+    Examples:
+
+        # Simple translation with one CLI tool
+        document input.xlsx --cli gemini
+
+        # Full review workflow with two models
+        document input.xlsx --cli claude --cli gemini --review
+
+        # With style guide
+        document input.docx --cli claude -s style_guide.md -o output.docx
+
+        # Review mode with API providers
+        document input.pptx --provider anthropic --provider openai --review
+    """
+    import sys
+    from pathlib import Path as PathlibPath
+
+    worker_dir = PathlibPath(__file__).parent.parent
+    sys.path.insert(0, str(worker_dir))
+
+    providers_list = list(provider) if provider else []
+    cli_list = list(cli) if cli else []
+
+    if providers_list and cli_list:
+        raise click.ClickException(
+            ERROR_TEMPLATES["mutual_exclusive"].format(
+                opt1="provider",
+                opt2="cli",
+                suggestion="--cli for local tools or --provider for API-based providers",
+            )
+        )
+    if not providers_list and not cli_list:
+        raise click.ClickException(
+            ERROR_TEMPLATES["missing_required"].format(
+                opt1="provider (for API)", opt2="cli (for local tools)"
+            )
+        )
+
+    if review and len(cli_list) < 2 and len(providers_list) < 2:
+        raise click.ClickException(
+            "Review mode requires at least 2 providers/CLI tools. "
+            "Use --cli twice (e.g., --cli claude --cli gemini) or --provider twice."
+        )
+
+    input_path = Path(input_file)
+    ext = input_path.suffix.lower()
+
+    supported_extensions = {".xlsx", ".docx", ".pptx"}
+    if ext not in supported_extensions:
+        raise click.ClickException(
+            f"Unsupported file type: {ext}. Supported: {', '.join(supported_extensions)}"
+        )
+
+    if not output:
+        output = str(input_path.with_stem(input_path.stem + "_translated"))
+
+    try:
+        from parsers.xlsx_parser import XLSXParser
+        from parsers.docx_parser import DOCXParser
+        from parsers.pptx_parser import PPTXParser
+    except ImportError as e:
+        raise click.ClickException(f"Parser not available: {e}")
+
+    parsers_map = {
+        ".xlsx": XLSXParser,
+        ".docx": DOCXParser,
+        ".pptx": PPTXParser,
+    }
+
+    parser = parsers_map[ext]()
+    click.echo(f"Parsing {input_file}...")
+    doc = parser.parse(str(input_path))
+    click.echo(f"Found {len(doc.segments)} segments to translate")
+
+    system_prompt = None
+    if style_guide:
+        try:
+            from style_guide.parser import parse_gengo_style_guide
+            from style_guide.prompt_builder import build_system_prompt
+
+            guide = parse_gengo_style_guide(Path(style_guide))
+            system_prompt = build_system_prompt(guide)
+            click.echo(f"Loaded style guide: {len(guide.sections)} sections")
+        except ImportError:
+            click.echo("Warning: style_guide module not available", err=True)
+        except Exception as e:
+            click.echo(f"Warning: Failed to load style guide: {e}", err=True)
+
+    style_checker = None
+    if check_style:
+        try:
+            from audit.style_checker import StyleChecker
+
+            style_checker = StyleChecker(gengo_rules_enabled=True)
+        except ImportError:
+            click.echo("Warning: style_checker not available", err=True)
+
+    segments_to_translate = []
+    for i, segment in enumerate(doc.segments):
+        if not segment.text or not segment.text.strip():
+            continue
+        if not any("\u3040" <= c <= "\u9fff" for c in segment.text):
+            continue
+        segments_to_translate.append((i, segment))
+
+    click.echo(f"Translating {len(segments_to_translate)} Japanese segments...")
+
+    if review:
+        _run_review_workflow(
+            doc,
+            segments_to_translate,
+            cli_list,
+            providers_list,
+            model,
+            system_prompt,
+            style_checker,
+            output,
+            csv_output,
+            input_path,
+            parser,
+            format,
+        )
+    else:
+        _run_simple_workflow(
+            doc,
+            segments_to_translate,
+            cli_list,
+            providers_list,
+            model,
+            system_prompt,
+            style_checker,
+            output,
+            input_path,
+            parser,
+            format,
+        )
+
+
+def _run_simple_workflow(
+    doc,
+    segments_to_translate,
+    cli_list,
+    providers_list,
+    model,
+    system_prompt,
+    style_checker,
+    output,
+    input_path,
+    parser,
+    format,
+):
+    from concurrent.futures import ThreadPoolExecutor
+
+    cli_tool = cli_list[0] if cli_list else None
+    provider_name = providers_list[0] if providers_list else None
+
+    base_prompt = """Translate the following Japanese text to natural, fluent US English.
+Preserve any formatting, numbers, and proper nouns.
+IMPORTANT: Use natural phrasing. Avoid em-dashes without spaces.
+
+Japanese text:
+"""
+
+    def translate_segment(args):
+        idx, seg = args
+        if system_prompt:
+            prompt = (
+                system_prompt
+                + "\n\n"
+                + base_prompt
+                + seg.text
+                + "\n\nEnglish translation:"
+            )
+        else:
+            prompt = base_prompt + seg.text + "\n\nEnglish translation:"
+
+        try:
+            if cli_tool:
+                cli_provider = _get_cli_provider(cli_tool)
+                response = cli_provider.generate(prompt)
+                return (idx, seg, response.text.strip(), None)
+            else:
+                provider_instance = _ensure_provider(provider_name, model)
+                response = provider_instance.generate(prompt)
+                return (idx, seg, response.text.strip(), None)
+        except Exception as e:
+            return (idx, seg, None, str(e))
+
+    all_issues = []
+    completed = 0
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = list(executor.map(translate_segment, segments_to_translate))
+
+    for idx, seg, translation, error in futures:
+        completed += 1
+        if error:
+            click.echo(
+                f"[{completed}/{len(segments_to_translate)}] ERROR: {error}", err=True
+            )
+            seg.text = f"[TRANSLATION ERROR: {error}]"
+        else:
+            click.echo(
+                f"[{completed}/{len(segments_to_translate)}] Done: {seg.text[:30]}...",
+                err=True,
+            )
+            seg.text = translation
+
+            if style_checker:
+                issues = style_checker.check(translation)
+                for issue in issues:
+                    all_issues.append(
+                        {
+                            "segment": seg.id,
+                            "issue": issue.message,
+                            "severity": issue.severity,
+                            "suggestion": getattr(issue, "suggestion", None),
+                        }
+                    )
+
+    click.echo(f"Rendering translated document to {output}...")
+    parser.render(doc, output, template_path=str(input_path))
+
+    click.echo(f"\nCompleted: {len(doc.segments)} segments translated")
+    click.echo(f"Output: {output}")
+
+    if all_issues:
+        click.echo(f"\nStyle issues found: {len(all_issues)}")
+        if format == "json":
+            click.echo(json.dumps(all_issues, indent=2, ensure_ascii=False))
+        else:
+            for issue in all_issues[:10]:
+                click.echo(
+                    f"  [{issue['severity']}] {issue['segment']}: {issue['issue']}"
+                )
+            if len(all_issues) > 10:
+                click.echo(f"  ... and {len(all_issues) - 10} more issues")
+
+
+def _run_review_workflow(
+    doc,
+    segments_to_translate,
+    cli_list,
+    providers_list,
+    model,
+    system_prompt,
+    style_checker,
+    output,
+    csv_output,
+    input_path,
+    parser,
+    format,
+):
+    from .multimodel import MultiModelTranslator
+    from .judge import TranslationJudge
+    from .flagging import FlaggingEngine
+    from .exporter import BilingualCSVExporter
+    from .models import TranslationJob, TranslationSegment, ReviewConfig
+
+    click.echo(f"REVIEW MODE: Using {len(cli_list) + len(providers_list)} providers")
+
+    llm_providers = []
+    for cli_tool in cli_list:
+        llm_providers.append(_get_cli_provider(cli_tool))
+    for prov_name in providers_list:
+        llm_providers.append(_ensure_provider(prov_name, model))
+
+    translator = MultiModelTranslator(
+        providers=llm_providers,
+        system_prompt=system_prompt,
+        parallel=True,
+    )
+
+    judge_provider = llm_providers[0] if llm_providers else None
+    judge = TranslationJudge(provider=judge_provider, enabled=True)
+
+    flagger = FlaggingEngine()
+    config = ReviewConfig.for_project_type("routine")
+
+    csv_dir = csv_output or str(input_path.parent)
+    exporter = BilingualCSVExporter(output_dir=csv_dir)
+
+    job = TranslationJob(
+        id=f"doc_{input_path.stem[:8]}",
+        source_file=str(input_path),
+        target_file=output,
+        project_type="routine",
+    )
+
+    total = len(segments_to_translate)
+    flagged_count = 0
+    all_issues = []
+
+    for idx, (orig_idx, segment) in enumerate(segments_to_translate):
+        click.echo(f"[{idx + 1}/{total}] Translating: {segment.text[:40]}...")
+
+        candidates = translator.translate(segment.text)
+
+        if len(candidates) < 2:
+            click.echo(f"  Warning: Only {len(candidates)} candidate(s)", err=True)
+
+        judge_result = judge.judge(
+            segment_id=segment.id or f"seg_{orig_idx}",
+            source=segment.text,
+            candidates=candidates,
+        )
+
+        winner_text = ""
+        if judge_result.winner == "model_a" and len(candidates) > 0:
+            winner_text = candidates[0].text
+        elif judge_result.winner == "model_b" and len(candidates) > 1:
+            winner_text = candidates[1].text
+        elif candidates:
+            winner_text = candidates[0].text
+
+        trans_segment = TranslationSegment(
+            id=segment.id or f"seg_{orig_idx}",
+            job_id=job.id,
+            source=segment.text,
+            target=winner_text,
+            judge_winner=judge_result.winner,
+            judge_confidence=judge_result.confidence,
+            judge_reasoning=judge_result.reasoning,
+            model_a_output=candidates[0].text if len(candidates) > 0 else "",
+            model_b_output=candidates[1].text if len(candidates) > 1 else "",
+        )
+
+        flagger.flag_segment(trans_segment, judge_result, config)
+        if trans_segment.is_flagged:
+            flagged_count += 1
+            click.echo(f"  FLAGGED: {trans_segment.flag_reason}", err=True)
+
+        job.segments.append(trans_segment)
+
+        segment.text = winner_text
+
+        if style_checker:
+            issues = style_checker.check(winner_text)
+            for issue in issues:
+                all_issues.append(
+                    {
+                        "segment": trans_segment.id,
+                        "issue": issue.message,
+                        "severity": issue.severity,
+                    }
+                )
+
+        click.echo(
+            f"  Winner: {judge_result.winner} (conf={judge_result.confidence:.2f})"
+        )
+
+    job.update_metrics()
+
+    csv_path = exporter.export_job(job)
+    click.echo(f"\nBilingual CSV exported: {csv_path}")
+
+    click.echo(f"Rendering translated document to {output}...")
+    parser.render(doc, output, template_path=str(input_path))
+
+    click.echo(f"\n{'=' * 60}")
+    click.echo(f"REVIEW WORKFLOW COMPLETE")
+    click.echo(f"{'=' * 60}")
+    click.echo(f"Segments translated: {total}")
+    click.echo(f"Flagged for review:  {flagged_count}")
+    click.echo(f"Overall score:       {job.overall_score:.2f}")
+    click.echo(f"Output document:     {output}")
+    click.echo(f"Bilingual CSV:       {csv_path}")
+
+    if flagged_count > 0:
+        click.echo(
+            f"\nWARNING: {flagged_count} segments need human review before final use!"
+        )
+        click.echo("Check the CSV file for flagged segments and their alternatives.")
+
+    if all_issues:
+        click.echo(f"\nStyle issues found: {len(all_issues)}")
+        for issue in all_issues[:5]:
+            click.echo(f"  [{issue['severity']}] {issue['segment']}: {issue['issue']}")
+        if len(all_issues) > 5:
+            click.echo(f"  ... and {len(all_issues) - 5} more")
+
+
 def main():
-    """Entry point for python -m review."""
     cli()
 
 
