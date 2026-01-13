@@ -321,6 +321,26 @@ class TestValidateConfig:
         errors = validate_config(config)
         assert errors == []
 
+    def test_validate_config_style_guide_enabled_requires_path(self):
+        config = {
+            "worker": {"max_concurrent": 3, "heartbeat_interval": "10s"},
+            "translation": {"default_provider": "anthropic", "default_model": "test"},
+            "style_guide": {"enabled": True},
+        }
+
+        errors = validate_config(config)
+        assert any("style_guide.path" in e for e in errors)
+
+    def test_validate_config_style_guide_disabled_no_path_required(self):
+        config = {
+            "worker": {"max_concurrent": 3, "heartbeat_interval": "10s"},
+            "translation": {"default_provider": "anthropic", "default_model": "test"},
+            "style_guide": {"enabled": False},
+        }
+
+        errors = validate_config(config)
+        assert errors == []
+
 
 class TestMainIntegration:
     """Integration tests for main() function behavior."""

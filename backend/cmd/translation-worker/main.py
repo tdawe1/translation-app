@@ -81,9 +81,20 @@ def validate_config(cfg: dict) -> list[str]:
         if "backend" not in cfg["job_queue"]:
             errors.append("Missing job_queue.backend")
         elif cfg["job_queue"]["backend"] != "redis":
-            errors.append(f"Unsupported job_queue.backend: {cfg['job_queue']['backend']}")
+            errors.append(
+                f"Unsupported job_queue.backend: {cfg['job_queue']['backend']}"
+            )
         if "max_concurrent" not in cfg["job_queue"]:
             errors.append("Missing job_queue.max_concurrent")
+
+    # Validate style_guide section if enabled
+    if "style_guide" in cfg and cfg["style_guide"].get("enabled", False):
+        if "path" not in cfg["style_guide"]:
+            errors.append("style_guide.path required when style_guide.enabled=true")
+        else:
+            guide_path = Path(cfg["style_guide"]["path"])
+            if not guide_path.exists():
+                errors.append(f"style_guide.path file not found: {guide_path}")
 
     return errors
 
@@ -129,7 +140,9 @@ def get_redis_config(config: dict) -> tuple[str, int, int, Optional[str]]:
 class QueueConsumer:
     """Consumes jobs from Redis queue and processes them."""
 
-    def __init__(self, job_manager: JobManager, worker_id: str, max_concurrent: int = 3):
+    def __init__(
+        self, job_manager: JobManager, worker_id: str, max_concurrent: int = 3
+    ):
         """Initialize queue consumer.
 
         Args:
@@ -254,6 +267,29 @@ def main():
         provider = config.get("translation", {}).get("default_provider")
         model = config.get("translation", {}).get("default_model")
 
+        # Load Gengo style guide if enabled
+        system_prompt = None
+        style_guide_enabled = config.get("style_guide", {}).get("enabled", False)
+        if style_guide_enabled:
+            from style_guide.parser import parse_gengo_style_guide
+            from style_guide.prompt_builder import build_system_prompt
+
+            style_guide_path = Path(config["style_guide"]["path"])
+            if style_guide_path.exists():
+                try:
+                    guide = parse_gengo_style_guide(style_guide_path)
+                    system_prompt = build_system_prompt(guide)
+                    print(f"  Style Guide: loaded ({len(guide.sections)} sections)")
+                except Exception as e:
+                    print(f"Warning: Failed to load style guide: {e}", file=sys.stderr)
+            else:
+                print(
+                    f"Warning: Style guide not found: {style_guide_path}",
+                    file=sys.stderr,
+                )
+        else:
+            print(f"  Style Guide: disabled")
+
         print(f"Translation Worker v1.0.0 starting...")
         print(f"  Worker ID: {worker_id}")
         print(f"  Translation Backend: {provider}/{model}")
@@ -320,13 +356,16 @@ def main():
 
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
-        print("Create a config.toml file or specify path with --config", file=sys.stderr)
+        print(
+            "Create a config.toml file or specify path with --config", file=sys.stderr
+        )
         sys.exit(1)
     except KeyboardInterrupt:
         print("\nShutting down gracefully...")
     except Exception as e:
         print(f"Unexpected error: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
     finally:

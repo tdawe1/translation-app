@@ -1,0 +1,29 @@
+# Translation Worker Configuration Example
+# Copy this file to config.toml and customize for your setup
+
+[worker]
+id = "worker-1"
+max_concurrent = 3
+heartbeat_interval = "30s"
+
+[translation]
+default_provider = "anthropic"
+default_model = "claude-sonnet-4-5-20250929"
+
+[style_guide]
+# Enable Gengo style guide injection
+enabled = true
+# Path to Gengo style guide markdown file
+path = "/home/thomas/kyros-wiki/Japanese-to-English Translation Quick Reference (Gengo Style Guide Alignment).md"
+
+[cache.redis]
+host = "localhost"
+port = 6379
+db = 0
+# password = "your-password"  # Optional
+
+[job_queue]
+enabled = true
+backend = "redis"
+max_concurrent = 3
+poll_interval = "1s"

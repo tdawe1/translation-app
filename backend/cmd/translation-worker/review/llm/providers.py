@@ -59,9 +59,17 @@ class AnthropicProvider(BaseProvider):
 
     DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 
-    def __init__(self, api_key: str, model: str = None, base_url: str = None):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = None,
+        base_url: str = None,
+        system_prompt: str = None,
+    ):
         model = model or self.DEFAULT_MODEL
-        config = ProviderConfig(api_key=api_key, model=model, base_url=base_url)
+        config = ProviderConfig(
+            api_key=api_key, model=model, base_url=base_url, system_prompt=system_prompt
+        )
         super().__init__(config)
         self._client = None
 
@@ -101,10 +109,13 @@ class AnthropicProvider(BaseProvider):
 
         max_tokens = max_tokens or self.config.max_tokens
 
+        messages = self._build_messages(prompt)
+
         response = client.messages.create(
             model=self.config.model,
             max_tokens=max_tokens,
             temperature=temperature,
+            system=self.config.system_prompt if self.config.system_prompt else None,
             messages=[{"role": "user", "content": prompt}],
         )
 
@@ -149,9 +160,11 @@ class OpenAIProvider(BaseProvider):
 
     DEFAULT_MODEL = "gpt-5.2"
 
-    def __init__(self, api_key: str, model: str = None):
+    def __init__(self, api_key: str, model: str = None, system_prompt: str = None):
         model = model or self.DEFAULT_MODEL
-        config = ProviderConfig(api_key=api_key, model=model)
+        config = ProviderConfig(
+            api_key=api_key, model=model, system_prompt=system_prompt
+        )
         super().__init__(config)
         self._client = None
 
@@ -185,11 +198,13 @@ class OpenAIProvider(BaseProvider):
 
         max_tokens = max_tokens or self.config.max_tokens
 
+        messages = self._build_messages(prompt)
+
         response = client.chat.completions.create(
             model=self.config.model,
             max_completion_tokens=max_tokens,  # NOT max_tokens (deprecated 2026)
             temperature=temperature,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
         )
 
         latency = int((time.time() - start) * 1000)
@@ -238,9 +253,12 @@ class GeminiProvider(BaseProvider):
         model: str = None,
         project_id: str = None,
         location: str = None,
+        system_prompt: str = None,
     ):
         model = model or self.DEFAULT_MODEL
-        config = ProviderConfig(api_key=api_key, model=model)
+        config = ProviderConfig(
+            api_key=api_key, model=model, system_prompt=system_prompt
+        )
         super().__init__(config)
         self.project_id = project_id or os.environ.get("GEMINI_PROJECT_ID", "")
         self.location = location or os.environ.get(
@@ -291,6 +309,11 @@ class GeminiProvider(BaseProvider):
             },
         }
 
+        if self.config.system_prompt:
+            request_body["systemInstruction"] = {
+                "parts": [{"text": self.config.system_prompt}]
+            }
+
         endpoint = self._get_endpoint()
         headers = {
             "Authorization": f"Bearer {self.config.api_key}",
@@ -335,7 +358,11 @@ class GeminiProvider(BaseProvider):
 
 
 def get_provider(
-    provider_name: str, api_key: str, model: Optional[str] = None, **kwargs
+    provider_name: str,
+    api_key: str,
+    model: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    **kwargs,
 ) -> BaseProvider:
     """Factory function to get provider instance.
 
@@ -343,6 +370,7 @@ def get_provider(
         provider_name: "anthropic", "openai", or "gemini"
         api_key: API key for the provider
         model: Optional model override
+        system_prompt: Optional system prompt to inject
         **kwargs: Additional provider-specific args (project_id, location for Gemini)
 
     Returns:
@@ -366,6 +394,8 @@ def get_provider(
     model = model or default_model
 
     if provider_name == "gemini":
-        return provider_class(api_key=api_key, model=model, **kwargs)
+        return provider_class(
+            api_key=api_key, model=model, system_prompt=system_prompt, **kwargs
+        )
 
-    return provider_class(api_key=api_key, model=model)
+    return provider_class(api_key=api_key, model=model, system_prompt=system_prompt)

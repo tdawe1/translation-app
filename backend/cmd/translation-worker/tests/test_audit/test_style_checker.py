@@ -219,8 +219,10 @@ class TestSentenceLengthChecking:
     def test_multiple_long_sentences(self):
         """Should flag each long sentence separately."""
         checker = StyleChecker(max_sentence_length=30)
-        text = "This is the first very long sentence that goes on. " \
-               "This is the second very long sentence that continues."
+        text = (
+            "This is the first very long sentence that goes on. "
+            "This is the second very long sentence that continues."
+        )
 
         issues = checker.check(text)
 
@@ -245,9 +247,7 @@ class TestPassiveVoiceChecking:
     def test_detect_passive_was_ed(self):
         """Should detect 'was + ed' pattern."""
         checker = StyleChecker()
-        issues = checker.check(
-            "The document was reviewed by the team. " * 10
-        )
+        issues = checker.check("The document was reviewed by the team. " * 10)
 
         passive_issues = [i for i in issues if i.category == "passive_voice"]
         # Should flag if ratio exceeds threshold (30%)
@@ -257,9 +257,7 @@ class TestPassiveVoiceChecking:
     def test_detect_passive_were_ed(self):
         """Should detect 'were + ed' pattern."""
         checker = StyleChecker()
-        issues = checker.check(
-            "The files were processed. " * 10
-        )
+        issues = checker.check("The files were processed. " * 10)
 
         passive_issues = [i for i in issues if i.category == "passive_voice"]
         assert len(passive_issues) == 1
@@ -280,12 +278,14 @@ class TestPassiveVoiceChecking:
         """Should handle mixed passive and active voice."""
         checker = StyleChecker()
         # Mix of passive and active - should be below threshold
-        text = " ".join([
-            "The report was written.",
-            "We analyzed the data.",
-            "The team reviewed the findings.",
-            "The conclusion was reached.",
-        ])
+        text = " ".join(
+            [
+                "The report was written.",
+                "We analyzed the data.",
+                "The team reviewed the findings.",
+                "The conclusion was reached.",
+            ]
+        )
 
         issues = checker.check(text)
 
@@ -296,9 +296,7 @@ class TestPassiveVoiceChecking:
     def test_passive_check_disabled(self):
         """Should not check passive voice when disabled."""
         checker = StyleChecker(passive_check_enabled=False)
-        issues = checker.check(
-            "The document was reviewed by the team. " * 10
-        )
+        issues = checker.check("The document was reviewed by the team. " * 10)
 
         passive_issues = [i for i in issues if i.category == "passive_voice"]
         assert len(passive_issues) == 0
@@ -327,11 +325,7 @@ class TestCustomStyleGuide:
         except ImportError:
             pytest.skip("tomli not installed")
 
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            suffix=".toml",
-            delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".toml", delete=False) as f:
             f.write(b'[forbidden_terms]\nterms = ["badword", "termbad"]\n')
             temp_path = f.name
 
@@ -351,11 +345,7 @@ class TestCustomStyleGuide:
         except ImportError:
             pytest.skip("tomli not installed")
 
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            suffix=".toml",
-            delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".toml", delete=False) as f:
             # TOML format for preferred terms
             f.write(b'[preferred_terms]\n"source_term" = "preferred_translation"\n')
             temp_path = f.name
@@ -363,8 +353,7 @@ class TestCustomStyleGuide:
         try:
             checker = StyleChecker(style_guide_path=temp_path)
             issues = checker.check(
-                "We used a different translation.",
-                source="The source_term is here."
+                "We used a different translation.", source="The source_term is here."
             )
 
             # Should flag because preferred_translation not used
@@ -375,13 +364,9 @@ class TestCustomStyleGuide:
 
     def test_load_simple_format(self):
         """Should load simple key=value format."""
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".txt",
-            delete=False
-        ) as f:
-            f.write('forbidden=badword\n')
-            f.write('preferred=source|preferred\n')
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("forbidden=badword\n")
+            f.write("preferred=source|preferred\n")
             temp_path = f.name
 
         try:
@@ -409,19 +394,14 @@ class TestTerminologyConsistency:
         except ImportError:
             pytest.skip("tomli not installed")
 
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            suffix=".toml",
-            delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".toml", delete=False) as f:
             f.write(b'[preferred_terms]\n"customer" = "client"\n')
             temp_path = f.name
 
         try:
             checker = StyleChecker(style_guide_path=temp_path)
             issues = checker.check(
-                "We served the client well.",
-                source="The customer was satisfied."
+                "We served the client well.", source="The customer was satisfied."
             )
 
             term_issues = [i for i in issues if i.category == "terminology"]
@@ -436,24 +416,22 @@ class TestTerminologyConsistency:
         except ImportError:
             pytest.skip("tomli not installed")
 
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            suffix=".toml",
-            delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".toml", delete=False) as f:
             f.write(b'[preferred_terms]\n"customer" = "client"\n')
             temp_path = f.name
 
         try:
             checker = StyleChecker(style_guide_path=temp_path)
             issues = checker.check(
-                "We served the customer well.",
-                source="The customer was satisfied."
+                "We served the customer well.", source="The customer was satisfied."
             )
 
             term_issues = [i for i in issues if i.category == "terminology"]
             assert len(term_issues) == 1
-            assert "client" in term_issues[0].suggestion or "client" in term_issues[0].message
+            assert (
+                "client" in term_issues[0].suggestion
+                or "client" in term_issues[0].message
+            )
         finally:
             Path(temp_path).unlink()
 
@@ -481,7 +459,7 @@ class TestFactoryFunction:
     def test_create_style_checker_with_guide(self):
         """Should create checker with style guide."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write('[forbidden_terms]\nterms = []\n')
+            f.write("[forbidden_terms]\nterms = []\n")
             temp_path = f.name
 
         try:
@@ -501,11 +479,7 @@ class TestStyleIssueSeverity:
         except ImportError:
             pytest.skip("tomli not installed")
 
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            suffix=".toml",
-            delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".toml", delete=False) as f:
             f.write(b'[forbidden_terms]\nterms = ["forbidden"]\n')
             temp_path = f.name
 
@@ -558,3 +532,215 @@ class TestIssueLocation:
         length_issues = [i for i in issues if i.category == "sentence_length"]
         assert len(length_issues) > 0
         assert "sentence" in length_issues[0].location
+
+
+class TestGengoRulesUKSpelling:
+    """Test UK English spelling detection (Gengo requires US English)."""
+
+    def test_uk_spelling_disabled_by_default(self):
+        """Should not check UK spelling when gengo_rules disabled."""
+        checker = StyleChecker()
+        issues = checker.check("The colour of the centre was grey.")
+
+        uk_issues = [i for i in issues if i.category == "uk_spelling"]
+        assert len(uk_issues) == 0
+
+    def test_detect_colour(self):
+        """Should detect 'colour' and suggest 'color'."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("The colour is beautiful.")
+
+        uk_issues = [i for i in issues if i.category == "uk_spelling"]
+        assert len(uk_issues) == 1
+        assert "color" in uk_issues[0].suggestion
+
+    def test_detect_organise(self):
+        """Should detect 'organise' and suggest 'organize'."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("We need to organise this event.")
+
+        uk_issues = [i for i in issues if i.category == "uk_spelling"]
+        assert len(uk_issues) == 1
+        assert "organize" in uk_issues[0].suggestion
+
+    def test_detect_centre(self):
+        """Should detect 'centre' and suggest 'center'."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("Meet at the city centre.")
+
+        uk_issues = [i for i in issues if i.category == "uk_spelling"]
+        assert len(uk_issues) == 1
+        assert "center" in uk_issues[0].suggestion
+
+    def test_detect_multiple_uk_spellings(self):
+        """Should detect multiple UK spellings."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("The grey colour of the theatre was lovely.")
+
+        uk_issues = [i for i in issues if i.category == "uk_spelling"]
+        assert len(uk_issues) == 3
+
+    def test_us_spelling_no_warning(self):
+        """Should not flag US spellings."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("The color of the center was gray.")
+
+        uk_issues = [i for i in issues if i.category == "uk_spelling"]
+        assert len(uk_issues) == 0
+
+
+class TestGengoRulesOxfordComma:
+    """Test Oxford comma detection."""
+
+    def test_missing_oxford_comma(self):
+        """Should detect missing Oxford comma."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("We bought apples, oranges and bananas.")
+
+        comma_issues = [i for i in issues if i.category == "oxford_comma"]
+        assert len(comma_issues) >= 1
+
+    def test_with_oxford_comma_no_warning(self):
+        """Should not flag text with Oxford comma."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("We bought apples, oranges, and bananas.")
+
+        comma_issues = [i for i in issues if i.category == "oxford_comma"]
+        assert len(comma_issues) == 0
+
+    def test_oxford_comma_disabled_by_default(self):
+        """Should not check Oxford comma when gengo_rules disabled."""
+        checker = StyleChecker()
+        issues = checker.check("We bought apples, oranges and bananas.")
+
+        comma_issues = [i for i in issues if i.category == "oxford_comma"]
+        assert len(comma_issues) == 0
+
+
+class TestGengoRulesCurrencyFormat:
+    """Test currency format detection."""
+
+    def test_detect_dollars_word(self):
+        """Should detect '1000 dollars' format."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("The cost is 1,000 dollars.")
+
+        currency_issues = [i for i in issues if i.category == "currency_format"]
+        assert len(currency_issues) == 1
+        assert "US$" in currency_issues[0].message
+
+    def test_detect_yen_word(self):
+        """Should detect '1000 yen' format."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("The price is 10,000 yen.")
+
+        currency_issues = [i for i in issues if i.category == "currency_format"]
+        assert len(currency_issues) == 1
+        assert "¥" in currency_issues[0].message
+
+    def test_symbol_format_no_warning(self):
+        """Should not flag proper symbol format."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("The cost is US$1,000 and ¥10,000.")
+
+        currency_issues = [i for i in issues if i.category == "currency_format"]
+        assert len(currency_issues) == 0
+
+    def test_currency_disabled_by_default(self):
+        """Should not check currency when gengo_rules disabled."""
+        checker = StyleChecker()
+        issues = checker.check("The cost is 1,000 dollars.")
+
+        currency_issues = [i for i in issues if i.category == "currency_format"]
+        assert len(currency_issues) == 0
+
+
+class TestGengoRulesDateFormat:
+    """Test date format detection (Gengo requires US format)."""
+
+    def test_detect_uk_date_format(self):
+        """Should detect UK date format (21 September 2025)."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("The meeting is on 21 September 2025.")
+
+        date_issues = [i for i in issues if i.category == "date_format"]
+        assert len(date_issues) == 1
+        assert "US date format" in date_issues[0].message
+
+    def test_us_date_format_no_warning(self):
+        """Should not flag US date format (September 21, 2025)."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("The meeting is on September 21, 2025.")
+
+        date_issues = [i for i in issues if i.category == "date_format"]
+        assert len(date_issues) == 0
+
+    def test_date_disabled_by_default(self):
+        """Should not check date format when gengo_rules disabled."""
+        checker = StyleChecker()
+        issues = checker.check("The meeting is on 21 September 2025.")
+
+        date_issues = [i for i in issues if i.category == "date_format"]
+        assert len(date_issues) == 0
+
+
+class TestGengoRulesTimeFormat:
+    """Test time format detection (Gengo requires a.m./p.m.)."""
+
+    def test_detect_uppercase_am_pm(self):
+        """Should detect uppercase AM/PM."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("The meeting is at 3:00 PM.")
+
+        time_issues = [i for i in issues if i.category == "time_format"]
+        assert len(time_issues) >= 1
+        assert "a.m./p.m." in time_issues[0].message
+
+    def test_lowercase_am_pm_no_warning(self):
+        """Should not flag lowercase a.m./p.m."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        issues = checker.check("The meeting is at 3:00 p.m.")
+
+        time_issues = [i for i in issues if i.category == "time_format"]
+        assert len(time_issues) == 0
+
+    def test_time_disabled_by_default(self):
+        """Should not check time format when gengo_rules disabled."""
+        checker = StyleChecker()
+        issues = checker.check("The meeting is at 3:00 PM.")
+
+        time_issues = [i for i in issues if i.category == "time_format"]
+        assert len(time_issues) == 0
+
+
+class TestGengoRulesIntegration:
+    """Test multiple Gengo rules together."""
+
+    def test_multiple_gengo_violations(self):
+        """Should detect multiple Gengo rule violations."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        text = "The colour costs 1,000 dollars at 3:00 PM on 21 September 2025."
+
+        issues = checker.check(text)
+
+        categories = {i.category for i in issues}
+        assert "uk_spelling" in categories
+        assert "currency_format" in categories
+        assert "time_format" in categories
+        assert "date_format" in categories
+
+    def test_clean_gengo_text(self):
+        """Should not flag Gengo-compliant text."""
+        checker = StyleChecker(gengo_rules_enabled=True)
+        text = "The color costs US$1,000 at 3:00 p.m. on September 21, 2025."
+
+        issues = checker.check(text)
+
+        gengo_categories = {
+            "uk_spelling",
+            "currency_format",
+            "time_format",
+            "date_format",
+        }
+        gengo_issues = [i for i in issues if i.category in gengo_categories]
+        assert len(gengo_issues) == 0

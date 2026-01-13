@@ -50,6 +50,11 @@ enabled = true
 backend = "redis"
 max_concurrent = 3
 poll_interval = "1s"
+
+# Optional: Gengo style guide integration
+[style_guide]
+enabled = true
+path = "/path/to/gengo-style-guide.md"
 ```
 
 ### Running the Worker
@@ -108,6 +113,7 @@ export GEMINI_LOCATION="us-central1"  # Optional, default: us-central1
 | `audit/` | Translation audit logging and style checking |
 | `watcher/` | Folder watching for new files |
 | `nlp/` | Natural language processing utilities |
+| `style_guide/` | Gengo style guide parsing and system prompt generation |
 
 ### Job Flow
 

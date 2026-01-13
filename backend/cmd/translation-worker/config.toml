@@ -29,6 +29,10 @@ failed_directory = "/watch/failed"
 # Supported file extensions
 supported_extensions = [".pptx", ".docx", ".xlsx", ".pdf"]
 
+[style_guide]
+enabled = true
+path = "/home/thomas/kyros-wiki/Japanese-to-English Translation Quick Reference (Gengo Style Guide Alignment).md"
+
 [translation]
 # Default LLM provider
 default_provider = "anthropic"

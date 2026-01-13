@@ -10,6 +10,13 @@ Checks translations against common style issues:
 - Passive voice overuse
 - Missing articles
 
+Gengo Style Guide rules (when enabled):
+- Oxford comma in lists
+- US English spelling (color, organize, favor)
+- Currency format (US$1,000, ¥1,000)
+- Date format (Month Day, Year)
+- Time format (a.m./p.m.)
+
 Uses configurable rules and supports custom style guides.
 """
 
@@ -75,8 +82,14 @@ class StyleChecker:
         (r"(?<!\w)(-?sama)(?!\w)", "Avoid using '-sama' suffix in English"),
         (r"(?<!\w)(-?kun)(?!\w)", "Avoid using '-kun' suffix in English"),
         (r"(?<!\w)(-?chan)(?!\w)", "Avoid using '-chan' suffix in English"),
-        (r"(?<!\w)(-?sensei)(?!\w)", "Consider translating 'sensei' to 'teacher' or 'Mr./Ms.'"),
-        (r"(?<!\w)(-?senpai)(?!\w)", "Consider translating 'senpai' to 'senior' or 'mentor'"),
+        (
+            r"(?<!\w)(-?sensei)(?!\w)",
+            "Consider translating 'sensei' to 'teacher' or 'Mr./Ms.'",
+        ),
+        (
+            r"(?<!\w)(-?senpai)(?!\w)",
+            "Consider translating 'senpai' to 'senior' or 'mentor'",
+        ),
     ]
 
     # Passive voice indicators
@@ -96,6 +109,95 @@ class StyleChecker:
         (r"\bare\s+[aeiou]\b", "Consider using 'an' instead of 'are'"),
     ]
 
+    # UK English spellings to flag (Gengo requires US English)
+    # Format: (UK spelling pattern, US spelling replacement)
+    UK_SPELLING_PATTERNS = [
+        (r"\b(colour)s?\b", "color"),
+        (r"\b(favour)s?\b", "favor"),
+        (r"\b(honour)s?\b", "honor"),
+        (r"\b(labour)s?\b", "labor"),
+        (r"\b(neighbour)s?\b", "neighbor"),
+        (r"\b(behaviour)s?\b", "behavior"),
+        (r"\b(organise)d?\b", "organize"),
+        (r"\b(recognise)d?\b", "recognize"),
+        (r"\b(realise)d?\b", "realize"),
+        (r"\b(apologise)d?\b", "apologize"),
+        (r"\b(specialise)d?\b", "specialize"),
+        (r"\b(analyse)d?\b", "analyze"),
+        (r"\b(centre)s?\b", "center"),
+        (r"\b(metre)s?\b", "meter"),
+        (r"\b(litre)s?\b", "liter"),
+        (r"\b(theatre)s?\b", "theater"),
+        (r"\b(defence)\b", "defense"),
+        (r"\b(offence)\b", "offense"),
+        (r"\b(licence)\b", "license"),
+        (r"\b(practise)\b", "practice"),
+        (r"\b(travelling)\b", "traveling"),
+        (r"\b(cancelled)\b", "canceled"),
+        (r"\b(modelling)\b", "modeling"),
+        (r"\b(grey)\b", "gray"),
+        (r"\b(cheque)s?\b", "check"),
+        (r"\b(programme)s?\b", "program"),
+        (r"\b(catalogue)s?\b", "catalog"),
+        (r"\b(dialogue)s?\b", "dialog"),
+    ]
+
+    # Oxford comma pattern: matches "X, Y and Z" without comma before "and"
+    # This is a simplified pattern that catches common cases
+    OXFORD_COMMA_PATTERN = r"\b\w+,\s+\w+\s+and\s+\w+"
+
+    # Currency patterns that violate Gengo style (should be US$1,000 not "1000 dollars")
+    # Matches patterns like "1000 dollars", "1,000 yen", etc.
+    CURRENCY_PATTERNS = [
+        (
+            r"\b\d{1,3}(?:,\d{3})*\s+(?:dollars?|USD)\b",
+            "Use US$ symbol format (e.g., US$1,000)",
+        ),
+        (r"\b\d{1,3}(?:,\d{3})*\s+(?:yen|JPY)\b", "Use ¥ symbol format (e.g., ¥1,000)"),
+        (
+            r"\b\d{1,3}(?:,\d{3})*\s+(?:euros?|EUR)\b",
+            "Use € symbol format (e.g., €1,000)",
+        ),
+        (
+            r"\b\d{1,3}(?:,\d{3})*\s+(?:pounds?|GBP)\b",
+            "Use £ symbol format (e.g., £1,000)",
+        ),
+    ]
+
+    # Date format patterns (UK format to flag - should be US format: Month Day, Year)
+    # Matches patterns like "21 September 2025" or "21/09/2025"
+    UK_DATE_PATTERNS = [
+        (
+            r"\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b",
+            "Use US date format (e.g., September 21, 2025)",
+        ),
+        (
+            r"\b\d{1,2}/\d{1,2}/\d{2,4}\b",
+            "Ambiguous date format; use US format (e.g., September 21, 2025)",
+        ),
+    ]
+
+    # Time format patterns (should be a.m./p.m. not AM/PM)
+    TIME_FORMAT_PATTERNS = [
+        (r"\b\d{1,2}:\d{2}\s*(?:AM|PM)\b", "Use lowercase a.m./p.m. (e.g., 3:00 p.m.)"),
+        (r"\b\d{1,2}\s*(?:AM|PM)\b", "Use lowercase a.m./p.m. (e.g., 3 p.m.)"),
+    ]
+
+    # AI-style hyphen patterns (em-dashes without spaces are a giveaway)
+    # Human translators use spaced en-dashes ( - ) or avoid hyphens entirely
+    # AI models often use em-dashes (—) or (–) without spaces
+    AI_HYPHEN_PATTERNS = [
+        # Em-dash without spaces (AI giveaway)
+        (
+            r"\w—\w",
+            "Avoid em-dash without spaces (AI giveaway). Use ' - ' with spaces or rephrase.",
+        ),
+        # En-dash without spaces
+        (r"\w–\w", "Avoid en-dash without spaces. Use ' - ' with spaces or rephrase."),
+        # Double hyphen (another AI pattern)
+        (r"\w--\w", "Avoid double hyphen. Use ' - ' with spaces or rephrase."),
+    ]
+
     # Default thresholds
     DEFAULT_MAX_SENTENCE_LENGTH = 200
     DEFAULT_MAX_PASSIVE_RATIO = 0.3  # 30% of sentences
@@ -108,6 +210,7 @@ class StyleChecker:
         honorifics_enabled: bool = True,
         passive_check_enabled: bool = True,
         sentence_check_enabled: bool = True,
+        gengo_rules_enabled: bool = False,
     ):
         """Initialize the style checker.
 
@@ -118,6 +221,7 @@ class StyleChecker:
             honorifics_enabled: Whether to check honorific usage
             passive_check_enabled: Whether to check passive voice
             sentence_check_enabled: Whether to check sentence length
+            gengo_rules_enabled: Whether to enable Gengo style guide checks
         """
         self.style_guide_path = style_guide_path
         self.max_sentence_length = max_sentence_length
@@ -125,6 +229,7 @@ class StyleChecker:
         self.honorifics_enabled = honorifics_enabled
         self.passive_check_enabled = passive_check_enabled
         self.sentence_check_enabled = sentence_check_enabled
+        self.gengo_rules_enabled = gengo_rules_enabled
 
         # Load custom rules if style guide provided
         self.custom_rules: Dict = {}
@@ -165,6 +270,10 @@ class StyleChecker:
         # Check articles
         issues.extend(self._check_articles(translation))
 
+        # Check Gengo-specific rules
+        if self.gengo_rules_enabled:
+            issues.extend(self._check_gengo_rules(translation))
+
         # Check custom rules
         if self.custom_rules:
             issues.extend(self._check_custom_rules(translation))
@@ -186,13 +295,15 @@ class StyleChecker:
         for pattern, message in self.DEFAULT_HONORIFICS_PATTERNS:
             matches = re.finditer(pattern, text, re.IGNORECASE)
             for match in matches:
-                issues.append(StyleIssue(
-                    severity="warning",
-                    category="honorifics",
-                    message=message,
-                    location=f"position {match.start()}",
-                    suggestion=f"Consider removing '{match.group()}' or using Mr./Ms.",
-                ))
+                issues.append(
+                    StyleIssue(
+                        severity="warning",
+                        category="honorifics",
+                        message=message,
+                        location=f"position {match.start()}",
+                        suggestion=f"Consider removing '{match.group()}' or using Mr./Ms.",
+                    )
+                )
 
         return issues
 
@@ -206,18 +317,20 @@ class StyleChecker:
         issues = []
 
         # Split by sentence terminators
-        sentences = re.split(r'[.!?]+', text)
+        sentences = re.split(r"[.!?]+", text)
 
         for i, sentence in enumerate(sentences):
             stripped = sentence.strip()
             if len(stripped) > self.max_sentence_length:
-                issues.append(StyleIssue(
-                    severity="warning",
-                    category="sentence_length",
-                    message=f"Very long sentence detected ({len(stripped)} chars > {self.max_sentence_length})",
-                    location=f"sentence {i + 1}",
-                    suggestion="Consider splitting into multiple sentences",
-                ))
+                issues.append(
+                    StyleIssue(
+                        severity="warning",
+                        category="sentence_length",
+                        message=f"Very long sentence detected ({len(stripped)} chars > {self.max_sentence_length})",
+                        location=f"sentence {i + 1}",
+                        suggestion="Consider splitting into multiple sentences",
+                    )
+                )
 
         return issues
 
@@ -233,7 +346,7 @@ class StyleChecker:
         passive_count = 0
         total_sentences = 0
 
-        sentences = re.split(r'[.!?]+', text)
+        sentences = re.split(r"[.!?]+", text)
         for sentence in sentences:
             stripped = sentence.strip()
             if len(stripped) > 10:  # Only check non-fragment sentences
@@ -247,13 +360,15 @@ class StyleChecker:
         if total_sentences > 0:
             passive_ratio = passive_count / total_sentences
             if passive_ratio > self.max_passive_ratio:
-                issues.append(StyleIssue(
-                    severity="info",
-                    category="passive_voice",
-                    message=f"High passive voice ratio ({passive_ratio:.1%} > {self.max_passive_ratio:.1%})",
-                    location="overall",
-                    suggestion="Consider using active voice for clearer communication",
-                ))
+                issues.append(
+                    StyleIssue(
+                        severity="info",
+                        category="passive_voice",
+                        message=f"High passive voice ratio ({passive_ratio:.1%} > {self.max_passive_ratio:.1%})",
+                        location="overall",
+                        suggestion="Consider using active voice for clearer communication",
+                    )
+                )
 
         return issues
 
@@ -269,12 +384,143 @@ class StyleChecker:
         # use NLP to properly detect article issues
         for pattern, message in self.ARTICLE_PATTERNS:
             if re.search(pattern, text):
-                issues.append(StyleIssue(
-                    severity="info",
-                    category="articles",
-                    message=message,
-                    location="overall",
-                ))
+                issues.append(
+                    StyleIssue(
+                        severity="info",
+                        category="articles",
+                        message=message,
+                        location="overall",
+                    )
+                )
+
+        return issues
+
+    def _check_gengo_rules(self, text: str) -> List[StyleIssue]:
+        """Check Gengo style guide specific rules."""
+        issues = []
+
+        issues.extend(self._check_uk_spelling(text))
+        issues.extend(self._check_oxford_comma(text))
+        issues.extend(self._check_currency_format(text))
+        issues.extend(self._check_date_format(text))
+        issues.extend(self._check_time_format(text))
+        issues.extend(self._check_ai_hyphens(text))
+
+        return issues
+
+    def _check_ai_hyphens(self, text: str) -> List[StyleIssue]:
+        """Check for AI-style hyphen usage (em-dashes without spaces)."""
+        issues = []
+
+        for pattern, message in self.AI_HYPHEN_PATTERNS:
+            matches = re.finditer(pattern, text)
+            for match in matches:
+                issues.append(
+                    StyleIssue(
+                        severity="error",
+                        category="ai_hyphen",
+                        message=message,
+                        location=f"position {match.start()}",
+                        suggestion="Use ' - ' with spaces on both sides, or rephrase to avoid hyphens",
+                    )
+                )
+
+        return issues
+
+    def _check_uk_spelling(self, text: str) -> List[StyleIssue]:
+        """Check for UK English spellings (Gengo requires US English)."""
+        issues = []
+        text_lower = text.lower()
+
+        for pattern, us_spelling in self.UK_SPELLING_PATTERNS:
+            matches = re.finditer(pattern, text_lower)
+            for match in matches:
+                issues.append(
+                    StyleIssue(
+                        severity="warning",
+                        category="uk_spelling",
+                        message=f"Use US English spelling: '{us_spelling}'",
+                        location=f"position {match.start()}",
+                        suggestion=f"Replace '{match.group()}' with '{us_spelling}'",
+                    )
+                )
+
+        return issues
+
+    def _check_oxford_comma(self, text: str) -> List[StyleIssue]:
+        """Check for missing Oxford comma in lists."""
+        issues = []
+
+        matches = re.finditer(self.OXFORD_COMMA_PATTERN, text, re.IGNORECASE)
+        for match in matches:
+            matched_text = match.group()
+            if ", and " not in matched_text.lower():
+                issues.append(
+                    StyleIssue(
+                        severity="info",
+                        category="oxford_comma",
+                        message="Consider using Oxford comma before 'and' in list",
+                        location=f"position {match.start()}",
+                        suggestion="Add comma before 'and' (e.g., 'apples, oranges, and bananas')",
+                    )
+                )
+
+        return issues
+
+    def _check_currency_format(self, text: str) -> List[StyleIssue]:
+        """Check for incorrect currency format (should use symbol prefix)."""
+        issues = []
+
+        for pattern, message in self.CURRENCY_PATTERNS:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                issues.append(
+                    StyleIssue(
+                        severity="warning",
+                        category="currency_format",
+                        message=message,
+                        location=f"position {match.start()}",
+                        suggestion=f"Replace '{match.group()}' with symbol format",
+                    )
+                )
+
+        return issues
+
+    def _check_date_format(self, text: str) -> List[StyleIssue]:
+        """Check for non-US date formats."""
+        issues = []
+
+        for pattern, message in self.UK_DATE_PATTERNS:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                issues.append(
+                    StyleIssue(
+                        severity="warning",
+                        category="date_format",
+                        message=message,
+                        location=f"position {match.start()}",
+                        suggestion="Use Month Day, Year format",
+                    )
+                )
+
+        return issues
+
+    def _check_time_format(self, text: str) -> List[StyleIssue]:
+        """Check for incorrect time format (should be a.m./p.m.)."""
+        issues = []
+
+        for pattern, message in self.TIME_FORMAT_PATTERNS:
+            matches = re.finditer(pattern, text)
+            for match in matches:
+                issues.append(
+                    StyleIssue(
+                        severity="warning",
+                        category="time_format",
+                        message=message,
+                        location=f"position {match.start()}",
+                        suggestion="Use lowercase a.m./p.m.",
+                    )
+                )
 
         return issues
 
@@ -285,12 +531,14 @@ class StyleChecker:
         # Check forbidden terms
         for term in self.forbidden_terms:
             if term.lower() in text.lower():
-                issues.append(StyleIssue(
-                    severity="error",
-                    category="forbidden_term",
-                    message=f"Forbidden term '{term}' found",
-                    location="overall",
-                ))
+                issues.append(
+                    StyleIssue(
+                        severity="error",
+                        category="forbidden_term",
+                        message=f"Forbidden term '{term}' found",
+                        location="overall",
+                    )
+                )
 
         return issues
 
@@ -313,13 +561,15 @@ class StyleChecker:
 
             # Check if preferred translation is used
             if preferred_translation.lower() not in translation.lower():
-                issues.append(StyleIssue(
-                    severity="warning",
-                    category="terminology",
-                    message=f"Consider using '{preferred_translation}' for '{source_term}'",
-                    location="overall",
-                    suggestion=f"Replace with preferred term: {preferred_translation}",
-                ))
+                issues.append(
+                    StyleIssue(
+                        severity="warning",
+                        category="terminology",
+                        message=f"Consider using '{preferred_translation}' for '{source_term}'",
+                        location="overall",
+                        suggestion=f"Replace with preferred term: {preferred_translation}",
+                    )
+                )
 
         return issues
 
@@ -341,6 +591,7 @@ class StyleChecker:
             # Try to load as TOML
             try:
                 import tomli
+
                 with open(guide_path, "rb") as f:
                     self.custom_rules = tomli.load(f)
 
@@ -384,13 +635,16 @@ class StyleChecker:
                         # Format: preferred = source|translation
                         if "|" in value:
                             source_term, translation = value.split("|", 1)
-                            self.preferred_terms[source_term.strip()] = translation.strip()
+                            self.preferred_terms[source_term.strip()] = (
+                                translation.strip()
+                            )
 
 
 def create_style_checker(
     style_guide_path: Optional[str] = None,
     max_sentence_length: int = StyleChecker.DEFAULT_MAX_SENTENCE_LENGTH,
     max_passive_ratio: float = StyleChecker.DEFAULT_MAX_PASSIVE_RATIO,
+    gengo_rules_enabled: bool = False,
 ) -> StyleChecker:
     """Factory function to create a configured style checker.
 
@@ -398,6 +652,7 @@ def create_style_checker(
         style_guide_path: Optional path to custom style guide
         max_sentence_length: Maximum sentence length before warning
         max_passive_ratio: Maximum passive voice ratio
+        gengo_rules_enabled: Whether to enable Gengo style guide checks
 
     Returns:
         Configured StyleChecker instance
@@ -406,4 +661,5 @@ def create_style_checker(
         style_guide_path=style_guide_path,
         max_sentence_length=max_sentence_length,
         max_passive_ratio=max_passive_ratio,
+        gengo_rules_enabled=gengo_rules_enabled,
     )
