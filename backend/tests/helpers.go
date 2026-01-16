@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
-	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
@@ -59,6 +59,8 @@ func TestDB(t *testing.T) *gorm.DB {
 		&models.EmailVerificationToken{},
 		&models.MagicLinkToken{},
 		&models.PasswordResetToken{},
+		&models.TranslationJob{},
+		&models.TranslationSegment{},
 	)
 	require.NoError(t, err, "Failed to run migrations")
 
@@ -70,6 +72,8 @@ func TestDB(t *testing.T) *gorm.DB {
 	db.Exec("DELETE FROM oauth_accounts WHERE 1=1")
 	db.Exec("DELETE FROM watcher_states WHERE 1=1")
 	db.Exec("DELETE FROM watcher_configs WHERE 1=1")
+	db.Exec("DELETE FROM translation_segments WHERE 1=1")
+	db.Exec("DELETE FROM translation_jobs WHERE 1=1")
 	db.Exec("DELETE FROM subscriptions WHERE 1=1")
 	db.Exec("DELETE FROM users WHERE 1=1")
 
@@ -127,21 +131,21 @@ func CreateTestUser(t *testing.T, db *gorm.DB, email string) *models.User {
 	hashedPassword := "$2a$10$uvmy6V0Jm.l3g5jK1TeLoeCAldIB0Q6NW6tnii7tI2z.WwIcIe3m2" // "password123"
 
 	user := &models.User{
-		Email:        email,
-		PasswordHash: hashedPassword,
+		Email:         email,
+		PasswordHash:  hashedPassword,
 		EmailVerified: true,
-		IsActive:     true,
+		IsActive:      true,
 	}
 	require.NoError(t, db.Create(user).Error, "Failed to create test user")
 
 	// Create default watcher config
 	config := &models.WatcherConfig{
-		UserID:                 user.ID,
-		RSSFeedURL:             "https://gengo.com/jobs/rss",
-		WebSocketEnabled:       true,
-		MinReward:              1.0,
-		MaxReward:              50.0,
-		IncludedLanguagePairs:  "[]", // JSON array required for jsonb column
+		UserID:                user.ID,
+		RSSFeedURL:            "https://gengo.com/jobs/rss",
+		WebSocketEnabled:      true,
+		MinReward:             1.0,
+		MaxReward:             50.0,
+		IncludedLanguagePairs: "[]", // JSON array required for jsonb column
 	}
 	require.NoError(t, db.Create(config).Error, "Failed to create watcher config")
 
@@ -245,6 +249,8 @@ func RequireDB(t *testing.T) *gorm.DB {
 		&models.EmailVerificationToken{},
 		&models.MagicLinkToken{},
 		&models.PasswordResetToken{},
+		&models.TranslationJob{},
+		&models.TranslationSegment{},
 	)
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
@@ -258,6 +264,8 @@ func RequireDB(t *testing.T) *gorm.DB {
 	db.Exec("DELETE FROM oauth_accounts WHERE 1=1")
 	db.Exec("DELETE FROM watcher_states WHERE 1=1")
 	db.Exec("DELETE FROM watcher_configs WHERE 1=1")
+	db.Exec("DELETE FROM translation_segments WHERE 1=1")
+	db.Exec("DELETE FROM translation_jobs WHERE 1=1")
 	db.Exec("DELETE FROM subscriptions WHERE 1=1")
 	db.Exec("DELETE FROM users WHERE 1=1")
 

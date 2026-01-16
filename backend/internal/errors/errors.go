@@ -6,28 +6,31 @@ type ErrorCode string
 
 const (
 	// Request validation errors
-	ErrInvalidRequest  ErrorCode = "INVALID_REQUEST"
-	ErrWeakPassword    ErrorCode = "WEAK_PASSWORD"
-	ErrInvalidUserID   ErrorCode = "INVALID_USER_ID"
+	ErrInvalidRequest   ErrorCode = "INVALID_REQUEST"
+	ErrWeakPassword     ErrorCode = "WEAK_PASSWORD"
+	ErrInvalidUserID    ErrorCode = "INVALID_USER_ID"
+	ErrInvalidJobID     ErrorCode = "INVALID_JOB_ID"
+	ErrInvalidSegmentID ErrorCode = "INVALID_SEGMENT_ID"
 
 	// Authentication errors
-	ErrNotAuthenticated ErrorCode = "NOT_AUTHENTICATED"
+	ErrNotAuthenticated   ErrorCode = "NOT_AUTHENTICATED"
 	ErrInvalidCredentials ErrorCode = "INVALID_CREDENTIALS"
-	ErrInactiveUser      ErrorCode = "INACTIVE_USER"
-	ErrTokenError        ErrorCode = "TOKEN_ERROR"
-
+	ErrInactiveUser       ErrorCode = "INACTIVE_USER"
+	ErrTokenError         ErrorCode = "TOKEN_ERROR"
 	// User errors
-	ErrUserExists    ErrorCode = "USER_EXISTS"
-	ErrUserNotFound  ErrorCode = "USER_NOT_FOUND"
-	ErrCreateError   ErrorCode = "CREATE_ERROR"
-	ErrUpdateError   ErrorCode = "UPDATE_ERROR"
-	ErrDeleteError   ErrorCode = "DELETE_ERROR"
-	ErrConfigError   ErrorCode = "CONFIG_ERROR"
-	ErrStateError    ErrorCode = "STATE_ERROR"
+	ErrUserExists      ErrorCode = "USER_EXISTS"
+	ErrUserNotFound    ErrorCode = "USER_NOT_FOUND"
+	ErrCreateError     ErrorCode = "CREATE_ERROR"
+	ErrUpdateError     ErrorCode = "UPDATE_ERROR"
+	ErrDeleteError     ErrorCode = "DELETE_ERROR"
+	ErrConfigError     ErrorCode = "CONFIG_ERROR"
+	ErrStateError      ErrorCode = "STATE_ERROR"
+	ErrJobNotFound     ErrorCode = "JOB_NOT_FOUND"
+	ErrSegmentNotFound ErrorCode = "SEGMENT_NOT_FOUND"
 
 	// Database errors
-	ErrDatabase    ErrorCode = "DATABASE_ERROR"
-	ErrCommitError ErrorCode = "COMMIT_ERROR"
+	ErrDatabase      ErrorCode = "DATABASE_ERROR"
+	ErrCommitError   ErrorCode = "COMMIT_ERROR"
 	ErrPasswordError ErrorCode = "PASSWORD_ERROR"
 
 	// Internal errors
@@ -36,8 +39,8 @@ const (
 
 // APIError represents a structured error response
 type APIError struct {
-	Code    ErrorCode            `json:"code"`
-	Message string               `json:"error"`
+	Code    ErrorCode              `json:"code"`
+	Message string                 `json:"error"`
 	Details map[string]interface{} `json:"details,omitempty"`
 }
 

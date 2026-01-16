@@ -58,6 +58,8 @@ func main() {
 		&models.EmailVerificationToken{},
 		&models.MagicLinkToken{},
 		&models.PasswordResetToken{},
+		&models.TranslationJob{},
+		&models.TranslationSegment{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -116,6 +118,9 @@ func main() {
 	watcherHandler := handlers.NewWatcherHandler(watcherManager, db)
 	wsHandler := handlers.NewWebSocketHandler(redisClient, cfg.AllowedOriginList())
 
+	// Initialize translation handler
+	translationHandler := handlers.NewTranslationHandler(db, redisClient)
+
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		AppName:               "GengoWatcher SaaS API",
@@ -138,7 +143,7 @@ func main() {
 		XSSProtection:         "1; mode=block",
 		ContentTypeNosniff:    "nosniff",
 		XFrameOptions:         "SAMEORIGIN",
-		HSTSMaxAge:            31536000,      // 1 year
+		HSTSMaxAge:            31536000,                // 1 year
 		HSTSExcludeSubdomains: cfg.Env != "production", // Include subdomains only in production
 	}))
 
@@ -184,7 +189,7 @@ func main() {
 			}
 
 			return c.JSON(fiber.Map{
-				"user_id":  user.ID.String(),
+				"user_id": user.ID.String(),
 				"email":   user.Email,
 				"role":    user.Role,
 				"token":   token,
@@ -239,6 +244,17 @@ func main() {
 	watcherGroup.Get("/state", watcherHandler.GetState)
 	watcherGroup.Post("/start", watcherHandler.StartWatcher)
 	watcherGroup.Post("/stop", watcherHandler.StopWatcher)
+
+	// Translation routes (protected)
+	translationGroup := api.Group("/translation")
+	translationGroup.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
+	translationGroup.Get("/jobs", translationHandler.ListJobs)
+	translationGroup.Get("/jobs/:id", translationHandler.GetJob)
+	translationGroup.Post("/jobs", translationHandler.CreateJob)
+	translationGroup.Post("/jobs/:id/approve", translationHandler.ApproveJob)
+	translationGroup.Post("/jobs/:id/reject", translationHandler.RejectJob)
+	translationGroup.Put("/jobs/:id/segments/:segment_uuid", translationHandler.UpdateSegment)
+	translationGroup.Get("/jobs/:id/flagged", translationHandler.GetFlaggedSegments)
 
 	// WebSocket ticket endpoint (protected, used to get short-lived ticket for WS connection)
 	// Rate limited to prevent Redis exhaustion (H-1 fix)
