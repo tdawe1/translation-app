@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import shutil
 import subprocess
 import time
@@ -55,10 +56,21 @@ class CLIProvider(BaseProvider):
     # SINGLE SOURCE OF TRUTH: CLI tool command configurations
     # When adding new tools, update this dictionary and document above
     DEFAULT_COMMANDS = {
-        "claude_code": "claude",  # claude code exec "prompt"
+        "claude_code": "claude",  # claude -p "prompt" (requires --print for non-interactive)
         "gemini_cli": "gemini",  # gemini "prompt" (npm: @google/gemini-cli)
         "codex": "codex",  # codex exec "prompt"
         "ollama": "ollama",  # ollama run model "prompt"
+    }
+
+    # Tool-specific flags for non-interactive mode
+    TOOL_FLAGS = {
+        "claude_code": [
+            "-p",
+            "--dangerously-skip-permissions",
+        ],  # -p = print mode (non-interactive), skip permissions
+        "gemini_cli": [],
+        "codex": ["exec"],
+        "ollama": ["run", "llama3"],  # Default model for ollama
     }
 
     def __init__(
@@ -103,8 +115,21 @@ class CLIProvider(BaseProvider):
         logger.debug(f"Running CLI command: {self.command}")
 
         try:
+            env = os.environ.copy()
+            if self.tool_name == "claude_code":
+                env["SSH_AUTH_SOCK"] = ""
+                env["GIT_SSH_COMMAND"] = (
+                    "ssh -o BatchMode=yes -o StrictHostKeyChecking=no"
+                )
+                env["GIT_TERMINAL_PROMPT"] = "0"
+
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout, check=True
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=True,
+                env=env,
             )
 
             latency = int((time.time() - start) * 1000)
@@ -124,16 +149,23 @@ class CLIProvider(BaseProvider):
         """Build command list for subprocess."""
         cmd = [self.command]
 
-        if max_tokens:
-            cmd.extend(["--max-tokens", str(max_tokens)])
+        tool_flags = self.TOOL_FLAGS.get(self.tool_name, [])
+        cmd.extend(tool_flags)
 
-        if temperature != 0.0:
-            cmd.extend(["--temperature", str(temperature)])
-
-        if self.config.api_key:
-            cmd.extend(["--api-key", self.config.api_key])
-
-        cmd.append(prompt)
+        if self.tool_name == "claude_code":
+            if max_tokens:
+                cmd.extend(["--max-tokens", str(max_tokens)])
+            cmd.append(prompt)
+        elif self.tool_name == "ollama":
+            cmd.append(prompt)
+        else:
+            if max_tokens:
+                cmd.extend(["--max-tokens", str(max_tokens)])
+            if temperature != 0.0:
+                cmd.extend(["--temperature", str(temperature)])
+            if self.config.api_key:
+                cmd.extend(["--api-key", self.config.api_key])
+            cmd.append(prompt)
 
         return cmd
 

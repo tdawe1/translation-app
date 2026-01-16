@@ -1,5 +1,6 @@
 # tests/test_review/test_cli.py
 """Tests for CLI interface."""
+
 import pytest
 import sys
 from pathlib import Path
@@ -20,16 +21,17 @@ class TestCLI:
         result = runner.invoke(translate, ["test"])
         # Should exit with non-zero code or show missing option error
         assert result.exit_code != 0
-        assert "Must specify either --provider" in result.output or "Missing option" in result.output
+        assert (
+            "Must specify either --provider" in result.output
+            or "Missing option" in result.output
+        )
 
     def test_translate_mutually_exclusive_provider_and_cli(self):
         """Should reject both --provider and --cli specified together."""
         runner = CliRunner()
-        result = runner.invoke(translate, [
-            "--provider", "anthropic",
-            "--cli", "claude",
-            "test"
-        ])
+        result = runner.invoke(
+            translate, ["--provider", "anthropic", "--cli", "claude", "test"]
+        )
         assert result.exit_code != 0
         assert "Cannot specify both" in result.output
 
@@ -42,7 +44,7 @@ class TestCLI:
             assert "Invalid provider" not in result.output
 
     @patch("review.llm.cli.subprocess.run")
-    @patch("review.cli.shutil.which", return_value="/usr/bin/claude")
+    @patch("review.cli_helpers.shutil.which", return_value="/usr/bin/claude")
     def test_translate_accepts_all_cli_tools(self, mock_which, mock_run):
         """Should accept claude, codex, gemini, ollama CLI tools."""
         # Mock successful subprocess
@@ -76,12 +78,15 @@ class TestCLI:
     def test_translate_with_cli_tool_not_found(self, mock_run):
         """Should show helpful error when CLI tool not found."""
         # Mock shutil.which returning None (tool not found)
-        with patch("review.cli.shutil.which", return_value=None):
+        with patch("review.cli_helpers.shutil.which", return_value=None):
             runner = CliRunner()
             result = runner.invoke(translate, ["--cli", "claude", "こんにちは"])
             # Should fail with helpful message
             assert result.exit_code != 0
-            assert "not found in PATH" in result.output or "Install it first" in result.output
+            assert (
+                "not found in PATH" in result.output
+                or "Install it first" in result.output
+            )
 
     def test_batch_command_requires_provider_or_cli(self):
         """Should require either --provider or --cli for batch command."""
@@ -90,10 +95,9 @@ class TestCLI:
             with open("sources.txt", "w") as f:
                 f.write("こんにちは\n世界")
 
-            result = runner.invoke(batch, [
-                "--input", "sources.txt",
-                "--output", "translations.txt"
-            ])
+            result = runner.invoke(
+                batch, ["--input", "sources.txt", "--output", "translations.txt"]
+            )
             # Should require provider or cli
             assert result.exit_code != 0
             assert "Must specify either" in result.output or "Missing" in result.output
@@ -112,11 +116,17 @@ class TestCLI:
             with open("sources.txt", "w") as f:
                 f.write("こんにちは\n世界")
 
-            result = runner.invoke(batch, [
-                "--input", "sources.txt",
-                "--output", "translations.txt",
-                "--cli", "claude"
-            ])
+            result = runner.invoke(
+                batch,
+                [
+                    "--input",
+                    "sources.txt",
+                    "--output",
+                    "translations.txt",
+                    "--cli",
+                    "claude",
+                ],
+            )
             # Should succeed
             assert result.exit_code == 0
 
@@ -124,11 +134,9 @@ class TestCLI:
         """Should output valid JSON when format=json."""
         runner = CliRunner()
         # Without API key, should fail before reaching output
-        result = runner.invoke(translate, [
-            "--provider", "anthropic",
-            "--format", "json",
-            "test"
-        ])
+        result = runner.invoke(
+            translate, ["--provider", "anthropic", "--format", "json", "test"]
+        )
         # Output should be defined (even if error)
         assert result.output is not None
 
@@ -163,12 +171,19 @@ class TestCLI:
             with open("sources.txt", "w", encoding="utf-8") as f:
                 f.write('She asked "how are you?"\n')
 
-            result = runner.invoke(batch, [
-                "--input", "sources.txt",
-                "--output", "translations.txt",
-                "--cli", "claude",
-                "--format", "csv"
-            ])
+            result = runner.invoke(
+                batch,
+                [
+                    "--input",
+                    "sources.txt",
+                    "--output",
+                    "translations.txt",
+                    "--cli",
+                    "claude",
+                    "--format",
+                    "csv",
+                ],
+            )
 
             # Check output file has proper CSV escaping
             with open("translations.txt", "r") as f:
@@ -181,7 +196,7 @@ class TestCLI:
             assert '"She asked ""how are you?""","He said ""hello"""' in content
 
     @patch("review.llm.cli.subprocess.run")
-    @patch("review.cli.shutil.which", return_value="/usr/bin/claude")
+    @patch("review.cli_helpers.shutil.which", return_value="/usr/bin/claude")
     def test_judge_command_accepts_cli_option(self, mock_which, mock_run):
         """judge command should accept --cli option."""
         # Mock subprocess returning JSON judgment
@@ -199,19 +214,27 @@ class TestCLI:
             with open("trans_b.txt", "w") as f:
                 f.write("Translation B")
 
-            result = runner.invoke(cli, [
-                "judge",
-                "source.txt", "trans_a.txt", "trans_b.txt",
-                "--cli", "claude"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "judge",
+                    "source.txt",
+                    "trans_a.txt",
+                    "trans_b.txt",
+                    "--cli",
+                    "claude",
+                ],
+            )
 
             # Should not error on cli validation
             assert result.exit_code == 0
             assert "translation_a" in result.output
 
     @patch("review.llm.cli.subprocess.run")
-    @patch("review.cli.shutil.which", return_value="/usr/bin/claude")
-    def test_judge_command_mutually_exclusive_provider_and_cli(self, mock_which, mock_run):
+    @patch("review.cli_helpers.shutil.which", return_value="/usr/bin/claude")
+    def test_judge_command_mutually_exclusive_provider_and_cli(
+        self, mock_which, mock_run
+    ):
         """judge command should reject both --provider and --cli."""
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -222,12 +245,19 @@ class TestCLI:
             with open("b.txt", "w") as f:
                 f.write("B")
 
-            result = runner.invoke(cli, [
-                "judge",
-                "source.txt", "a.txt", "b.txt",
-                "--provider", "anthropic",
-                "--cli", "claude"
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "judge",
+                    "source.txt",
+                    "a.txt",
+                    "b.txt",
+                    "--provider",
+                    "anthropic",
+                    "--cli",
+                    "claude",
+                ],
+            )
 
             # Should reject both options
             assert result.exit_code != 0
@@ -243,11 +273,9 @@ class TestCLI:
     def test_translate_dry_run_shows_command(self):
         """translate --dry-run should show the command without executing."""
         runner = CliRunner()
-        result = runner.invoke(translate, [
-            "--cli", "claude",
-            "こんにちは",
-            "--dry-run"
-        ])
+        result = runner.invoke(
+            translate, ["--cli", "claude", "こんにちは", "--dry-run"]
+        )
         # Should succeed without executing
         assert result.exit_code == 0
         assert "Would execute:" in result.output
@@ -256,17 +284,15 @@ class TestCLI:
     def test_translate_dry_run_requires_cli(self):
         """translate --dry-run without --cli should error."""
         runner = CliRunner()
-        result = runner.invoke(translate, [
-            "--provider", "anthropic",
-            "test",
-            "--dry-run"
-        ])
+        result = runner.invoke(
+            translate, ["--provider", "anthropic", "test", "--dry-run"]
+        )
         # Should reject dry-run with API provider
         assert result.exit_code != 0
         assert "--dry-run only works with --cli" in result.output
 
     @patch("review.llm.cli.subprocess.run")
-    @patch("review.cli.shutil.which", return_value="/usr/bin/claude")
+    @patch("review.cli_helpers.shutil.which", return_value="/usr/bin/claude")
     def test_batch_rejects_oversized_files(self, mock_which, mock_run):
         """Should reject input files exceeding size limit (10MB)."""
         # Mock successful subprocess
@@ -282,11 +308,12 @@ class TestCLI:
             with open("huge.txt", "w") as f:
                 f.write(large_text)
 
-            result = runner.invoke(batch, [
-                "--input", "huge.txt",
-                "--output", "out.txt",
-                "--cli", "claude"
-            ])
+            result = runner.invoke(
+                batch, ["--input", "huge.txt", "--output", "out.txt", "--cli", "claude"]
+            )
 
         assert result.exit_code != 0
-        assert "too large" in result.output.lower() or "size limit" in result.output.lower()
+        assert (
+            "too large" in result.output.lower()
+            or "size limit" in result.output.lower()
+        )

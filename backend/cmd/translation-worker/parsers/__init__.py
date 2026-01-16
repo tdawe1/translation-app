@@ -2,8 +2,15 @@
 """
 Document parsers for translation worker.
 
-Supports PDF, PPTX, DOCX with pymupdf, python-pptx, and python-docx.
+Supports PDF, PPTX, DOCX, XLSX with pymupdf, python-pptx, python-docx, and openpyxl.
 """
+
+from .base import (
+    BaseParser,
+    FormattingInfo,
+    check_library_available,
+    require_library,
+)
 
 from .pdf_parser import (
     pymupdfParser,
@@ -40,6 +47,11 @@ from .xlsx_parser import (
 )
 
 __all__ = [
+    # Base module
+    "BaseParser",
+    "FormattingInfo",
+    "check_library_available",
+    "require_library",
     # PDF parser
     "pymupdfParser",
     "PDFPage",
