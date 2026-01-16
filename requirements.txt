@@ -10,7 +10,7 @@ sqlalchemy>=2.0.0
 
 # Authentication - BetterAuth integration
 # Note: BetterAuth is primarily JS/TS, we'll use it via API bridge
-python-jose[cryptography]>=3.3.0  # Still needed for server-side JWT validation
+python-jose[cryptography]>=3.5.0  # Still needed for server-side JWT validation
 
 # Email
 resend>=0.8.0

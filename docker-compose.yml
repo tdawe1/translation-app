@@ -60,6 +60,9 @@ services:
           memory: 64M
 
   translation-worker:
+    profiles:
+      - full
+      - worker
     build:
       context: ./backend/cmd/translation-worker
       dockerfile: Dockerfile
