@@ -146,10 +146,11 @@ class HttpClient {
       const cacheKey = this.getCacheKey(method, path, body);
       this.pendingRequests.set(cacheKey, requestPromise);
 
-      // Clean up after request completes (success or failure)
-      requestPromise.finally(() => {
-        this.pendingRequests.delete(cacheKey);
-      });
+      requestPromise
+        .catch(() => {})
+        .finally(() => {
+          this.pendingRequests.delete(cacheKey);
+        });
     }
 
     return requestPromise;

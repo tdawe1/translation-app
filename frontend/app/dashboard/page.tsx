@@ -246,9 +246,9 @@ export default function DashboardPage() {
                 >
                   {state?.total_jobs_found ?? 0}
                 </p>
-                {state?.jobs_accepted !== undefined && (
+                {state?.total_jobs_accepted !== undefined && (
                   <p className="text-xs text-neutral-500 mt-1">
-                    {state.jobs_accepted} accepted
+                    {state.total_jobs_accepted} accepted
                   </p>
                 )}
               </BentoCard>

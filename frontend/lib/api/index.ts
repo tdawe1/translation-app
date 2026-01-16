@@ -6,7 +6,7 @@
  */
 
 // Export client and error handling
-export { client, HttpClient, ApiErrorClass as ApiError } from "./client";
+export { client, HttpClient, ApiErrorClass as ApiError, ApiErrorClass } from "./client";
 
 // Export all types
 export type {
@@ -19,9 +19,19 @@ export type {
   ChangePasswordRequest,
   WatcherConfig,
   WatcherState,
+  TranslationJob,
+  TranslationSegment,
+  JobSummary,
+  ListJobsResponse,
+  CreateJobRequest,
+  UpdateSegmentRequest,
+  RejectJobRequest,
+  FlaggedSegmentsResponse,
+  TranslationJobStatus,
 } from "./types";
 
 // Export API modules
 export { authApi } from "./auth";
 export { watcherApi } from "./watcher";
 export { oauthApi } from "./oauth";
+export { translationApi } from "./translation";

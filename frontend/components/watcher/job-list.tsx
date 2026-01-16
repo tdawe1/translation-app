@@ -12,19 +12,16 @@ import React from "react";
 import { useJobsStore, type Job, type ExtendedJob } from "@/store/jobs";
 import { BentoCard } from "@/components/ui/base/BentoCard";
 import { Button } from "@/components/ui/base/Button";
-import {
-  JobDetailModal,
-  JobDetailTrigger,
-} from "./job-detail-modal";
+import { JobDetailModal, JobDetailTrigger } from "./job-detail-modal";
 import { DESIGN } from "@/lib/design/tokens";
 import { cn } from "@/lib/utils";
+import { filterJobs } from "./utils/filters";
+import type { FilterSource, JobFilters, SortBy } from "./utils/types";
+import { formatTimeAgo, getRewardColor, getSourceBadge } from "./utils/formatters";
 
 // ============================================================================
 // TYPES
 // ============================================================================
-
-type FilterSource = "all" | "rss" | "websocket";
-type SortBy = "newest" | "reward-high" | "reward-low";
 
 interface JobListProps {
   /** Optional callback when job is accepted */
@@ -44,42 +41,19 @@ export function JobList({ onAcceptJob, isAccepting = false }: JobListProps) {
   const jobs = useJobsStore((state) => state.jobs);
   const clearJobs = useJobsStore((state) => state.clearJobs);
 
-  const [filterSource, setFilterSource] = useState<FilterSource>("all");
-  const [sortBy, setSortBy] = useState<SortBy>("newest");
-  const [minRewardFilter, setMinRewardFilter] = useState<number | null>(null);
+  const [filters, setFilters] = useState<JobFilters>({
+    source: "all",
+    sortBy: "newest",
+    minReward: null,
+    maxReward: null,
+    timeFilter: "all",
+    languagePairs: [],
+  });
   const [selectedJob, setSelectedJob] = useState<ExtendedJob | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Filter and sort jobs
-  const filteredJobs = useMemo(() => {
-    let result = [...jobs];
-
-    // Filter by source
-    if (filterSource !== "all") {
-      result = result.filter((job) => job.source === filterSource);
-    }
-
-    // Filter by minimum reward
-    if (minRewardFilter !== null) {
-      result = result.filter((job) => job.reward >= minRewardFilter);
-    }
-
-    // Sort
-    switch (sortBy) {
-      case "reward-high":
-        result.sort((a, b) => b.reward - a.reward);
-        break;
-      case "reward-low":
-        result.sort((a, b) => a.reward - b.reward);
-        break;
-      case "newest":
-      default:
-        // Jobs are already in newest-first order from the store
-        break;
-    }
-
-    return result;
-  }, [jobs, filterSource, sortBy, minRewardFilter]);
+  const filteredJobs = useMemo(() => filterJobs(jobs, filters), [jobs, filters]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -116,13 +90,6 @@ export function JobList({ onAcceptJob, isAccepting = false }: JobListProps) {
     }
   }, [onAcceptJob]);
 
-  // Get accent color for stat cards based on index
-  const getStatAccentColor = (index: number): "red" | "orange" | "yellow" | "green" | "cyan" | "blue" => {
-    const colors: Array<"red" | "orange" | "yellow" | "green" | "cyan" | "blue"> = [
-      "red", "orange", "yellow", "green", "cyan", "blue",
-    ];
-    return colors[index % colors.length];
-  };
 
   return (
     <>
@@ -199,8 +166,8 @@ export function JobList({ onAcceptJob, isAccepting = false }: JobListProps) {
           <div className="flex flex-wrap gap-3 mb-6 pb-6 border-b border-neutral-200">
             {/* Source Filter */}
             <select
-              value={filterSource}
-              onChange={(e) => setFilterSource(e.target.value as FilterSource)}
+              value={filters.source}
+              onChange={(e) => setFilters({ ...filters, source: e.target.value as FilterSource })}
               className={cn(
                 "px-3 py-2 text-sm font-mono border border-neutral-200",
                 "focus:border-blue-600 focus:outline-none",
@@ -214,8 +181,8 @@ export function JobList({ onAcceptJob, isAccepting = false }: JobListProps) {
 
             {/* Sort By */}
             <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortBy)}
+              value={filters.sortBy}
+              onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as SortBy })}
               className={cn(
                 "px-3 py-2 text-sm font-mono border border-neutral-200",
                 "focus:border-blue-600 focus:outline-none",
@@ -234,11 +201,12 @@ export function JobList({ onAcceptJob, isAccepting = false }: JobListProps) {
                 placeholder="Min $"
                 min="0"
                 step="0.01"
-                value={minRewardFilter ?? ""}
+                value={filters.minReward ?? ""}
                 onChange={(e) =>
-                  setMinRewardFilter(
-                    e.target.value ? parseFloat(e.target.value) : null
-                  )
+                  setFilters({
+                    ...filters,
+                    minReward: e.target.value ? parseFloat(e.target.value) : null,
+                  })
                 }
                 className={cn(
                   "w-24 px-3 py-2 text-sm font-mono border border-neutral-200",
@@ -250,17 +218,17 @@ export function JobList({ onAcceptJob, isAccepting = false }: JobListProps) {
             </div>
 
             {/* Active Filters Display */}
-            {(filterSource !== "all" || minRewardFilter !== null) && (
+            {(filters.source !== "all" || filters.minReward !== null) && (
               <div className="flex items-center gap-2 ml-auto">
                 <span className="text-xs text-neutral-500">Active:</span>
-                {filterSource !== "all" && (
+                {filters.source !== "all" && (
                   <span className="px-2 py-1 text-xs font-mono bg-blue-50 text-blue-700 border border-blue-200">
-                    {filterSource}
+                    {filters.source}
                   </span>
                 )}
-                {minRewardFilter !== null && (
+                {filters.minReward !== null && (
                   <span className="px-2 py-1 text-xs font-mono bg-green-50 text-green-700 border border-green-200">
-                    ≥${minRewardFilter}
+                    ≥${filters.minReward}
                   </span>
                 )}
               </div>
@@ -279,8 +247,11 @@ export function JobList({ onAcceptJob, isAccepting = false }: JobListProps) {
                 {jobs.length > 0 && filteredJobs.length === 0 && (
                   <Button
                     onClick={() => {
-                      setFilterSource("all");
-                      setMinRewardFilter(null);
+                      setFilters({
+                        ...filters,
+                        source: "all",
+                        minReward: null,
+                      });
                     }}
                     variant="secondary"
                     size="sm"
@@ -332,35 +303,6 @@ const JobListItem = React.memo(function JobListItem({
   staggerIndex,
   onOpen,
 }: JobListItemProps) {
-  // Get reward color based on value
-  const getRewardColor = (reward: number): string => {
-    if (reward >= 10) return "text-green-600";
-    if (reward >= 5) return "text-yellow-600";
-    return "text-neutral-600";
-  };
-
-  // Get source badge styles
-  const getSourceBadge = (source: Job["source"]): string => {
-    const styles = {
-      rss: "bg-orange-50 border-orange-200 text-orange-700",
-      websocket: "bg-blue-50 border-blue-200 text-blue-700",
-    };
-    return styles[source];
-  };
-
-  // Format timestamp to relative time
-  const formatTimeAgo = (timestamp?: string): string => {
-    if (!timestamp) return "now";
-
-    const date = new Date(timestamp);
-    const now = new Date();
-    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-    if (seconds < 60) return "now";
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-    return `${Math.floor(seconds / 86400)}d`;
-  };
 
   return (
     <div

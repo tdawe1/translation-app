@@ -6,14 +6,9 @@
 
 export { JobList } from "./job-list";
 export { JobDetailModal, JobDetailTrigger } from "./job-detail-modal";
-export {
-  JobFilterPanel,
-  filterJobs,
-  type JobFilters,
-  type FilterSource,
-  type SortBy,
-  type TimeFilter,
-} from "./job-filter-panel";
+export { JobFilterPanel } from "./job-filter-panel";
+export { filterJobs } from "./utils/filters";
+export type { JobFilters, FilterSource, SortBy, TimeFilter } from "./utils/types";
 
 // Re-export types from store
 export type { Job, ExtendedJob } from "@/store/jobs";

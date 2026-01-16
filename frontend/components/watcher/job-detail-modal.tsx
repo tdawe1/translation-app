@@ -13,6 +13,7 @@ import { BentoCard } from "@/components/ui/base/BentoCard";
 import { Button } from "@/components/ui/base/Button";
 import { DESIGN } from "@/lib/design/tokens";
 import { cn } from "@/lib/utils";
+import { formatTimeAgoDetailed, getRewardColor, getSourceBadge } from "./utils/formatters";
 
 interface JobDetailModalProps {
   /** Job to display details for */
@@ -70,35 +71,6 @@ export function JobDetailModal({
     }
   };
 
-  // Format timestamp to relative time
-  const formatTimeAgo = (timestamp?: string): string => {
-    if (!timestamp) return "Just now";
-
-    const date = new Date(timestamp);
-    const now = new Date();
-    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-    if (seconds < 60) return "Just now";
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    return `${Math.floor(seconds / 86400)}d ago`;
-  };
-
-  // Get reward color based on value
-  const getRewardColor = (reward: number): string => {
-    if (reward >= 10) return "text-green-600";
-    if (reward >= 5) return "text-yellow-600";
-    return "text-neutral-600";
-  };
-
-  // Get source badge styles
-  const getSourceBadge = (source: Job["source"]): string => {
-    const styles = {
-      rss: "bg-orange-50 border-orange-200 text-orange-700",
-      websocket: "bg-blue-50 border-blue-200 text-blue-700",
-    };
-    return styles[source];
-  };
 
   if (!isOpen) return null;
 
@@ -174,7 +146,7 @@ export function JobDetailModal({
           {/* Meta Info */}
           <div className="flex items-center gap-4 text-xs text-neutral-500">
             <span className="font-mono">
-              {formatTimeAgo(job.timestamp)}
+              {formatTimeAgoDetailed(job.timestamp)}
             </span>
             {job.deadline && (
               <>
@@ -218,7 +190,7 @@ export function JobDetailModal({
         {job.filterReason && (
           <div className={cn(
             "mb-6 p-3 border",
-            DESIGN.semantic.warning
+            DESIGN.colors.semantic.warning
           )}>
             <h3 className={cn("mb-1", DESIGN.typography.label, "text-yellow-800")}>
               Filtered

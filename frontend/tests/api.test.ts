@@ -337,28 +337,7 @@ describe('HttpClient Request Deduplication', () => {
   });
 
   describe('cache key generation', () => {
-    it('includes method, path, and body in cache key', () => {
-      // We can't directly test getCacheKey since it's private,
-      // but we can observe the behavior through deduplication
-      process.env.NEXT_PUBLIC_ENABLE_REQUEST_DEDUP = 'true'; // Ensure enabled
-      client = new HttpClient('http://test.local');
-
-      mockFetch.mockImplementation(async () => ({
-        ok: true,
-        json: async () => ({ data: 'ok' }),
-      }));
-
-      const pendingRequests = getPendingRequests(client);
-
-      // POST with body
-      client.post('/api/test', { foo: 'bar' });
-
-      // Check the cache key format
-      const expectedKey = 'POST:/api/test:' + JSON.stringify({ foo: 'bar' });
-      expect(pendingRequests.has(expectedKey)).toBe(true);
-    });
-
-    it('treats GET requests without body as having no body suffix', () => {
+    it('includes method, path, and body in cache key', async () => {
       process.env.NEXT_PUBLIC_ENABLE_REQUEST_DEDUP = 'true';
       client = new HttpClient('http://test.local');
 
@@ -369,10 +348,30 @@ describe('HttpClient Request Deduplication', () => {
 
       const pendingRequests = getPendingRequests(client);
 
-      client.get('/api/test');
+      const promise = client.post('/api/test', { foo: 'bar' });
 
-      // GET requests don't have body in cache key
+      const expectedKey = 'POST:/api/test:' + JSON.stringify({ foo: 'bar' });
+      expect(pendingRequests.has(expectedKey)).toBe(true);
+
+      await promise;
+    });
+
+    it('treats GET requests without body as having no body suffix', async () => {
+      process.env.NEXT_PUBLIC_ENABLE_REQUEST_DEDUP = 'true';
+      client = new HttpClient('http://test.local');
+
+      mockFetch.mockImplementation(async () => ({
+        ok: true,
+        json: async () => ({ data: 'ok' }),
+      }));
+
+      const pendingRequests = getPendingRequests(client);
+
+      const promise = client.get('/api/test');
+
       expect(pendingRequests.has('GET:/api/test')).toBe(true);
+
+      await promise;
     });
   });
 });

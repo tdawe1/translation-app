@@ -12,23 +12,16 @@ import { BentoCard } from "@/components/ui/base/BentoCard";
 import { Button } from "@/components/ui/base/Button";
 import { DESIGN } from "@/lib/design/tokens";
 import { cn } from "@/lib/utils";
+import { QUICK_FILTERS } from "./utils/constants";
+import type {
+  FilterSource,
+  JobFilters,
+  QuickFilterPreset,
+  SortBy,
+  TimeFilter,
+} from "./utils/types";
 
-// ============================================================================
-// TYPES
-// ============================================================================
-
-export type FilterSource = "all" | "rss" | "websocket";
-export type SortBy = "newest" | "reward-high" | "reward-low";
-export type TimeFilter = "all" | "today" | "hour" | "week";
-
-export interface JobFilters {
-  source: FilterSource;
-  sortBy: SortBy;
-  minReward: number | null;
-  maxReward: number | null;
-  timeFilter: TimeFilter;
-  languagePairs: string[]; // For future use
-}
+export type { FilterSource, JobFilters, SortBy, TimeFilter } from "./utils/types";
 
 export interface JobFilterPanelProps {
   /** Current filter values */
@@ -42,76 +35,6 @@ export interface JobFilterPanelProps {
   /** Whether to show compact version */
   compact?: boolean;
 }
-
-interface QuickFilterPreset {
-  id: string;
-  label: string;
-  description: string;
-  accentColor: "red" | "orange" | "yellow" | "green" | "cyan" | "blue" | "indigo" | "violet";
-  apply: (current: JobFilters) => JobFilters;
-}
-
-// ============================================================================
-// QUICK FILTER PRESETS
-// ============================================================================
-
-const QUICK_FILTERS: QuickFilterPreset[] = [
-  {
-    id: "all",
-    label: "All Jobs",
-    description: "Show all detected jobs",
-    accentColor: "blue",
-    apply: () => ({
-      source: "all",
-      sortBy: "newest",
-      minReward: null,
-      maxReward: null,
-      timeFilter: "all",
-      languagePairs: [],
-    }),
-  },
-  {
-    id: "high-value",
-    label: "High Value",
-    description: "$10+ reward only",
-    accentColor: "green",
-    apply: (current) => ({
-      ...current,
-      minReward: 10,
-      maxReward: null,
-    }),
-  },
-  {
-    id: "new-today",
-    label: "New Today",
-    description: "Last 24 hours",
-    accentColor: "cyan",
-    apply: (current) => ({
-      ...current,
-      timeFilter: "today",
-    }),
-  },
-  {
-    id: "rss-only",
-    label: "RSS Feed",
-    description: "RSS source only",
-    accentColor: "orange",
-    apply: (current) => ({
-      ...current,
-      source: "rss",
-    }),
-  },
-  {
-    id: "websocket-only",
-    label: "WebSocket",
-    description: "WebSocket source only",
-    accentColor: "indigo",
-    apply: (current) => ({
-      ...current,
-      source: "websocket",
-    }),
-  },
-];
 
 // ============================================================================
 // MAIN COMPONENT
@@ -479,76 +402,3 @@ export function JobFilterPanel({
   );
 }
 
-// ============================================================================
-// HELPER: Apply filters to job list
-// ============================================================================
-
-/**
- * Filter jobs based on the provided filter criteria.
- * This is a pure function that can be used independently of the UI.
- */
-export interface Job {
-  id: string;
-  title: string;
-  reward: number;
-  url: string;
-  source: "rss" | "websocket";
-  timestamp?: string;
-}
-
-export function filterJobs(jobs: Job[], filters: JobFilters): Job[] {
-  let result = [...jobs];
-
-  // Filter by source
-  if (filters.source !== "all") {
-    result = result.filter((job) => job.source === filters.source);
-  }
-
-  // Filter by reward range
-  if (filters.minReward !== null) {
-    result = result.filter((job) => job.reward >= filters.minReward!);
-  }
-  if (filters.maxReward !== null) {
-    result = result.filter((job) => job.reward <= filters.maxReward!);
-  }
-
-  // Filter by time
-  if (filters.timeFilter !== "all") {
-    const now = new Date();
-    const cutoff = new Date();
-
-    switch (filters.timeFilter) {
-      case "hour":
-        cutoff.setHours(now.getHours() - 1);
-        break;
-      case "today":
-        cutoff.setHours(0, 0, 0, 0);
-        break;
-      case "week":
-        cutoff.setDate(now.getDate() - 7);
-        break;
-    }
-
-    result = result.filter((job) => {
-      if (!job.timestamp) return true;
-      const jobDate = new Date(job.timestamp);
-      return jobDate >= cutoff;
-    });
-  }
-
-  // Sort
-  switch (filters.sortBy) {
-    case "reward-high":
-      result.sort((a, b) => b.reward - a.reward);
-      break;
-    case "reward-low":
-      result.sort((a, b) => a.reward - b.reward);
-      break;
-    case "newest":
-    default:
-      // Jobs are assumed to be in newest-first order
-      break;
-  }
-
-  return result;
-}
