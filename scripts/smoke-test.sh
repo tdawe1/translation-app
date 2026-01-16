@@ -12,9 +12,9 @@ NC='\033[0m' # No Color
 
 # Service configuration
 POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
-POSTGRES_PORT="${POSTGRES_PORT:-5433}"
+POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 REDIS_HOST="${REDIS_HOST:-localhost}"
-REDIS_PORT="${REDIS_PORT:-6380}"
+REDIS_PORT="${REDIS_PORT:-6379}"
 BACKEND_URL="${BACKEND_URL:-http://localhost:8000}"
 FRONTEND_URL="${FRONTEND_URL:-http://localhost:3001}"
 
@@ -23,45 +23,45 @@ echo "🔍 Checking service health..."
 # 1. Check PostgreSQL
 echo -n "  PostgreSQL (port $POSTGRES_PORT)... "
 if pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC}"
+	echo -e "${GREEN}✓${NC}"
 else
-    echo -e "${RED}✗${NC}"
-    echo -e "${RED}❌ PostgreSQL not ready${NC}"
-    echo "💡 Run: ./scripts/dev.sh docker start"
-    exit 1
+	echo -e "${RED}✗${NC}"
+	echo -e "${RED}❌ PostgreSQL not ready${NC}"
+	echo "💡 Run: ./scripts/dev.sh docker start"
+	exit 1
 fi
 
 # 2. Check Redis
 echo -n "  Redis (port $REDIS_PORT)... "
 if redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" ping >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC}"
+	echo -e "${GREEN}✓${NC}"
 else
-    echo -e "${RED}✗${NC}"
-    echo -e "${RED}❌ Redis not ready${NC}"
-    echo "💡 Run: ./scripts/dev.sh docker start"
-    exit 1
+	echo -e "${RED}✗${NC}"
+	echo -e "${RED}❌ Redis not ready${NC}"
+	echo "💡 Run: ./scripts/dev.sh docker start"
+	exit 1
 fi
 
 # 3. Check Backend (health endpoint)
 echo -n "  Backend (${BACKEND_URL})... "
 if curl -sf "${BACKEND_URL}/health" >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC}"
+	echo -e "${GREEN}✓${NC}"
 else
-    echo -e "${RED}✗${NC}"
-    echo -e "${RED}❌ Backend not ready${NC}"
-    echo "💡 Run: ./scripts/dev.sh backend start"
-    exit 1
+	echo -e "${RED}✗${NC}"
+	echo -e "${RED}❌ Backend not ready${NC}"
+	echo "💡 Run: ./scripts/dev.sh backend start"
+	exit 1
 fi
 
 # 4. Check Frontend (responds on configured port)
 echo -n "  Frontend (${FRONTEND_URL})... "
 if curl -sf "$FRONTEND_URL" >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC}"
+	echo -e "${GREEN}✓${NC}"
 else
-    echo -e "${RED}✗${NC}"
-    echo -e "${RED}❌ Frontend not ready${NC}"
-    echo "💡 Run: ./scripts/dev.sh frontend start"
-    exit 1
+	echo -e "${RED}✗${NC}"
+	echo -e "${RED}❌ Frontend not ready${NC}"
+	echo "💡 Run: ./scripts/dev.sh frontend start"
+	exit 1
 fi
 
 echo ""
