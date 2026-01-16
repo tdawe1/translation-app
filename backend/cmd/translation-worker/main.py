@@ -17,7 +17,13 @@ import tomli
 from pathlib import Path
 from typing import Optional
 
+import json
+import os
 from job_queue import JobManager, JobState
+from review.workflow import TranslationWorkflow, ReviewWorkflowBuilder
+from review.multimodel import MultiModelTranslator
+from review.judge import TranslationJudge
+from review.llm import get_provider, AnthropicProvider, OpenAIProvider
 
 
 def load_config(config_path: str = "config.toml") -> dict:
@@ -141,20 +147,20 @@ class QueueConsumer:
     """Consumes jobs from Redis queue and processes them."""
 
     def __init__(
-        self, job_manager: JobManager, worker_id: str, max_concurrent: int = 3
+        self,
+        job_manager: JobManager,
+        worker_id: str,
+        max_concurrent: int = 3,
+        workflow: Optional[TranslationWorkflow] = None,
+        config: Optional[dict] = None,
     ):
-        """Initialize queue consumer.
-
-        Args:
-            job_manager: JobManager instance for queue operations
-            worker_id: Worker identifier
-            max_concurrent: Maximum concurrent jobs to process
-        """
         self.job_manager = job_manager
         self.worker_id = worker_id
         self.max_concurrent = max_concurrent
         self.running = False
         self.active_jobs: dict[str, dict] = {}
+        self.workflow = workflow
+        self.config = config or {}
 
     def start(self, poll_interval: int = 1):
         """Start the queue consumer loop.
@@ -205,32 +211,216 @@ class QueueConsumer:
         self._process_job(job)
 
     def _process_job(self, job: dict):
-        """Process a single job.
-
-        Args:
-            job: Job data dict
-        """
+        """Process a single translation job through the workflow."""
         job_id = job.get("id")
+        if not job_id:
+            print("Warning: Job missing ID, skipping")
+            return
 
-        # Mark as translating
+        source_file = job.get("source_file", "")
+        project_type = job.get("project_type", "routine")
+
         self.job_manager.set_state(job_id, JobState.TRANSLATING, self.worker_id)
-
-        # TODO: Execute actual translation pipeline
-        # For now, simulate processing
         self.active_jobs[job_id] = job
 
-        # Placeholder: In real implementation, this would:
-        # 1. Load any existing checkpoint
-        # 2. Resume or start translation
-        # 3. Save checkpoints periodically
-        # 4. Update progress via publish_progress
+        try:
+            if not self.workflow:
+                print(
+                    f"Warning: No workflow configured, completing job {job_id} as stub"
+                )
+                self.job_manager.set_state(job_id, JobState.COMPLETED, self.worker_id)
+                self.job_manager.publish_progress(job_id, 1.0, "No workflow configured")
+                del self.active_jobs[job_id]
+                return
 
-        # Mark as completed (placeholder)
-        self.job_manager.set_state(job_id, JobState.COMPLETED, self.worker_id)
-        self.job_manager.publish_progress(job_id, 1.0, "Translation completed")
-        print(f"Job completed: {job_id}")
+            segments = self._extract_segments(source_file)
+            if not segments:
+                self.job_manager.set_state(job_id, JobState.FAILED, self.worker_id)
+                self.job_manager.publish_progress(job_id, 0.0, "No segments extracted")
+                del self.active_jobs[job_id]
+                return
 
-        del self.active_jobs[job_id]
+            workflow_job = self.workflow.create_job(
+                source_file=source_file,
+                target_file=job.get(
+                    "target_file", source_file.replace(".", "_translated.")
+                ),
+                project_type=project_type,
+                segments=segments,
+            )
+            user_id = job.get("user_id")
+
+            def progress_callback(message: str, current: int, total: int):
+                progress = current / total if total > 0 else 0
+                self.job_manager.publish_progress(job_id, progress, message)
+                self._store_segments_to_redis(job_id, workflow_job, user_id)
+
+            processed_job = self.workflow.process_job(workflow_job, progress_callback)
+            self._store_segments_to_redis(job_id, processed_job, user_id)
+
+            final_status = JobState.REVIEW_PENDING
+            if processed_job.status == "approved":
+                final_status = JobState.COMPLETED
+            elif processed_job.status == "rejected":
+                final_status = JobState.FAILED
+
+            self.job_manager.set_state(job_id, final_status, self.worker_id)
+
+            self.job_manager.publish_progress(
+                job_id,
+                1.0,
+                f"Translation complete: score={processed_job.overall_score:.2f}, flagged={processed_job.flagged_count}",
+            )
+
+            print(
+                f"Job {job_id} processed: score={processed_job.overall_score:.2f}, flagged={processed_job.flagged_count}"
+            )
+
+        except Exception as e:
+            print(f"Error processing job {job_id}: {e}")
+            import traceback
+
+            traceback.print_exc()
+            self.job_manager.set_state(job_id, JobState.FAILED, self.worker_id)
+            self.job_manager.publish_progress(job_id, 0.0, f"Error: {str(e)}")
+        finally:
+            if job_id in self.active_jobs:
+                del self.active_jobs[job_id]
+
+    def _extract_segments(self, source_file: str) -> list[dict]:
+        """Extract translatable segments from a source file."""
+        from pathlib import Path
+
+        file_path = Path(source_file)
+        if not file_path.exists():
+            print(f"Warning: Source file not found: {source_file}")
+            return []
+
+        ext = file_path.suffix.lower()
+        segments = []
+
+        try:
+            if ext == ".docx":
+                from parsers import create_docx_parser
+
+                parser = create_docx_parser()
+                parsed = parser.parse(str(file_path))
+                for i, seg in enumerate(parsed.segments):
+                    segments.append(
+                        {
+                            "id": seg.id or f"para_{i + 1}",
+                            "source": seg.text,
+                            "context": seg.context,
+                        }
+                    )
+            elif ext == ".pptx":
+                from parsers import create_pptx_parser
+
+                parser = create_pptx_parser()
+                parsed = parser.parse(str(file_path))
+                for i, seg in enumerate(parsed.segments):
+                    segments.append(
+                        {
+                            "id": seg.id or f"slide_text_{i + 1}",
+                            "source": seg.text,
+                            "context": seg.context,
+                        }
+                    )
+            elif ext == ".pdf":
+                from parsers import create_pdf_parser
+
+                parser = create_pdf_parser()
+                parsed = parser.parse(str(file_path))
+                for i, seg in enumerate(parsed.segments):
+                    segments.append(
+                        {
+                            "id": seg.id or f"page_block_{i + 1}",
+                            "source": seg.text,
+                            "context": seg.context,
+                        }
+                    )
+            elif ext == ".xlsx":
+                from parsers import create_xlsx_parser
+
+                parser = create_xlsx_parser()
+                parsed = parser.parse(str(file_path))
+                for i, seg in enumerate(parsed.segments):
+                    text = seg.text.strip()
+                    if text and not text.replace(".", "").isdigit():
+                        segments.append(
+                            {
+                                "id": seg.id or f"cell_{i + 1}",
+                                "source": text,
+                                "context": seg.context,
+                            }
+                        )
+            elif ext in [".txt", ".md"]:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                for i, line in enumerate(lines):
+                    text = line.strip()
+                    if text:
+                        segments.append(
+                            {
+                                "id": f"line_{i + 1}",
+                                "source": text,
+                                "context": {"type": "line", "index": i},
+                            }
+                        )
+            else:
+                print(f"Warning: Unsupported file type: {ext}")
+
+        except Exception as e:
+            print(f"Error extracting segments from {source_file}: {e}")
+
+        return segments
+
+    def _store_segments_to_redis(
+        self, job_id: str, workflow_job, user_id: Optional[str] = None
+    ) -> None:
+        redis_key = f"trans:{job_id}:segments"
+
+        try:
+            segments_data = []
+            for seg in workflow_job.segments:
+                seg_data = {
+                    "segment_id": seg.id,
+                    "job_id": job_id,
+                    "user_id": user_id,
+                    "source": seg.source,
+                    "target": seg.target,
+                    "judge_winner": seg.judge_winner,
+                    "judge_confidence": seg.judge_confidence,
+                    "judge_reasoning": seg.judge_reasoning,
+                    "is_flagged": seg.is_flagged,
+                    "flag_reason": getattr(seg, "flag_reason", ""),
+                    "model_a_output": getattr(seg, "model_a_output", ""),
+                    "model_b_output": getattr(seg, "model_b_output", ""),
+                }
+                segments_data.append(json.dumps(seg_data))
+
+            if segments_data:
+                self.job_manager.redis_client.delete(redis_key)
+                self.job_manager.redis_client.rpush(redis_key, *segments_data)
+                self.job_manager.redis_client.expire(redis_key, 86400 * 7)
+
+            job_meta = {
+                "status": workflow_job.status,
+                "overall_score": str(workflow_job.overall_score),
+                "segment_count": str(workflow_job.segment_count),
+                "flagged_count": str(workflow_job.flagged_count),
+                "progress": "1.0"
+                if workflow_job.status in ["completed", "approved", "pending_approval"]
+                else "0.5",
+            }
+            if job_id:
+                job_meta["job_id"] = job_id
+            if user_id:
+                job_meta["user_id"] = user_id
+            self.job_manager.redis_client.hset(f"trans:{job_id}", mapping=job_meta)
+
+        except Exception as e:
+            print(f"Warning: Failed to store segments to Redis: {e}")
 
     def _cleanup_completed_jobs(self):
         """Remove completed jobs from active tracking."""
@@ -298,6 +488,7 @@ def main():
         # Initialize JobManager if job queue enabled
         job_queue_config = config.get("job_queue", {})
         job_queue_enabled = job_queue_config.get("enabled", False)
+        poll_interval = 1
 
         if job_queue_enabled:
             redis_host, redis_port, redis_db, redis_pwd = get_redis_config(config)
