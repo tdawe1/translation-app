@@ -255,12 +255,12 @@ export default function TranslationJobPage() {
                 <div className="relative pt-1">
                   <div className="flex mb-2 items-center justify-between">
                     <span className="text-3xl font-light text-neutral-900">
-                      {currentJob?.progress ?? 0}%
+                      {Math.round(Math.min(100, Math.max(0, (currentJob?.progress ?? 0) * 100)))}%
                     </span>
                   </div>
                   <div className="overflow-hidden h-1 mb-4 text-xs flex rounded bg-green-100">
                     <div
-                      style={{ width: `${currentJob?.progress ?? 0}%` }}
+                      style={{ width: `${Math.min(100, Math.max(0, (currentJob?.progress ?? 0) * 100))}%` }}
                       className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-green-500 transition-all duration-500"
                     ></div>
                   </div>

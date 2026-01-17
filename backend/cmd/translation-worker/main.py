@@ -272,7 +272,8 @@ class SegmentStore:
             workflow_job: WorkflowJob with segments
             user_id: Optional user ID for namespacing
         """
-        redis_key = f"trans:{job_id}:segments"
+        job_key = f"user:{user_id}:trans:{job_id}" if user_id else f"trans:{job_id}"
+        redis_key = f"{job_key}:segments"
 
         try:
             segments_data = []
@@ -319,7 +320,8 @@ class SegmentStore:
             job_meta["job_id"] = job_id
         if user_id:
             job_meta["user_id"] = user_id
-        self.redis_client.hset(f"trans:{job_id}", mapping=job_meta)
+        job_key = f"user:{user_id}:trans:{job_id}" if user_id else f"trans:{job_id}"
+        self.redis_client.hset(job_key, mapping=job_meta)
 
 
 class QueueConsumer:
