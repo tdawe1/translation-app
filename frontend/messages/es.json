@@ -1,0 +1,103 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "update": "Actualizar",
+    "confirm": "Confirmar",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "clear": "Limpiar",
+    "refresh": "Actualizar",
+    "actions": "Acciones"
+  },
+  "auth": {
+    "signIn": "Iniciar Sesión",
+    "signOut": "Cerrar Sesión",
+    "signUp": "Registrarse",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "resetPassword": "Restablecer Contraseña",
+    "invalidCredentials": "Correo o contraseña inválidos",
+    "signInWithGoogle": "Iniciar con Google",
+    "signInWithGitHub": "Iniciar con GitHub",
+    "magicLink": "Enviar Enlace Mágico",
+    "magicLinkSent": "Enlace mágico enviado a tu correo",
+    "name": "Nombre"
+  },
+  "dashboard": {
+    "title": "Tablero",
+    "welcome": "Bienvenido de nuevo",
+    "overview": "Resumen",
+    "recentActivity": "Actividad Reciente",
+    "stats": {
+      "totalJobs": "Total de Trabajos",
+      "activeJobs": "Trabajos Activos",
+      "completedJobs": "Trabajos Completados",
+      "failedJobs": "Trabajos Fallidos"
+    }
+  },
+  "watcher": {
+    "title": "Gengo Watcher",
+    "createJob": "Crear Nuevo Trabajo",
+    "jobDetails": "Detalles del Trabajo",
+    "filters": {
+      "title": "Filtros",
+      "status": "Estado",
+      "dateRange": "Rango de Fechas",
+      "sourceFile": "Archivo Fuente",
+      "allStatuses": "Todos los Estados",
+      "activeFilters": "Filtros Activos",
+      "clearAll": "Limpiar Todo"
+    },
+    "status": {
+      "pending": "Pendiente",
+      "processing": "Procesando",
+      "completed": "Completado",
+      "failed": "Fallido"
+    },
+    "segments": {
+      "total": "Total de Segmentos",
+      "translated": "Traducidos",
+      "pending": "Pendientes",
+      "failed": "Fallidos"
+    },
+    "actions": {
+      "deleteJob": "Eliminar Trabajo",
+      "deleteConfirmation": "¿Estás seguro de que deseas eliminar este trabajo?",
+      "viewDetails": "Ver Detalles",
+      "retryFailed": "Reintentar Segmentos Fallidos"
+    }
+  },
+  "settings": {
+    "title": "Configuración",
+    "profile": "Perfil",
+    "account": "Cuenta",
+    "notifications": "Notificaciones",
+    "language": "Idioma",
+    "theme": "Tema"
+  },
+  "api": {
+    "error": "Ocurrió un error",
+    "networkError": "Error de red",
+    "serverError": "Error del servidor",
+    "unauthorized": "No autorizado",
+    "forbidden": "Prohibido",
+    "notFound": "No encontrado",
+    "validationError": "Error de validación"
+  },
+  "languages": {
+    "en": "Inglés",
+    "es": "Español",
+    "fr": "Francés",
+    "de": "Alemán"
+  }
+}
