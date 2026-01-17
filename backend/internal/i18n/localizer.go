@@ -1,10 +1,9 @@
 package i18n
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/nicksnyder/go-i18n/v2/i18n"
@@ -12,6 +11,8 @@ import (
 )
 
 var (
+	//go:embed translations/*/*.json
+	i18nFS     embed.FS
 	bundle     *i18n.Bundle
 	bundleOnce sync.Once
 	English    = language.English
@@ -29,10 +30,10 @@ func Init() error {
 		bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
 
 		for _, lang := range []string{"en", "es", "fr", "de", "ja"} {
-			path := filepath.Join("i18n", lang, fmt.Sprintf("active.%s.json", lang))
-			data, err := os.ReadFile(path)
+			path := fmt.Sprintf("translations/%s/active.%s.json", lang, lang)
+			data, err := i18nFS.ReadFile(path)
 			if err != nil {
-				initErr = fmt.Errorf("failed to read translation file %s: %w", path, err)
+				initErr = fmt.Errorf("failed to read embedded translation file %s: %w", path, err)
 				return
 			}
 			if _, err := bundle.ParseMessageFileBytes(data, path); err != nil {
@@ -46,12 +47,6 @@ func Init() error {
 
 // Localizer returns a localizer for given language tag
 func Localizer(tag language.Tag) *i18n.Localizer {
-	if bundle == nil {
-		if err := Init(); err != nil {
-			fallback := i18n.NewBundle(language.English)
-			return i18n.NewLocalizer(fallback, language.English.String())
-		}
-	}
 	return i18n.NewLocalizer(bundle, tag.String())
 }
 
@@ -66,18 +61,6 @@ func GetLocalizedMessage(tag language.Tag, key string, templateData map[string]i
 		return key
 	}
 	return msg
-}
-
-// GetLocalizedMessagef is a convenience function that formats message with variadic args
-func GetLocalizedMessagef(tag language.Tag, key string, args ...interface{}) string {
-	loc := Localizer(tag)
-	msg, err := loc.Localize(&i18n.LocalizeConfig{
-		MessageID: key,
-	})
-	if err != nil {
-		return key
-	}
-	return fmt.Sprintf(msg, args...)
 }
 
 // ParseLanguageTag parses an Accept-Language header or locale string into a language tag

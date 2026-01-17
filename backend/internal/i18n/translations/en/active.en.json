@@ -44,13 +44,13 @@
     "fileTooLarge": "File is too large",
     "invalidNumber": "Invalid number format",
     "invalidBoolean": "Invalid boolean format",
-    "minValue": "Value must be at least %d",
-    "maxValue": "Value must be at most %d",
-    "minLength": "Length must be at least %d characters",
-    "maxLength": "Length must be at most %d characters"
+    "minValue": "Value must be at least {{.Value}}",
+    "maxValue": "Value must be at most {{.Value}}",
+    "minLength": "Length must be at least {{.Value}} characters",
+    "maxLength": "Length must be at most {{.Value}} characters"
   },
   "server": {
-    "serverStarted": "Server started on %s",
+    "serverStarted": "Server started on {{.Address}}",
     "serverStopped": "Server stopped",
     "gracefulShutdown": "Graceful shutdown initiated",
     "shutdownTimeout": "Shutdown timeout, forcing exit",
