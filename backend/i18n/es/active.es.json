@@ -1,0 +1,62 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "invalidRequest": "Solicitud inválida",
+    "unauthorized": "No autorizado",
+    "forbidden": "Prohibido",
+    "notFound": "No encontrado",
+    "internalError": "Error interno del servidor"
+  },
+  "auth": {
+    "invalidCredentials": "Correo o contraseña inválidos",
+    "userNotFound": "Usuario no encontrado",
+    "userExists": "El usuario ya existe",
+    "invalidToken": "Token inválido",
+    "tokenExpired": "Token expirado",
+    "logoutFailed": "Error al cerrar sesión",
+    "passwordTooShort": "La contraseña debe tener al menos 8 caracteres",
+    "passwordsDoNotMatch": "Las contraseñas no coinciden",
+    "invalidEmail": "Dirección de correo inválida",
+    "oauthFailed": "Autenticación OAuth fallida",
+    "magicLinkSent": "Enlace mágico enviado a tu correo",
+    "magicLinkFailed": "Error al enviar enlace mágico"
+  },
+  "watcher": {
+    "notConfigured": "Watcher no configurado",
+    "alreadyRunning": "El watcher ya está ejecutándose",
+    "notRunning": "El watcher no está ejecutándose",
+    "startFailed": "Error al iniciar el watcher",
+    "stopFailed": "Error al detener el watcher",
+    "configNotFound": "Configuración del watcher no encontrada",
+    "invalidConfig": "Configuración del watcher inválida",
+    "jobNotFound": "Trabajo de traducción no encontrado",
+    "segmentNotFound": "Segmento de traducción no encontrado",
+    "jobDeleted": "Trabajo de traducción eliminado",
+    "jobDeleteFailed": "Error al eliminar trabajo de traducción"
+  },
+  "validation": {
+    "required": "Este campo es obligatorio",
+    "invalidEmail": "Formato de correo inválido",
+    "invalidURL": "Formato de URL inválido",
+    "invalidFile": "Tipo de archivo inválido",
+    "fileTooLarge": "El archivo es demasiado grande",
+    "invalidNumber": "Formato de número inválido",
+    "invalidBoolean": "Formato booleano inválido",
+    "minValue": "El valor debe ser al menos %d",
+    "maxValue": "El valor debe ser a lo sumo %d",
+    "minLength": "La longitud debe ser de al menos %d caracteres",
+    "maxLength": "La longitud debe ser de a lo sumo %d caracteres"
+  },
+  "server": {
+    "serverStarted": "Servidor iniciado en %s",
+    "serverStopped": "Servidor detenido",
+    "gracefulShutdown": "Apagado elegante iniciado",
+    "shutdownTimeout": "Tiempo de espera de apagado, forzando salida",
+    "databaseConnected": "Base de datos conectada",
+    "databaseFailed": "Error al conectar a la base de datos",
+    "redisConnected": "Redis conectado",
+    "redisFailed": "Error al conectar a Redis"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "invalidRequest": "Invalid request",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "notFound": "Not found",
+    "internalError": "Internal server error"
+  },
+  "auth": {
+    "invalidCredentials": "Invalid email or password",
+    "userNotFound": "User not found",
+    "userExists": "User already exists",
+    "invalidToken": "Invalid token",
+    "tokenExpired": "Token expired",
+    "logoutFailed": "Failed to logout",
+    "passwordTooShort": "Password must be at least 8 characters",
+    "passwordsDoNotMatch": "Passwords do not match",
+    "invalidEmail": "Invalid email address",
+    "oauthFailed": "OAuth authentication failed",
+    "magicLinkSent": "Magic link sent to your email",
+    "magicLinkFailed": "Failed to send magic link"
+  },
+  "watcher": {
+    "notConfigured": "Watcher not configured",
+    "alreadyRunning": "Watcher is already running",
+    "notRunning": "Watcher is not running",
+    "startFailed": "Failed to start watcher",
+    "stopFailed": "Failed to stop watcher",
+    "configNotFound": "Watcher configuration not found",
+    "invalidConfig": "Invalid watcher configuration",
+    "jobNotFound": "Translation job not found",
+    "segmentNotFound": "Translation segment not found",
+    "jobDeleted": "Translation job deleted",
+    "jobDeleteFailed": "Failed to delete translation job"
+  },
+  "validation": {
+    "required": "This field is required",
+    "invalidEmail": "Invalid email format",
+    "invalidURL": "Invalid URL format",
+    "invalidFile": "Invalid file type",
+    "fileTooLarge": "File is too large",
+    "invalidNumber": "Invalid number format",
+    "invalidBoolean": "Invalid boolean format",
+    "minValue": "Value must be at least %d",
+    "maxValue": "Value must be at most %d",
+    "minLength": "Length must be at least %d characters",
+    "maxLength": "Length must be at most %d characters"
+  },
+  "server": {
+    "serverStarted": "Server started on %s",
+    "serverStopped": "Server stopped",
+    "gracefulShutdown": "Graceful shutdown initiated",
+    "shutdownTimeout": "Shutdown timeout, forcing exit",
+    "databaseConnected": "Database connected",
+    "databaseFailed": "Failed to connect to database",
+    "redisConnected": "Redis connected",
+    "redisFailed": "Failed to connect to Redis"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "common": {
+    "loading": "Laden...",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "invalidRequest": "Ungültige Anfrage",
+    "unauthorized": "Nicht autorisiert",
+    "forbidden": "Verboten",
+    "notFound": "Nicht gefunden",
+    "internalError": "Interner Serverfehler"
+  },
+  "auth": {
+    "invalidCredentials": "Ungültige E-Mail oder Passwort",
+    "userNotFound": "Benutzer nicht gefunden",
+    "userExists": "Benutzer existiert bereits",
+    "invalidToken": "Ungültiges Token",
+    "tokenExpired": "Token abgelaufen",
+    "logoutFailed": "Abmelden fehlgeschlagen",
+    "passwordTooShort": "Passwort muss mindestens 8 Zeichen haben",
+    "passwordsDoNotMatch": "Passwörter stimmen nicht überein",
+    "invalidEmail": "Ungültige E-Mail-Adresse",
+    "oauthFailed": "OAuth-Authentifizierung fehlgeschlagen",
+    "magicLinkSent": "Magischer Link an Ihre E-Mail gesendet",
+    "magicLinkFailed": "Senden des magischen Links fehlgeschlagen"
+  },
+  "watcher": {
+    "notConfigured": "Watcher nicht konfiguriert",
+    "alreadyRunning": "Watcher läuft bereits",
+    "notRunning": "Watcher läuft nicht",
+    "startFailed": "Starten des Watchers fehlgeschlagen",
+    "stopFailed": "Stoppen des Watchers fehlgeschlagen",
+    "configNotFound": "Watcher-Konfiguration nicht gefunden",
+    "invalidConfig": "Ungültige Watcher-Konfiguration",
+    "jobNotFound": "Übersetzungsauftrag nicht gefunden",
+    "segmentNotFound": "Übersetzungssegment nicht gefunden",
+    "jobDeleted": "Übersetzungsauftrag gelöscht",
+    "jobDeleteFailed": "Löschen des Übersetzungsauftrags fehlgeschlagen"
+  },
+  "validation": {
+    "required": "Dieses Feld ist erforderlich",
+    "invalidEmail": "Ungültiges E-Mail-Format",
+    "invalidURL": "Ungültiges URL-Format",
+    "invalidFile": "Ungültiger Dateityp",
+    "fileTooLarge": "Datei ist zu groß",
+    "invalidNumber": "Ungültiges Zahlenformat",
+    "invalidBoolean": "Ungültiges boolesches Format",
+    "minValue": "Wert muss mindestens %d betragen",
+    "maxValue": "Wert darf höchstens %d betragen",
+    "minLength": "Länge muss mindestens %d Zeichen betragen",
+    "maxLength": "Länge darf höchstens %d Zeichen betragen"
+  },
+  "server": {
+    "serverStarted": "Server gestartet auf %s",
+    "serverStopped": "Server gestoppt",
+    "gracefulShutdown": "Elegantes Herunterfahren eingeleitet",
+    "shutdownTimeout": "Herunterfahren-Timeout, erzinge Beendigung",
+    "databaseConnected": "Datenbank verbunden",
+    "databaseFailed": "Verbindung zur Datenbank fehlgeschlagen",
+    "redisConnected": "Redis verbunden",
+    "redisFailed": "Verbindung zu Redis fehlgeschlagen"
+  }
+}
