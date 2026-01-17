@@ -45,7 +45,7 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
     // Validation for register mode
     if (mode === "register") {
       if (password.length < 8) {
-        setError(tCommon('error'));
+        setError(t('passwordTooShort'));
         return;
       }
       if (password !== confirmPassword) {
