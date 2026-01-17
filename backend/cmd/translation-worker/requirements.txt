@@ -5,6 +5,9 @@
 # Configuration (TOML parsing)
 tomli>=2.0.0
 
+# Async HTTP client
+httpx>=0.27.0
+
 # Process monitoring
 psutil>=5.9.0
 

@@ -21,11 +21,11 @@ from .base import BaseProvider, ProviderConfig, ProviderResponse
 logger = logging.getLogger(__name__)
 
 try:
-    import requests
+    import httpx
 
-    REQUESTS_AVAILABLE = True
+    HTTPX_AVAILABLE = True
 except ImportError:
-    REQUESTS_AVAILABLE = False
+    HTTPX_AVAILABLE = False
 
 
 @dataclass
@@ -68,29 +68,33 @@ class OllamaProvider(BaseProvider):
     def model(self) -> str:
         return self._ollama_config.model
 
-    def is_available(self) -> bool:
-        if not REQUESTS_AVAILABLE:
+    async def is_available_async(self) -> bool:
+        if not HTTPX_AVAILABLE:
             return False
         try:
-            response = requests.get(
-                f"{self._ollama_config.base_url}/api/tags", timeout=5
-            )
+            async with httpx.AsyncClient(timeout=5) as client:
+                response = await client.get(f"{self._ollama_config.base_url}/api/tags")
             return response.status_code == 200
-        except requests.exceptions.RequestException:
+        except httpx.RequestError:
             return False
 
-    def list_models(self) -> List[str]:
-        if not REQUESTS_AVAILABLE:
+    def is_available(self) -> bool:
+        return asyncio.run(self.is_available_async())
+
+    async def list_models_async(self) -> List[str]:
+        if not HTTPX_AVAILABLE:
             return []
         try:
-            response = requests.get(
-                f"{self._ollama_config.base_url}/api/tags", timeout=10
-            )
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(f"{self._ollama_config.base_url}/api/tags")
             response.raise_for_status()
             data = response.json()
             return [m["name"] for m in data.get("models", [])]
-        except requests.exceptions.RequestException:
+        except httpx.HTTPStatusError:
             return []
+
+    def list_models(self) -> List[str]:
+        return asyncio.run(self.list_models_async())
 
     @retry(
         stop=stop_after_attempt(3),
@@ -98,11 +102,11 @@ class OllamaProvider(BaseProvider):
         retry=retry_if_exception_type((Exception,)),
         reraise=True,
     )
-    def generate(
+    async def generate_async(
         self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.3
     ) -> ProviderResponse:
-        if not REQUESTS_AVAILABLE:
-            raise ImportError("requests package is required")
+        if not HTTPX_AVAILABLE:
+            raise ImportError("httpx package is required")
 
         start = time.time()
 
@@ -119,11 +123,11 @@ class OllamaProvider(BaseProvider):
             payload["options"]["num_predict"] = max_tokens
 
         try:
-            response = requests.post(
-                f"{self._ollama_config.base_url}/api/generate",
-                json=payload,
-                timeout=self._ollama_config.timeout,
-            )
+            async with httpx.AsyncClient(timeout=self._ollama_config.timeout) as client:
+                response = await client.post(
+                    f"{self._ollama_config.base_url}/api/generate",
+                    json=payload,
+                )
             response.raise_for_status()
             data = response.json()
 
@@ -143,9 +147,14 @@ class OllamaProvider(BaseProvider):
                 raw_response=data,
             )
 
-        except requests.exceptions.RequestException as e:
+        except httpx.RequestError as e:
             logger.error(f"Ollama request failed: {e}")
             raise RuntimeError(f"Ollama request failed: {e}") from e
+
+    def generate(
+        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.3
+    ) -> ProviderResponse:
+        return asyncio.run(self.generate_async(prompt, max_tokens, temperature))
 
     def _parse_response(self, data: dict) -> str:
         if isinstance(data, dict):
@@ -166,20 +175,12 @@ class OllamaProvider(BaseProvider):
 
         return ""
 
-    async def generate_async(
-        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.3
-    ) -> ProviderResponse:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, lambda: self.generate(prompt, max_tokens, temperature)
-        )
-
-    def translate(
+    async def translate_async(
         self, text: str, source_lang: str = "ja", target_lang: str = "en"
     ) -> "TranslationResult":
         prompt = self._build_translation_prompt(text, source_lang, target_lang)
 
-        if not self.is_available():
+        if not await self.is_available_async():
             return TranslationResult(
                 success=False,
                 translated_text="",
@@ -190,7 +191,7 @@ class OllamaProvider(BaseProvider):
             )
 
         try:
-            response = self.generate(prompt)
+            response = await self.generate_async(prompt)
             return TranslationResult(
                 success=True,
                 translated_text=response.text,
@@ -207,6 +208,11 @@ class OllamaProvider(BaseProvider):
                 model=self._ollama_config.model,
                 error=str(e),
             )
+
+    def translate(
+        self, text: str, source_lang: str = "ja", target_lang: str = "en"
+    ) -> "TranslationResult":
+        return asyncio.run(self.translate_async(text, source_lang, target_lang))
 
     def _build_translation_prompt(
         self, text: str, source_lang: str, target_lang: str

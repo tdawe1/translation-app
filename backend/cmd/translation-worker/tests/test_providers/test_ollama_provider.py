@@ -1,7 +1,7 @@
 import pytest
 import sys
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 
 worker_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(worker_dir))
@@ -25,46 +25,56 @@ class TestOllamaProviderInitialization:
 
 
 class TestOllamaProviderAvailability:
-    @patch("review.llm.ollama.requests.get")
-    def test_is_available_when_server_running(self, mock_get):
-        mock_get.return_value = Mock(status_code=200)
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    def test_is_available_when_server_running(self, mock_client_class):
+        mock_client = AsyncMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         assert provider.is_available() is True
 
-    @patch("review.llm.ollama.requests.get")
-    def test_is_available_when_server_down(self, mock_get):
-        mock_get.return_value = Mock(status_code=503)
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    def test_is_available_when_server_down(self, mock_client_class):
+        mock_client = AsyncMock()
+        mock_response = Mock()
+        mock_response.status_code = 503
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         assert provider.is_available() is False
 
-    @patch("review.llm.ollama.requests.get")
-    def test_is_available_handles_connection_error(self, mock_get):
-        import requests
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    def test_is_available_handles_connection_error(self, mock_client_class):
+        import httpx
 
-        mock_get.side_effect = requests.exceptions.ConnectionError()
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.ConnectError()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         assert provider.is_available() is False
 
 
 class TestOllamaProviderListModels:
-    @patch("review.llm.ollama.requests.get")
-    def test_list_models_returns_model_names(self, mock_get):
-        mock_get.return_value = Mock(
-            status_code=200,
-            json=Mock(
-                return_value={
-                    "models": [
-                        {"name": "llama3.1:8b", "size": 4882919328},
-                        {"name": "llama3.1:70b", "size": 42101985824},
-                        {"name": "qwen2.5:72b", "size": 43807961024},
-                    ]
-                }
-            ),
-        )
-        mock_get.return_value.raise_for_status = Mock()
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    def test_list_models_returns_model_names(self, mock_client_class):
+        mock_client = AsyncMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "models": [
+                {"name": "llama3.1:8b", "size": 4882919328},
+                {"name": "llama3.1:70b", "size": 42101985824},
+                {"name": "qwen2.5:72b", "size": 43807961024},
+            ]
+        }
+        mock_client.get.return_value = mock_response
+        mock_response.raise_for_status = Mock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         models = provider.list_models()
@@ -73,11 +83,13 @@ class TestOllamaProviderListModels:
         assert "llama3.1:8b" in models
         assert "qwen2.5:72b" in models
 
-    @patch("review.llm.ollama.requests.get")
-    def test_list_models_handles_error(self, mock_get):
-        import requests
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    def test_list_models_handles_error(self, mock_client_class):
+        import httpx
 
-        mock_get.side_effect = requests.exceptions.ConnectionError()
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.ConnectError()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         models = provider.list_models()
@@ -86,21 +98,21 @@ class TestOllamaProviderListModels:
 
 
 class TestOllamaProviderGenerate:
-    @patch("review.llm.ollama.requests.post")
-    def test_generate_successful(self, mock_post):
-        mock_post.return_value = Mock(
-            status_code=200,
-            json=Mock(
-                return_value={
-                    "model": "llama3.1:8b",
-                    "response": "Hello world",
-                    "done": True,
-                    "prompt_eval_count": 10,
-                    "eval_count": 5,
-                }
-            ),
-        )
-        mock_post.return_value.raise_for_status = Mock()
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    def test_generate_successful(self, mock_client_class):
+        mock_client = AsyncMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "llama3.1:8b",
+            "response": "Hello world",
+            "done": True,
+            "prompt_eval_count": 10,
+            "eval_count": 5,
+        }
+        mock_client.post.return_value = mock_response
+        mock_response.raise_for_status = Mock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         response = provider.generate("Translate: こんにちは")
@@ -110,32 +122,34 @@ class TestOllamaProviderGenerate:
         assert response.usage["prompt_tokens"] == 10
         assert response.usage["completion_tokens"] == 5
 
-    @patch("review.llm.ollama.requests.post")
-    def test_generate_with_max_tokens(self, mock_post):
-        mock_post.return_value = Mock(
-            status_code=200,
-            json=Mock(
-                return_value={
-                    "model": "llama3.1:8b",
-                    "response": "Result",
-                    "done": True,
-                }
-            ),
-        )
-        mock_post.return_value.raise_for_status = Mock()
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    def test_generate_with_max_tokens(self, mock_client_class):
+        mock_client = AsyncMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "llama3.1:8b",
+            "response": "Result",
+            "done": True,
+        }
+        mock_client.post.return_value = mock_response
+        mock_response.raise_for_status = Mock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         provider.generate("Test", max_tokens=100)
 
-        call_kwargs = mock_post.call_args[1]
+        call_kwargs = mock_client.post.call_args[1]
         payload = call_kwargs["json"]
         assert payload["options"]["num_predict"] == 100
 
-    @patch("review.llm.ollama.requests.post")
-    def test_generate_handles_request_error(self, mock_post):
-        import requests
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    def test_generate_handles_request_error(self, mock_client_class):
+        import httpx
 
-        mock_post.side_effect = requests.exceptions.Timeout()
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.TimeoutException("Timeout")
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         with pytest.raises(RuntimeError, match="Ollama request failed"):
@@ -143,18 +157,20 @@ class TestOllamaProviderGenerate:
 
 
 class TestOllamaProviderTranslate:
-    @patch("review.llm.ollama.requests.get")
-    @patch("review.llm.ollama.requests.post")
-    def test_translate_successful(self, mock_post, mock_get):
-        mock_get.return_value = Mock(status_code=200)
-
-        mock_post.return_value = Mock(
-            status_code=200,
-            json=Mock(
-                return_value={"model": "llama3.1:8b", "response": "Hello", "done": True}
-            ),
-        )
-        mock_post.return_value.raise_for_status = Mock()
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    def test_translate_successful(self, mock_client_class):
+        mock_client = AsyncMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "llama3.1:8b",
+            "response": "Hello",
+            "done": True,
+        }
+        mock_client.post.return_value = mock_response
+        mock_client.get.return_value = mock_response
+        mock_response.raise_for_status = Mock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         result = provider.translate("こんにちは", source_lang="ja", target_lang="en")
@@ -163,9 +179,13 @@ class TestOllamaProviderTranslate:
         assert result.translated_text == "Hello"
         assert result.provider == "ollama"
 
-    @patch("review.llm.ollama.requests.get")
-    def test_translate_fails_when_server_unavailable(self, mock_get):
-        mock_get.return_value = Mock(status_code=503)
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    def test_translate_fails_when_server_unavailable(self, mock_client_class):
+        mock_client = AsyncMock()
+        mock_response = Mock()
+        mock_response.status_code = 503
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         result = provider.translate("こんにちは", source_lang="ja", target_lang="en")
@@ -176,19 +196,19 @@ class TestOllamaProviderTranslate:
 
 class TestOllamaProviderAsync:
     @pytest.mark.asyncio
-    @patch("review.llm.ollama.requests.post")
-    async def test_generate_async_delegates_to_generate(self, mock_post):
-        mock_post.return_value = Mock(
-            status_code=200,
-            json=Mock(
-                return_value={
-                    "model": "llama3.1:8b",
-                    "response": "Async result",
-                    "done": True,
-                }
-            ),
-        )
-        mock_post.return_value.raise_for_status = Mock()
+    @patch("review.llm.ollama.httpx.AsyncClient")
+    async def test_generate_async_delegates_to_generate(self, mock_client_class):
+        mock_client = AsyncMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "llama3.1:8b",
+            "response": "Async result",
+            "done": True,
+        }
+        mock_client.post.return_value = mock_response
+        mock_response.raise_for_status = Mock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
 
         provider = OllamaProvider()
         response = await provider.generate_async("Test")

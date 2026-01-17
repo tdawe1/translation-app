@@ -143,6 +143,185 @@ def get_redis_config(config: dict) -> tuple[str, int, int, Optional[str]]:
     )
 
 
+class SegmentExtractor:
+    """Extracts translatable segments from various file formats."""
+
+    def extract(self, source_file: str) -> list[dict]:
+        """Extract segments from a source file.
+
+        Args:
+            source_file: Path to the source file
+
+        Returns:
+            List of segment dicts with id, source, context
+        """
+        from pathlib import Path
+
+        file_path = Path(source_file)
+        if not file_path.exists():
+            print(f"Warning: Source file not found: {source_file}")
+            return []
+
+        ext = file_path.suffix.lower()
+
+        extractors = {
+            ".docx": self._extract_docx,
+            ".pptx": self._extract_pptx,
+            ".pdf": self._extract_pdf,
+            ".xlsx": self._extract_xlsx,
+            ".txt": self._extract_text,
+            ".md": self._extract_text,
+        }
+
+        extractor = extractors.get(ext)
+        if not extractor:
+            print(f"Warning: Unsupported file type: {ext}")
+            return []
+
+        try:
+            return extractor(file_path)
+        except Exception as e:
+            print(f"Error extracting segments from {source_file}: {e}")
+            return []
+
+    def _extract_docx(self, file_path: Path) -> list[dict]:
+        from parsers import create_docx_parser
+
+        parser = create_docx_parser()
+        parsed = parser.parse(str(file_path))
+        return [
+            {
+                "id": seg.id or f"para_{i + 1}",
+                "source": seg.text,
+                "context": seg.context,
+            }
+            for i, seg in enumerate(parsed.segments)
+        ]
+
+    def _extract_pptx(self, file_path: Path) -> list[dict]:
+        from parsers import create_pptx_parser
+
+        parser = create_pptx_parser()
+        parsed = parser.parse(str(file_path))
+        return [
+            {
+                "id": seg.id or f"slide_text_{i + 1}",
+                "source": seg.text,
+                "context": seg.context,
+            }
+            for i, seg in enumerate(parsed.segments)
+        ]
+
+    def _extract_pdf(self, file_path: Path) -> list[dict]:
+        from parsers import create_pdf_parser
+
+        parser = create_pdf_parser()
+        parsed = parser.parse(str(file_path))
+        return [
+            {
+                "id": seg.id or f"page_block_{i + 1}",
+                "source": seg.text,
+                "context": seg.context,
+            }
+            for i, seg in enumerate(parsed.segments)
+        ]
+
+    def _extract_xlsx(self, file_path: Path) -> list[dict]:
+        from parsers import create_xlsx_parser
+
+        parser = create_xlsx_parser()
+        parsed = parser.parse(str(file_path))
+        segments = []
+        for i, seg in enumerate(parsed.segments):
+            text = seg.text.strip()
+            if text and not text.replace(".", "").isdigit():
+                segments.append(
+                    {
+                        "id": seg.id or f"cell_{i + 1}",
+                        "source": text,
+                        "context": seg.context,
+                    }
+                )
+        return segments
+
+    def _extract_text(self, file_path: Path) -> list[dict]:
+        with open(file_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        return [
+            {
+                "id": f"line_{i + 1}",
+                "source": line.strip(),
+                "context": {"type": "line", "index": i},
+            }
+            for i, line in enumerate(lines)
+            if line.strip()
+        ]
+
+
+class SegmentStore:
+    """Stores translation segments to Redis."""
+
+    def __init__(self, redis_client):
+        self.redis_client = redis_client
+
+    def store(self, job_id: str, workflow_job, user_id: Optional[str] = None) -> None:
+        """Store workflow job segments to Redis.
+
+        Args:
+            job_id: The job identifier
+            workflow_job: WorkflowJob with segments
+            user_id: Optional user ID for namespacing
+        """
+        redis_key = f"trans:{job_id}:segments"
+
+        try:
+            segments_data = []
+            for seg in workflow_job.segments:
+                seg_data = {
+                    "segment_id": seg.id,
+                    "job_id": job_id,
+                    "user_id": user_id,
+                    "source": seg.source,
+                    "target": seg.target,
+                    "judge_winner": seg.judge_winner,
+                    "judge_confidence": seg.judge_confidence,
+                    "judge_reasoning": seg.judge_reasoning,
+                    "is_flagged": seg.is_flagged,
+                    "flag_reason": getattr(seg, "flag_reason", ""),
+                    "model_a_output": getattr(seg, "model_a_output", ""),
+                    "model_b_output": getattr(seg, "model_b_output", ""),
+                }
+                segments_data.append(json.dumps(seg_data))
+
+            if segments_data:
+                self.redis_client.delete(redis_key)
+                self.redis_client.rpush(redis_key, *segments_data)
+                self.redis_client.expire(redis_key, 86400 * 7)
+
+            self._store_job_meta(job_id, workflow_job, user_id)
+
+        except Exception as e:
+            print(f"Warning: Failed to store segments to Redis: {e}")
+
+    def _store_job_meta(
+        self, job_id: str, workflow_job, user_id: Optional[str]
+    ) -> None:
+        job_meta = {
+            "status": workflow_job.status,
+            "overall_score": str(workflow_job.overall_score),
+            "segment_count": str(workflow_job.segment_count),
+            "flagged_count": str(workflow_job.flagged_count),
+            "progress": "1.0"
+            if workflow_job.status in ["completed", "approved", "pending_approval"]
+            else "0.5",
+        }
+        if job_id:
+            job_meta["job_id"] = job_id
+        if user_id:
+            job_meta["user_id"] = user_id
+        self.redis_client.hset(f"trans:{job_id}", mapping=job_meta)
+
+
 class QueueConsumer:
     """Consumes jobs from Redis queue and processes them."""
 
@@ -162,6 +341,8 @@ class QueueConsumer:
         self.active_job_order: list[str] = []
         self.workflow = workflow
         self.config = config or {}
+        self.segment_extractor = SegmentExtractor()
+        self.segment_store = SegmentStore(job_manager.redis_client)
 
     def start(self, poll_interval: int = 1):
         """Start the queue consumer loop.
@@ -236,7 +417,7 @@ class QueueConsumer:
                 self.active_job_order.remove(job_id)
                 return
 
-            segments = self._extract_segments(source_file)
+            segments = self.segment_extractor.extract(source_file)
             if not segments:
                 self.job_manager.set_state(job_id, JobState.FAILED, self.worker_id)
                 self.job_manager.publish_progress(job_id, 0.0, "No segments extracted")
@@ -257,10 +438,10 @@ class QueueConsumer:
             def progress_callback(message: str, current: int, total: int):
                 progress = current / total if total > 0 else 0
                 self.job_manager.publish_progress(job_id, progress, message)
-                self._store_segments_to_redis(job_id, workflow_job, user_id)
+                self.segment_store.store(job_id, workflow_job, user_id)
 
             processed_job = self.workflow.process_job(workflow_job, progress_callback)
-            self._store_segments_to_redis(job_id, processed_job, user_id)
+            self.segment_store.store(job_id, processed_job, user_id)
 
             final_status = JobState.REVIEW_PENDING
             if processed_job.status == "approved":
@@ -292,141 +473,6 @@ class QueueConsumer:
                 del self.active_jobs[job_id]
             if job_id in self.active_job_order:
                 self.active_job_order.remove(job_id)
-
-    def _extract_segments(self, source_file: str) -> list[dict]:
-        """Extract translatable segments from a source file."""
-        from pathlib import Path
-
-        file_path = Path(source_file)
-        if not file_path.exists():
-            print(f"Warning: Source file not found: {source_file}")
-            return []
-
-        ext = file_path.suffix.lower()
-        segments = []
-
-        try:
-            if ext == ".docx":
-                from parsers import create_docx_parser
-
-                parser = create_docx_parser()
-                parsed = parser.parse(str(file_path))
-                for i, seg in enumerate(parsed.segments):
-                    segments.append(
-                        {
-                            "id": seg.id or f"para_{i + 1}",
-                            "source": seg.text,
-                            "context": seg.context,
-                        }
-                    )
-            elif ext == ".pptx":
-                from parsers import create_pptx_parser
-
-                parser = create_pptx_parser()
-                parsed = parser.parse(str(file_path))
-                for i, seg in enumerate(parsed.segments):
-                    segments.append(
-                        {
-                            "id": seg.id or f"slide_text_{i + 1}",
-                            "source": seg.text,
-                            "context": seg.context,
-                        }
-                    )
-            elif ext == ".pdf":
-                from parsers import create_pdf_parser
-
-                parser = create_pdf_parser()
-                parsed = parser.parse(str(file_path))
-                for i, seg in enumerate(parsed.segments):
-                    segments.append(
-                        {
-                            "id": seg.id or f"page_block_{i + 1}",
-                            "source": seg.text,
-                            "context": seg.context,
-                        }
-                    )
-            elif ext == ".xlsx":
-                from parsers import create_xlsx_parser
-
-                parser = create_xlsx_parser()
-                parsed = parser.parse(str(file_path))
-                for i, seg in enumerate(parsed.segments):
-                    text = seg.text.strip()
-                    if text and not text.replace(".", "").isdigit():
-                        segments.append(
-                            {
-                                "id": seg.id or f"cell_{i + 1}",
-                                "source": text,
-                                "context": seg.context,
-                            }
-                        )
-            elif ext in [".txt", ".md"]:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                for i, line in enumerate(lines):
-                    text = line.strip()
-                    if text:
-                        segments.append(
-                            {
-                                "id": f"line_{i + 1}",
-                                "source": text,
-                                "context": {"type": "line", "index": i},
-                            }
-                        )
-            else:
-                print(f"Warning: Unsupported file type: {ext}")
-
-        except Exception as e:
-            print(f"Error extracting segments from {source_file}: {e}")
-
-        return segments
-
-    def _store_segments_to_redis(
-        self, job_id: str, workflow_job, user_id: Optional[str] = None
-    ) -> None:
-        redis_key = f"trans:{job_id}:segments"
-
-        try:
-            segments_data = []
-            for seg in workflow_job.segments:
-                seg_data = {
-                    "segment_id": seg.id,
-                    "job_id": job_id,
-                    "user_id": user_id,
-                    "source": seg.source,
-                    "target": seg.target,
-                    "judge_winner": seg.judge_winner,
-                    "judge_confidence": seg.judge_confidence,
-                    "judge_reasoning": seg.judge_reasoning,
-                    "is_flagged": seg.is_flagged,
-                    "flag_reason": getattr(seg, "flag_reason", ""),
-                    "model_a_output": getattr(seg, "model_a_output", ""),
-                    "model_b_output": getattr(seg, "model_b_output", ""),
-                }
-                segments_data.append(json.dumps(seg_data))
-
-            if segments_data:
-                self.job_manager.redis_client.delete(redis_key)
-                self.job_manager.redis_client.rpush(redis_key, *segments_data)
-                self.job_manager.redis_client.expire(redis_key, 86400 * 7)
-
-            job_meta = {
-                "status": workflow_job.status,
-                "overall_score": str(workflow_job.overall_score),
-                "segment_count": str(workflow_job.segment_count),
-                "flagged_count": str(workflow_job.flagged_count),
-                "progress": "1.0"
-                if workflow_job.status in ["completed", "approved", "pending_approval"]
-                else "0.5",
-            }
-            if job_id:
-                job_meta["job_id"] = job_id
-            if user_id:
-                job_meta["user_id"] = user_id
-            self.job_manager.redis_client.hset(f"trans:{job_id}", mapping=job_meta)
-
-        except Exception as e:
-            print(f"Warning: Failed to store segments to Redis: {e}")
 
     def _cleanup_completed_jobs(self):
         """Remove completed jobs from active tracking."""
