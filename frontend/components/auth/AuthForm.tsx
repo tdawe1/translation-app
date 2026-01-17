@@ -32,6 +32,7 @@ const inputClass = cn(
 export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading = false }: AuthFormProps) {
   const t = useTranslations('auth');
   const tCommon = useTranslations('common');
+  const tApi = useTranslations('api');
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -61,7 +62,7 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError(tCommon('api.error'));
+        setError(tApi('error'));
       }
     } finally {
       setIsSubmitting(false);

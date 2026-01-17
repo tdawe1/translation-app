@@ -48,7 +48,8 @@ func Init() error {
 func Localizer(tag language.Tag) *i18n.Localizer {
 	if bundle == nil {
 		if err := Init(); err != nil {
-			return i18n.NewLocalizer(bundle, language.English.String())
+			fallback := i18n.NewBundle(language.English)
+			return i18n.NewLocalizer(fallback, language.English.String())
 		}
 	}
 	return i18n.NewLocalizer(bundle, tag.String())
