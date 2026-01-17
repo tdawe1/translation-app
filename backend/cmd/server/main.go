@@ -19,6 +19,7 @@ import (
 	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/email"
 	"github.com/tdawe1/translation-app/internal/handlers"
+	appi18n "github.com/tdawe1/translation-app/internal/i18n"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/models"
 	"github.com/tdawe1/translation-app/internal/seeds"
@@ -32,6 +33,10 @@ func main() {
 
 	// Load configuration
 	cfg := config.Load()
+
+	if err := appi18n.Init(); err != nil {
+		log.Fatalf("failed to initialize i18n: %v", err)
+	}
 
 	// Initialize database with dependency injection
 	db, err := database.New(cfg)

@@ -1,0 +1,104 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "success": "Succès",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "create": "Créer",
+    "update": "Mettre à jour",
+    "confirm": "Confirmer",
+    "back": "Retour",
+    "next": "Suivant",
+    "search": "Rechercher",
+    "filter": "Filtrer",
+    "clear": "Effacer",
+    "refresh": "Actualiser",
+    "actions": "Actions"
+  },
+  "auth": {
+    "signIn": "Se Connecter",
+    "signOut": "Se Déconnecter",
+    "signUp": "S'inscrire",
+    "email": "E-mail",
+    "password": "Mot de passe",
+    "forgotPassword": "Mot de passe oublié?",
+    "resetPassword": "Réinitialiser le mot de passe",
+    "invalidCredentials": "E-mail ou mot de passe invalide",
+    "signInWithGoogle": "Se connecter avec Google",
+    "signInWithGitHub": "Se connecter avec GitHub",
+    "magicLink": "Envoyer un lien magique",
+    "magicLinkSent": "Lien magique envoyé à votre e-mail",
+    "name": "Nom"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "welcome": "Bon retour",
+    "overview": "Aperçu",
+    "recentActivity": "Activité récente",
+    "stats": {
+      "totalJobs": "Total des tâches",
+      "activeJobs": "Tâches actives",
+      "completedJobs": "Tâches terminées",
+      "failedJobs": "Tâches échouées"
+    }
+  },
+  "watcher": {
+    "title": "Gengo Watcher",
+    "createJob": "Créer une nouvelle tâche",
+    "jobDetails": "Détails de la tâche",
+    "filters": {
+      "title": "Filtres",
+      "status": "Statut",
+      "dateRange": "Plage de dates",
+      "sourceFile": "Fichier source",
+      "allStatuses": "Tous les statuts",
+      "activeFilters": "Filtres actifs",
+      "clearAll": "Tout effacer"
+    },
+    "status": {
+      "pending": "En attente",
+      "processing": "En cours",
+      "completed": "Terminé",
+      "failed": "Échoué"
+    },
+    "segments": {
+      "total": "Total des segments",
+      "translated": "Traduits",
+      "pending": "En attente",
+      "failed": "Échoués"
+    },
+    "actions": {
+      "deleteJob": "Supprimer la tâche",
+      "deleteConfirmation": "Êtes-vous sûr de vouloir supprimer cette tâche?",
+      "viewDetails": "Voir les détails",
+      "retryFailed": "Réessayer les segments échoués"
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "profile": "Profil",
+    "account": "Compte",
+    "notifications": "Notifications",
+    "language": "Langue",
+    "theme": "Thème"
+  },
+  "api": {
+    "error": "Une erreur s'est produite",
+    "networkError": "Erreur réseau",
+    "serverError": "Erreur serveur",
+    "unauthorized": "Non autorisé",
+    "forbidden": "Interdit",
+    "notFound": "Non trouvé",
+    "validationError": "Erreur de validation"
+  },
+  "languages": {
+    "en": "Anglais",
+    "es": "Espagnol",
+    "fr": "Français",
+    "de": "Allemand",
+    "ja": "Japonais"
+  }
+}
