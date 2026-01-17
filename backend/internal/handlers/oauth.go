@@ -99,7 +99,7 @@ func (h *OAuthHandler) Authorize(c *fiber.Ctx) error {
 			Name:     "csrf_session",
 			Value:    sessionID,
 			HTTPOnly: true,
-			Secure:   c.Protocol() == "https",
+			Secure:   isSecureContext(c),
 			SameSite: "lax",
 			MaxAge:   600, // 10 minutes
 		})
@@ -209,7 +209,7 @@ func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 		Name:     "csrf_session",
 		Value:    "",
 		HTTPOnly: true,
-		Secure:   c.Protocol() == "https",
+		Secure:   isSecureContext(c),
 		SameSite: "lax",
 		MaxAge:   -1, // Delete cookie
 	})
@@ -264,7 +264,7 @@ func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 		Name:     "session_token",
 		Value:    accessToken,
 		HTTPOnly: true,
-		Secure:   c.Protocol() == "https",
+		Secure:   isSecureContext(c),
 		SameSite: "strict",
 	})
 

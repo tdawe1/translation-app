@@ -7,11 +7,14 @@ checkpoint/resume for fault tolerance, and progress publishing via pub/sub.
 """
 
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 
 from .job import Job, JobState, Checkpoint
+
+logger = logging.getLogger(__name__)
 
 
 class JobManager:
@@ -171,7 +174,8 @@ class JobManager:
         try:
             pipeline.execute()
             return job.id
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to enqueue job {job.id}: {e}")
             return None
 
     def dequeue(
@@ -283,7 +287,8 @@ class JobManager:
                 self.redis_client.set(job_key, self._encode(data), ex=self.JOB_TTL)
 
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to set state for job {job_id}: {e}")
             return False
 
     def get_state(self, job_id: str) -> Optional[JobState]:
@@ -373,7 +378,8 @@ class JobManager:
                 self.redis_client.set(job_key, self._encode(data), ex=self.JOB_TTL)
 
             return checkpoint.checkpoint_id
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint for job {job_id}: {e}")
             return None
 
     def load_checkpoint(self, job_id: str) -> Optional[Dict[str, Any]]:
@@ -425,7 +431,8 @@ class JobManager:
             self.publish_progress(job_id, progress, message)
 
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to update progress for job {job_id}: {e}")
             return False
 
     def publish_progress(
@@ -456,7 +463,8 @@ class JobManager:
             )
             self.redis_client.publish(channel, data)
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to publish progress for job {job_id}: {e}")
             return False
 
     def cancel_job(self, job_id: str, reason: str = "") -> bool:
@@ -494,7 +502,8 @@ class JobManager:
                 self.redis_client.set(job_key, self._encode(data), ex=self.JOB_TTL)
 
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to mark job {job_id} as failed: {e}")
             return False
 
     def get_worker_jobs(self, worker_id: str) -> List[Dict[str, Any]]:
@@ -522,7 +531,8 @@ class JobManager:
             jobs.sort(key=lambda j: j.get("created_at", ""))
 
             return jobs
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to get worker jobs for {worker_id}: {e}")
             return []
 
     def get_queue_stats(self) -> Dict[str, int]:
@@ -539,8 +549,8 @@ class JobManager:
                 count = self.redis_client.zcard(queue_key)
                 stats[priority] = count or 0
                 stats["total"] += stats[priority]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to get queue stats: {e}")
 
         return stats
 
@@ -584,8 +594,8 @@ class JobManager:
                                 cleaned += 1
                         except (ValueError, TypeError):
                             pass
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to cleanup old jobs: {e}")
 
         return cleaned
 
@@ -593,8 +603,8 @@ class JobManager:
         """Close Redis connection."""
         try:
             self.redis_client.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to close Redis connection: {e}")
 
     def __enter__(self):
         """Context manager entry."""

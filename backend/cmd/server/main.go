@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -114,6 +116,8 @@ func main() {
 	// Initialize translation handler
 	translationHandler := handlers.NewTranslationHandler(db, redisClient)
 
+	healthHandler := handlers.NewHealthHandler(gormDB, redisClient)
+
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		AppName:               "GengoWatcher SaaS API",
@@ -141,12 +145,7 @@ func main() {
 	}))
 
 	// Health check
-	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"status":  "healthy",
-			"service": "gengowatcher-saas",
-		})
-	})
+	app.Get("/health", healthHandler.Health)
 
 	// Dev-only admin seeding endpoint (for testing, development only)
 	if cfg.IsDevelopment() {
@@ -156,6 +155,11 @@ func main() {
 		// POST /dev/seed-admin - creates or updates an admin user and returns JWT
 		// This endpoint is ONLY available in development mode
 		dev.Post("/seed-admin", func(c *fiber.Ctx) error {
+			// Only allow in development or test environment
+			if os.Getenv("ENV") != "development" && os.Getenv("ENV") != "test" {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
+			}
+
 			type SeedAdminRequest struct {
 				Email    string `json:"email"`
 				Password string `json:"password"`
@@ -267,9 +271,17 @@ func main() {
 
 	// Start server
 	log.Printf("Server starting on port %s (env: %s)", cfg.Port, cfg.Env)
-	if err := app.Listen(":" + cfg.Port); err != nil {
-		log.Fatal(err)
-	}
+	go func() {
+		if err := app.Listen(":" + cfg.Port); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	<-c
+	log.Println("Gracefully shutting down...")
+	_ = app.Shutdown()
 }
 
 // getEnv retrieves an environment variable or returns the default value

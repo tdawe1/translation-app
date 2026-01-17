@@ -107,6 +107,7 @@ func TestFeature_Behavior(t *testing.T) {
 - Return specific email-exists errors (account enumeration)
 - Skip JWT validation for any auth flow
 - Use URLs with localhost/private IPs (SSRF)
+- Ignore errors from `blocklist.Add()` (silent logout failure)
 
 ## API Routes
 
@@ -118,6 +119,27 @@ All routes: `/api/v1/*`
 | `/oauth/*` | `oauth.go` | Google/GitHub OAuth |
 | `/watcher/*` | `watcher_handler.go` | Watcher config/state |
 | `/dev/*` | `dev_handler.go` | Dev-only endpoints |
+
+## Auth System
+
+### JWT Blocklist
+```go
+// Token revocation on logout - backend/internal/auth/blocklist.go
+blocklist := auth.NewTokenBlocklist(redisClient)
+blocklist.Add(ctx, userID, tokenJTI, expiry)  // MUST check error
+blocklist.IsBlocked(ctx, userID, tokenJTI)    // Check in JWT middleware
+```
+
+Redis key pattern: `user:{user_id}:blocklist:{token_id}` with TTL matching token expiry.
+
+### Fail-Fast Secrets
+Production REQUIRES (panics if missing):
+- `JWT_SECRET` (32+ chars)
+- `REDIS_URL`
+- `DB_PASSWORD`
+- `RESEND_API_KEY`
+
+Test mode: Set `TEST_ENV=true` or `ENV=test` to bypass.
 
 ---
 

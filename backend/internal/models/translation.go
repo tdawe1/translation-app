@@ -84,8 +84,8 @@ func (j *TranslationJob) CanAutoApprove(threshold float64) bool {
 // TranslationSegment represents a single translatable segment within a job
 type TranslationSegment struct {
 	Base
-	JobID           uuid.UUID  `gorm:"type:uuid;not null;index" json:"job_id"`
-	SegmentID       string     `gorm:"size:100;not null" json:"segment_id"` // e.g., "slide1_title", "page_3"
+	JobID           uuid.UUID  `gorm:"type:uuid;not null;index:idx_segment_job_segment,priority:1" json:"job_id"`
+	SegmentID       string     `gorm:"size:100;not null;index:idx_segment_job_segment,priority:2" json:"segment_id"` // e.g., "slide1_title", "page_3"
 	Source          string     `gorm:"type:text;not null" json:"source"`
 	Target          string     `gorm:"type:text" json:"target"`
 	Context         string     `gorm:"type:jsonb;default:'{}'" json:"context"` // JSON context (slide number, element type, etc.)

@@ -16,12 +16,12 @@ import (
 
 // MagicLinkHandler handles magic link authentication requests
 type MagicLinkHandler struct {
-	db              database.Database
+	db               database.Database
 	tokenAuthService *auth.TokenService
-	tokenService    *service.TokenService
-	emailService    *email.Service
-	sessionConfig   SessionConfig // Cookie configuration for set/clear operations
-	frontendURL     string // Frontend URL for redirects after successful auth
+	tokenService     *service.TokenService
+	emailService     *email.Service
+	sessionConfig    SessionConfig // Cookie configuration for set/clear operations
+	frontendURL      string        // Frontend URL for redirects after successful auth
 }
 
 // NewMagicLinkHandler creates a new magic link handler with the given session config.
@@ -29,12 +29,12 @@ type MagicLinkHandler struct {
 // are consistent across all cookie operations.
 func NewMagicLinkHandler(db database.Database, tokenAuthService *auth.TokenService, emailService *email.Service, tokenSvc *service.TokenService, sessionConfig SessionConfig, frontendURL string) *MagicLinkHandler {
 	return &MagicLinkHandler{
-		db:              db,
+		db:               db,
 		tokenAuthService: tokenAuthService,
-		tokenService:    tokenSvc,
-		emailService:    emailService,
-		sessionConfig:   sessionConfig,
-		frontendURL:     frontendURL,
+		tokenService:     tokenSvc,
+		emailService:     emailService,
+		sessionConfig:    sessionConfig,
+		frontendURL:      frontendURL,
 	}
 }
 
@@ -189,7 +189,7 @@ func (h *MagicLinkHandler) VerifyMagicLink(c *fiber.Ctx) error {
 			Name:     CookieName,
 			Value:    accessToken,
 			HTTPOnly: true,
-			Secure:   h.sessionConfig.Secure,
+			Secure:   isSecureContext(c),
 			SameSite: h.sessionConfig.SameSite,
 			Domain:   h.sessionConfig.Domain,
 			MaxAge:   7 * 24 * 60 * 60, // 7 days
@@ -197,12 +197,12 @@ func (h *MagicLinkHandler) VerifyMagicLink(c *fiber.Ctx) error {
 
 		// Redirect to frontend with success indicator
 		frontendURL := h.frontendURL
-	if frontendURL == "" {
-		frontendURL = "http://localhost:3001/dashboard?auth=success"
-	} else {
-		frontendURL = frontendURL + "/dashboard?auth=success"
-	}
-	return c.Redirect(frontendURL)
+		if frontendURL == "" {
+			frontendURL = "http://localhost:3001/dashboard?auth=success"
+		} else {
+			frontendURL = frontendURL + "/dashboard?auth=success"
+		}
+		return c.Redirect(frontendURL)
 	}
 
 	// POST flow: return JSON response with token, using proper session config
@@ -210,7 +210,7 @@ func (h *MagicLinkHandler) VerifyMagicLink(c *fiber.Ctx) error {
 		Name:     CookieName,
 		Value:    accessToken,
 		HTTPOnly: true,
-		Secure:   h.sessionConfig.Secure,
+		Secure:   isSecureContext(c),
 		SameSite: h.sessionConfig.SameSite,
 		Domain:   h.sessionConfig.Domain,
 		MaxAge:   7 * 24 * 60 * 60, // 7 days

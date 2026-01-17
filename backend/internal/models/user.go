@@ -95,7 +95,7 @@ type WatcherConfig struct {
 	WebSocketEnabled      bool      `gorm:"default:true" json:"websocket_enabled"`
 	GengoUserID           string    `gorm:"size:50" json:"gengo_user_id,omitempty"`
 	GengoUserKey          string    `gorm:"type:text" json:"gengo_user_key,omitempty"` // Browser localStorage userKey for WebSocket auth
-	GengoSessionToken     string    `gorm:"type:text" json:"-"` // Encrypted, don't serialize
+	GengoSessionToken     string    `gorm:"type:text" json:"-"`                        // Encrypted, don't serialize
 	MinReward             float64   `gorm:"default:0" json:"min_reward"`
 	MaxReward             float64   `gorm:"default:999999" json:"max_reward"`
 	IncludedLanguagePairs string    `gorm:"type:jsonb" json:"included_language_pairs"` // JSON array
@@ -151,7 +151,7 @@ type Subscription struct {
 // BillingEvent represents Stripe/LemonSqueezy webhook events
 type BillingEvent struct {
 	ID          uuid.UUID  `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	UserID      *uuid.UUID `gorm:"type:uuid" json:"user_id,omitempty"`
+	UserID      *uuid.UUID `gorm:"type:uuid;index" json:"user_id,omitempty"`
 	EventID     string     `gorm:"size:100;uniqueIndex;not null" json:"event_id"`
 	EventType   string     `gorm:"size:50;not null" json:"event_type"`
 	EventData   string     `gorm:"type:jsonb" json:"event_data"`
@@ -161,7 +161,7 @@ type BillingEvent struct {
 // AuditLog represents security/compliance audit trail
 type AuditLog struct {
 	ID        uuid.UUID  `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	UserID    *uuid.UUID `gorm:"type:uuid" json:"user_id,omitempty"`
+	UserID    *uuid.UUID `gorm:"type:uuid;index" json:"user_id,omitempty"`
 	EventType string     `gorm:"size:50;not null" json:"event_type"`
 	EventData string     `gorm:"type:jsonb" json:"event_data"`
 	IPAddress string     `gorm:"size:45" json:"ip_address,omitempty"`

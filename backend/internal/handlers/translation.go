@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -206,6 +208,28 @@ func (h *TranslationHandler) getJobLogic(c *fiber.Ctx, userID uuid.UUID) error {
 	return c.JSON(jobToResponse(job))
 }
 
+func validateSourceFile(sourcePath string) (string, error) {
+	uploadsDir := "/app/data/uploads"
+
+	cleanPath := filepath.Clean(sourcePath)
+
+	if filepath.IsAbs(cleanPath) {
+		return "", fmt.Errorf("absolute paths not allowed")
+	}
+
+	if strings.HasPrefix(cleanPath, "..") || strings.Contains(cleanPath, "/../") {
+		return "", fmt.Errorf("path traversal not allowed")
+	}
+
+	fullPath := filepath.Join(uploadsDir, cleanPath)
+
+	if !strings.HasPrefix(fullPath, uploadsDir) {
+		return "", fmt.Errorf("path must be within uploads directory")
+	}
+
+	return cleanPath, nil
+}
+
 func (h *TranslationHandler) CreateJob(c *fiber.Ctx) error {
 	return middleware.RequireAuth(h.createJobLogic)(c)
 }
@@ -220,9 +244,14 @@ func (h *TranslationHandler) createJobLogic(c *fiber.Ctx, userID uuid.UUID) erro
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, msg)
 	}
 
+	validatedSourceFile, err := validateSourceFile(req.SourceFile)
+	if err != nil {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, err.Error())
+	}
+
 	job := models.TranslationJob{
 		UserID:       userID,
-		SourceFile:   req.SourceFile,
+		SourceFile:   validatedSourceFile,
 		SourceLang:   req.SourceLang,
 		TargetLang:   req.TargetLang,
 		ProjectType:  req.ProjectType,
@@ -542,6 +571,14 @@ func (h *TranslationHandler) syncSegmentsFromRedis(ctx context.Context, job *mod
 		return
 	}
 
+	var existingSegments []models.TranslationSegment
+	h.db.Where("job_id = ?", job.ID).Find(&existingSegments)
+
+	segmentMap := make(map[string]*models.TranslationSegment)
+	for i := range existingSegments {
+		segmentMap[existingSegments[i].SegmentID] = &existingSegments[i]
+	}
+
 	for _, data := range segmentData {
 		var seg struct {
 			SegmentID       string  `json:"segment_id"`
@@ -569,10 +606,8 @@ func (h *TranslationHandler) syncSegmentsFromRedis(ctx context.Context, job *mod
 			continue
 		}
 
-		var existing models.TranslationSegment
-		result := h.db.Where("job_id = ? AND segment_id = ?", job.ID, seg.SegmentID).First(&existing)
-
-		if result.Error != nil {
+		existing, ok := segmentMap[seg.SegmentID]
+		if !ok {
 			segment := models.TranslationSegment{
 				Base:            models.Base{ID: uuid.New()},
 				JobID:           job.ID,
@@ -589,7 +624,7 @@ func (h *TranslationHandler) syncSegmentsFromRedis(ctx context.Context, job *mod
 			}
 			h.db.Create(&segment)
 		} else if !job.HasUserEdits {
-			h.db.Model(&existing).Updates(map[string]interface{}{
+			h.db.Model(existing).Updates(map[string]interface{}{
 				"target":           seg.Target,
 				"judge_winner":     seg.JudgeWinner,
 				"judge_confidence": seg.JudgeConfidence,

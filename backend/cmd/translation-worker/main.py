@@ -159,6 +159,7 @@ class QueueConsumer:
         self.max_concurrent = max_concurrent
         self.running = False
         self.active_jobs: dict[str, dict] = {}
+        self.active_job_order: list[str] = []
         self.workflow = workflow
         self.config = config or {}
 
@@ -222,6 +223,7 @@ class QueueConsumer:
 
         self.job_manager.set_state(job_id, JobState.TRANSLATING, self.worker_id)
         self.active_jobs[job_id] = job
+        self.active_job_order.append(job_id)
 
         try:
             if not self.workflow:
@@ -231,6 +233,7 @@ class QueueConsumer:
                 self.job_manager.set_state(job_id, JobState.COMPLETED, self.worker_id)
                 self.job_manager.publish_progress(job_id, 1.0, "No workflow configured")
                 del self.active_jobs[job_id]
+                self.active_job_order.remove(job_id)
                 return
 
             segments = self._extract_segments(source_file)
@@ -238,6 +241,7 @@ class QueueConsumer:
                 self.job_manager.set_state(job_id, JobState.FAILED, self.worker_id)
                 self.job_manager.publish_progress(job_id, 0.0, "No segments extracted")
                 del self.active_jobs[job_id]
+                self.active_job_order.remove(job_id)
                 return
 
             workflow_job = self.workflow.create_job(
@@ -286,6 +290,8 @@ class QueueConsumer:
         finally:
             if job_id in self.active_jobs:
                 del self.active_jobs[job_id]
+            if job_id in self.active_job_order:
+                self.active_job_order.remove(job_id)
 
     def _extract_segments(self, source_file: str) -> list[dict]:
         """Extract translatable segments from a source file."""
@@ -427,11 +433,26 @@ class QueueConsumer:
         completed = []
         for job_id, job in self.active_jobs.items():
             state = self.job_manager.get_state(job_id)
-            if state and state in JobState.TERMINAL.value:
+            if state and state in {
+                JobState.COMPLETED,
+                JobState.FAILED,
+                JobState.CANCELLED,
+            }:
                 completed.append(job_id)
 
         for job_id in completed:
-            del self.active_jobs[job_id]
+            if job_id in self.active_jobs:
+                del self.active_jobs[job_id]
+            if job_id in self.active_job_order:
+                self.active_job_order.remove(job_id)
+
+        self._enforce_lru_limit()
+
+    def _enforce_lru_limit(self, max_size: int = 1000):
+        while len(self.active_jobs) > max_size:
+            oldest_id = self.active_job_order.pop(0)
+            if oldest_id in self.active_jobs:
+                del self.active_jobs[oldest_id]
 
 
 def main():

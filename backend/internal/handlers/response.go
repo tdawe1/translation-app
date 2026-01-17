@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -9,6 +10,12 @@ import (
 	apperrors "github.com/tdawe1/translation-app/internal/errors"
 	"github.com/tdawe1/translation-app/internal/models"
 )
+
+// isSecureContext determines if cookies should be set with Secure flag.
+// Returns true if the request is over HTTPS or running in production environment.
+func isSecureContext(c *fiber.Ctx) bool {
+	return c.Protocol() == "https" || os.Getenv("ENV") == "production"
+}
 
 const (
 	// CookieName is the name of the session cookie
@@ -32,8 +39,8 @@ type SessionConfig struct {
 // For production, use config-based values with proper domain and Secure=true.
 func DefaultSessionConfig() SessionConfig {
 	return SessionConfig{
-		Domain:   "",            // Current host only (localhost)
-		Secure:   false,         // HTTP in development
+		Domain:   "",    // Current host only (localhost)
+		Secure:   false, // HTTP in development
 		SameSite: "Lax",
 		Expires:  DefaultCookieExpiration,
 	}
@@ -59,8 +66,8 @@ type ErrorResponse struct {
 
 // OAuthAccountResponse represents a linked OAuth account
 type OAuthAccountResponse struct {
-	Provider  string `json:"provider"`           // 'google', 'github'
-	CreatedAt string `json:"created_at"`         // When the account was linked
+	Provider  string `json:"provider"`   // 'google', 'github'
+	CreatedAt string `json:"created_at"` // When the account was linked
 }
 
 // UserResponse represents user data in API responses
@@ -69,7 +76,7 @@ type UserResponse struct {
 	Email         string                 `json:"email"`
 	EmailVerified bool                   `json:"email_verified"`
 	IsActive      bool                   `json:"is_active"`
-	Provider      string                 `json:"provider,omitempty"`      // 'google', 'github', or empty
+	Provider      string                 `json:"provider,omitempty"`       // 'google', 'github', or empty
 	OAuthAccounts []OAuthAccountResponse `json:"oauth_accounts,omitempty"` // Linked OAuth accounts
 }
 
@@ -105,7 +112,7 @@ func SetSessionCookie(c *fiber.Ctx, token string, config SessionConfig) {
 		Value:    token,
 		Domain:   config.Domain,
 		HTTPOnly: true,
-		Secure:   config.Secure,
+		Secure:   isSecureContext(c),
 		SameSite: config.SameSite,
 		Expires:  time.Now().Add(config.Expires),
 	})
@@ -129,7 +136,7 @@ func ClearSessionCookie(c *fiber.Ctx, config SessionConfig) {
 		Value:    "",
 		Domain:   config.Domain,
 		HTTPOnly: true,
-		Secure:   config.Secure,
+		Secure:   isSecureContext(c),
 		SameSite: config.SameSite,
 		Expires:  time.Now().Add(-1 * time.Hour), // Set to past to ensure deletion
 	})

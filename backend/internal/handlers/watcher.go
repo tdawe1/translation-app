@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -43,11 +44,10 @@ func (h *WatcherHandler) getConfigLogic(c *fiber.Ctx, userUUID uuid.UUID) error 
 			IncludedLanguagePairs: "[]", // Valid JSON array for jsonb column
 		}
 		if createErr := h.db.Create(&config).Error; createErr != nil {
-			// Log actual error for debugging
+			log.Printf("Failed to create watcher config: %v", createErr)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to create watcher config",
+				"error": "Failed to create watcher configuration",
 				"code":  "CONFIG_CREATE_FAILED",
-				"details": createErr.Error(),
 			})
 		}
 	}
@@ -163,8 +163,9 @@ func (h *WatcherHandler) StartWatcher(c *fiber.Ctx) error {
 // startWatcherLogic contains the actual StartWatcher logic after auth is verified
 func (h *WatcherHandler) startWatcherLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	if err := h.manager.StartWatcher(userUUID); err != nil {
+		log.Printf("Failed to start watcher: %v", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": "Failed to start watcher",
 			"code":  "START_ERROR",
 		})
 	}
@@ -185,8 +186,9 @@ func (h *WatcherHandler) StopWatcher(c *fiber.Ctx) error {
 // stopWatcherLogic contains the actual StopWatcher logic after auth is verified
 func (h *WatcherHandler) stopWatcherLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	if err := h.manager.StopWatcher(userUUID); err != nil {
+		log.Printf("Failed to stop watcher: %v", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": "Failed to stop watcher",
 			"code":  "STOP_ERROR",
 		})
 	}

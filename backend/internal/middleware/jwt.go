@@ -84,9 +84,6 @@ func getJWTConfig() *JWTConfig {
 		// In tests, use a test secret instead of fatal
 		if isTestEnv() {
 			secret = "test-secret-for-jwt-testing-purposes-only-32chars"
-		} else if os.Getenv("ENV") == "development" || os.Getenv("ENV") == "" {
-			// Use development default if ENV is development
-			secret = "dev-secret-change-in-production-do-not-use-in-deployment"
 		} else {
 			log.Fatal("FATAL: JWT_SECRET environment variable is not set. " +
 				"Authentication cannot function without a secure secret. " +

@@ -8,6 +8,26 @@ Python-based translation service with multi-provider LLM support. Handles docume
 
 **Note**: This is a Python subsystem nested within the Go backend's `cmd/` directory.
 
+## Multi-Tenancy (Redis Keys)
+
+All Redis keys MUST be namespaced with user_id:
+
+```python
+# JobManager accepts user_id parameter
+manager = JobManager(redis_host="localhost", user_id="uuid-here")
+
+# Keys automatically namespaced:
+# - user:{user_id}:trans:queue:*
+# - user:{user_id}:trans:job:*
+# - user:{user_id}:trans:state:*
+# - user:{user_id}:translation:progress (pub/sub)
+
+# Factory function also supports user_id
+manager = create_job_manager(user_id="uuid-here")
+```
+
+**CRITICAL**: Never use global `trans:queue:*` keys - always pass user_id for tenant isolation.
+
 ## Quick Commands
 
 ```bash

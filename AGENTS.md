@@ -14,6 +14,7 @@ Multi-tenant job monitoring SaaS transforming GengoWatcher from localhost-only t
 ./scripts/dev.sh up          # Start full dev stack
 ./scripts/dev.sh down        # Stop everything
 cd backend && make test      # Run Go tests
+cd backend && go test ./... -short  # Quick tests
 cd frontend && npm run test  # Run frontend tests
 ```
 
@@ -47,6 +48,17 @@ translation-app/
 | **Never use global `models.DB`** | Use dependency injection |
 | **Always filter queries by `user_id`** | Multi-tenancy isolation |
 | **JWT_SECRET must be 32+ chars** | Server fails startup without it |
+| **Never ignore blocklist.Add() errors** | Token revocation reliability |
+
+## Recent Security Fixes (Jan 2026)
+
+| Fix | File | Description |
+|:----|:-----|:------------|
+| JWT Blocklist | `auth/blocklist.go` | Redis-based token revocation on logout |
+| Fail-fast secrets | `config/config.go` | Panics on missing REDIS_URL, DB_PASSWORD in prod |
+| N+1 Query | `translation.go` | Single aggregated query for job counts |
+| Multi-tenant Redis | `manager.py` | User-namespaced keys: `user:{id}:trans:*` |
+| Nil pointer fix | `token.go` | Validates exp claim before dereferencing |
 
 ## Key Patterns
 
