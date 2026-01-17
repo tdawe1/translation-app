@@ -234,7 +234,7 @@ func (h *TranslationHandler) createJobLogic(c *fiber.Ctx, userID uuid.UUID) erro
 		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrDatabase, "Failed to create job")
 	}
 
-	redisJobID := fmt.Sprintf("trans:%s", job.ID.String())
+	redisJobID := fmt.Sprintf("user:%s:trans:%s", userID.String(), job.ID.String())
 	job.RedisJobID = redisJobID
 	if err := h.db.Model(&job).Update("redis_job_id", redisJobID).Error; err != nil {
 		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrUpdateError, "Failed to update job")
@@ -267,7 +267,7 @@ func (h *TranslationHandler) createJobLogic(c *fiber.Ctx, userID uuid.UUID) erro
 		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Failed to queue job")
 	}
 
-	if err := h.redis.LPush(c.Context(), "trans:queue", redisJobID).Err(); err != nil {
+	if err := h.redis.LPush(c.Context(), fmt.Sprintf("user:%s:trans:queue", userID.String()), redisJobID).Err(); err != nil {
 		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Failed to queue job")
 	}
 
@@ -600,12 +600,17 @@ func (h *TranslationHandler) syncSegmentsFromRedis(ctx context.Context, job *mod
 		}
 	}
 
-	var segmentCount, flaggedCount int64
-	h.db.Model(&models.TranslationSegment{}).Where("job_id = ?", job.ID).Count(&segmentCount)
-	h.db.Model(&models.TranslationSegment{}).Where("job_id = ? AND is_flagged = ?", job.ID, true).Count(&flaggedCount)
+	var counts struct {
+		SegmentCount int64
+		FlaggedCount int64
+	}
+	h.db.Model(&models.TranslationSegment{}).
+		Select("COUNT(*) as segment_count, SUM(CASE WHEN is_flagged = true THEN 1 ELSE 0 END) as flagged_count").
+		Where("job_id = ?", job.ID).
+		Scan(&counts)
 	h.db.Model(job).Updates(map[string]interface{}{
-		"segment_count": segmentCount,
-		"flagged_count": flaggedCount,
+		"segment_count": counts.SegmentCount,
+		"flagged_count": counts.FlaggedCount,
 	})
 }
 

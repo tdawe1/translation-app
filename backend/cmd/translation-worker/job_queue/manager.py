@@ -23,20 +23,24 @@ class JobManager:
     - Checkpoints: progress snapshots for resume
     - Progress: pub/sub channel for real-time updates
 
+    Multi-tenancy: When user_id is provided, all keys are namespaced:
+        user:{user_id}:trans:queue:* (instead of trans:queue:*)
+
     Example:
-        >>> manager = JobManager(redis_host="localhost")
+        >>> manager = JobManager(redis_host="localhost", user_id="user-123")
         >>> job_id = manager.enqueue({"source_file": "/path/to/file.pptx"})
         >>> job = manager.dequeue(worker_id="worker-1")
         >>> manager.set_state(job_id, JobState.PROCESSING, worker_id="worker-1")
         >>> manager.save_checkpoint(job_id, {"progress": 0.5})
     """
 
-    # Redis key prefixes
-    QUEUE_PREFIX = "trans:queue:"
-    JOB_PREFIX = "trans:job:"
-    STATE_PREFIX = "trans:state:"
-    CHECKPOINT_PREFIX = "trans:checkpoint:"
-    WORKER_QUEUE_PREFIX = "trans:worker:"
+    # Redis key base prefixes (without user namespace)
+    _BASE_QUEUE_PREFIX = "trans:queue:"
+    _BASE_JOB_PREFIX = "trans:job:"
+    _BASE_STATE_PREFIX = "trans:state:"
+    _BASE_CHECKPOINT_PREFIX = "trans:checkpoint:"
+    _BASE_WORKER_QUEUE_PREFIX = "trans:worker:"
+    _BASE_PROGRESS_CHANNEL = "translation:progress"
 
     # TTL settings (in seconds)
     JOB_TTL = 86400  # 24 hours
@@ -53,6 +57,7 @@ class JobManager:
         redis_db: int = 0,
         redis_password: Optional[str] = None,
         decode_responses: bool = False,
+        user_id: Optional[str] = None,
     ):
         """Initialize the job manager.
 
@@ -62,6 +67,9 @@ class JobManager:
             redis_db: Redis database number
             redis_password: Optional Redis password
             decode_responses: Whether to decode responses (False for binary data)
+            user_id: Optional user ID for multi-tenancy namespacing.
+                     When provided, all Redis keys are prefixed with user:{user_id}:
+                     When None, uses legacy global keys for backward compatibility.
         """
         try:
             import redis
@@ -83,6 +91,17 @@ class JobManager:
         self.redis_host = redis_host
         self.redis_port = redis_port
         self.redis_db = redis_db
+        self.user_id = user_id
+
+    def _key_prefix(self) -> str:
+        """Get the Redis key prefix for multi-tenancy.
+
+        Returns:
+            "user:{user_id}:" if user_id is set, "" otherwise.
+        """
+        if self.user_id:
+            return f"user:{self.user_id}:"
+        return ""
 
     def _encode(self, data: Any) -> bytes:
         """Encode data for Redis storage."""
@@ -119,7 +138,7 @@ class JobManager:
         )
 
         # Store job data
-        job_key = f"{self.JOB_PREFIX}{job.id}"
+        job_key = f"{self._key_prefix()}{self._BASE_JOB_PREFIX}{job.id}"
         job_json = self._encode(
             {
                 **job_data,
@@ -134,12 +153,12 @@ class JobManager:
         pipeline.set(job_key, job_json, ex=self.JOB_TTL)
 
         # Add to priority queue (sorted by score)
-        queue_key = f"{self.QUEUE_PREFIX}{priority}"
+        queue_key = f"{self._key_prefix()}{self._BASE_QUEUE_PREFIX}{priority}"
         score = time.time() + delay_seconds
         pipeline.zadd(queue_key, {job.id: score})
 
         # Set initial state
-        state_key = f"{self.STATE_PREFIX}{job.id}"
+        state_key = f"{self._key_prefix()}{self._BASE_STATE_PREFIX}{job.id}"
         state_json = self._encode(
             {
                 "state": job.state.value,
@@ -178,7 +197,7 @@ class JobManager:
             priorities = ["urgent", "normal", "bulk"]
 
         for priority in priorities:
-            queue_key = f"{self.QUEUE_PREFIX}{priority}"
+            queue_key = f"{self._key_prefix()}{self._BASE_QUEUE_PREFIX}{priority}"
 
             # Get and remove oldest job (lowest score)
             result = self.redis_client.zpopmin(queue_key)
@@ -201,7 +220,7 @@ class JobManager:
         Returns:
             Job data dict if found, None otherwise
         """
-        job_key = f"{self.JOB_PREFIX}{job_id}"
+        job_key = f"{self._key_prefix()}{self._BASE_JOB_PREFIX}{job_id}"
         data = self.redis_client.get(job_key)
 
         if data:
@@ -238,7 +257,7 @@ class JobManager:
             True if state updated successfully, False otherwise
         """
         try:
-            state_key = f"{self.STATE_PREFIX}{job_id}"
+            state_key = f"{self._key_prefix()}{self._BASE_STATE_PREFIX}{job_id}"
             state_json = self._encode(
                 {
                     "state": state.value,
@@ -249,7 +268,7 @@ class JobManager:
             self.redis_client.set(state_key, state_json, ex=self.STATE_TTL)
 
             # Update job data too
-            job_key = f"{self.JOB_PREFIX}{job_id}"
+            job_key = f"{self._key_prefix()}{self._BASE_JOB_PREFIX}{job_id}"
             job_data = self.redis_client.get(job_key)
             if job_data:
                 data = self._decode(job_data)
@@ -276,7 +295,7 @@ class JobManager:
         Returns:
             Current JobState if found, None otherwise
         """
-        state_key = f"{self.STATE_PREFIX}{job_id}"
+        state_key = f"{self._key_prefix()}{self._BASE_STATE_PREFIX}{job_id}"
         data = self.redis_client.get(state_key)
 
         if data:
@@ -297,7 +316,7 @@ class JobManager:
         Returns:
             Job data dict if found, None otherwise
         """
-        job_key = f"{self.JOB_PREFIX}{job_id}"
+        job_key = f"{self._key_prefix()}{self._BASE_JOB_PREFIX}{job_id}"
         data = self.redis_client.get(job_key)
 
         if data:
@@ -336,7 +355,7 @@ class JobManager:
                 source_hash=source_hash,
             )
 
-            key = f"{self.CHECKPOINT_PREFIX}{job_id}"
+            key = f"{self._key_prefix()}{self._BASE_CHECKPOINT_PREFIX}{job_id}"
             self.redis_client.setex(
                 key, self.CHECKPOINT_TTL, self._encode(checkpoint.to_dict())
             )
@@ -346,7 +365,7 @@ class JobManager:
                 self.update_progress(job_id, progress)
 
             # Update job's checkpoint_id reference
-            job_key = f"{self.JOB_PREFIX}{job_id}"
+            job_key = f"{self._key_prefix()}{self._BASE_JOB_PREFIX}{job_id}"
             job_data = self.redis_client.get(job_key)
             if job_data:
                 data = self._decode(job_data)
@@ -366,7 +385,7 @@ class JobManager:
         Returns:
             Checkpoint data dict if found, None otherwise
         """
-        key = f"{self.CHECKPOINT_PREFIX}{job_id}"
+        key = f"{self._key_prefix()}{self._BASE_CHECKPOINT_PREFIX}{job_id}"
         data = self.redis_client.get(key)
 
         if data:
@@ -395,7 +414,7 @@ class JobManager:
             progress = max(0.0, min(1.0, progress))
 
             # Update job data
-            job_key = f"{self.JOB_PREFIX}{job_id}"
+            job_key = f"{self._key_prefix()}{self._BASE_JOB_PREFIX}{job_id}"
             job_data = self.redis_client.get(job_key)
             if job_data:
                 data = self._decode(job_data)
@@ -426,7 +445,7 @@ class JobManager:
             True if published successfully, False otherwise
         """
         try:
-            channel = "translation:progress"
+            channel = f"{self._key_prefix()}{self._BASE_PROGRESS_CHANNEL}"
             data = self._encode(
                 {
                     "job_id": job_id,
@@ -467,7 +486,7 @@ class JobManager:
             self.set_state(job_id, JobState.FAILED)
 
             # Store error message
-            job_key = f"{self.JOB_PREFIX}{job_id}"
+            job_key = f"{self._key_prefix()}{self._BASE_JOB_PREFIX}{job_id}"
             job_data = self.redis_client.get(job_key)
             if job_data:
                 data = self._decode(job_data)
@@ -489,7 +508,7 @@ class JobManager:
         """
         try:
             # Scan all job keys and filter by worker_id
-            pattern = f"{self.JOB_PREFIX}*"
+            pattern = f"{self._key_prefix()}{self._BASE_JOB_PREFIX}*"
             jobs = []
 
             for key in self.redis_client.scan_iter(match=pattern):
@@ -516,7 +535,7 @@ class JobManager:
 
         try:
             for priority in self.PRIORITIES:
-                queue_key = f"{self.QUEUE_PREFIX}{priority}"
+                queue_key = f"{self._key_prefix()}{self._BASE_QUEUE_PREFIX}{priority}"
                 count = self.redis_client.zcard(queue_key)
                 stats[priority] = count or 0
                 stats["total"] += stats[priority]
@@ -536,7 +555,7 @@ class JobManager:
         """
         cleaned = 0
         try:
-            pattern = f"{self.JOB_PREFIX}*"
+            pattern = f"{self._key_prefix()}{self._BASE_JOB_PREFIX}*"
             cutoff = datetime.now(timezone.utc).timestamp() - max_age_seconds
 
             for key in self.redis_client.scan_iter(match=pattern):
@@ -557,10 +576,10 @@ class JobManager:
                                 job_id = job_data.get("id")
                                 if job_id:
                                     self.redis_client.delete(
-                                        f"{self.STATE_PREFIX}{job_id}"
+                                        f"{self._key_prefix()}{self._BASE_STATE_PREFIX}{job_id}"
                                     )
                                     self.redis_client.delete(
-                                        f"{self.CHECKPOINT_PREFIX}{job_id}"
+                                        f"{self._key_prefix()}{self._BASE_CHECKPOINT_PREFIX}{job_id}"
                                     )
                                 cleaned += 1
                         except (ValueError, TypeError):

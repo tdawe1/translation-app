@@ -80,28 +80,21 @@ func main() {
 		log.Printf("Warning: Redis connection failed: %v", err)
 	}
 
-	// Initialize services
 	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
 	userSvc := auth.NewUserService(db, tokenSvc)
 	emailSvc := email.NewService(&email.Config{
 		APIKey:    cfg.ResendAPIKey,
 		FromEmail: cfg.FromEmail,
 		FromName:  cfg.FromName,
-		BaseURL:   cfg.OAuthRedirectURL, // Frontend URL
+		BaseURL:   cfg.OAuthRedirectURL,
 	})
 
-	// Initialize token service for email verification, magic link, and password reset
 	tokenHandlerSvc := service.NewTokenService(gormDB)
+	blocklist := auth.NewTokenBlocklist(redisClient)
 
-	// Log OAuth config for debugging
-	log.Printf("OAuth config: FrontendURL=%s, OAuthRedirectURL=%s", cfg.FrontendURL, cfg.OAuthRedirectURL)
-
-	// Create session config for cookie operations (ensures Set and Clear use matching attributes)
 	sessionConfig := handlers.SessionConfigFromEnv(cfg.CookieDomain, cfg.CookieSecure, cfg.CookieSameSite)
-	log.Printf("Cookie config: Domain=%q, Secure=%v, SameSite=%q", sessionConfig.Domain, sessionConfig.Secure, sessionConfig.SameSite)
 
-	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, sessionConfig)
+	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, sessionConfig, blocklist)
 	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc, cfg, redisClient) // H-2 fix: Redis-backed OAuth state storage
 	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret, db)
 
@@ -224,30 +217,28 @@ func main() {
 	oauthGroup.Get("/google/callback", oauthHandler.Callback)
 	oauthGroup.Get("/github/callback", oauthHandler.Callback)
 
-	// Protected routes (require auth)
+	jwtConfig := middleware.NewJWTConfig(middleware.WithBlocklist(blocklist))
+
 	protected := api.Group("/")
-	protected.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
+	protected.Use(middleware.JWTValidator(jwtConfig))
 	protected.Get("/me", authHandler.GetMe)
 	protected.Put("/me/password", authHandler.ChangePassword)
 
-	// OAuth account management (protected)
 	oauthProtected := api.Group("/oauth")
-	oauthProtected.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
+	oauthProtected.Use(middleware.JWTValidator(jwtConfig))
 	oauthProtected.Get("/accounts", oauthHandler.GetLinkedAccounts)
 	oauthProtected.Delete("/:provider", oauthHandler.UnlinkAccount)
 
-	// Watcher routes (protected)
 	watcherGroup := api.Group("/watcher")
-	watcherGroup.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
+	watcherGroup.Use(middleware.JWTValidator(jwtConfig))
 	watcherGroup.Get("/config", watcherHandler.GetConfig)
 	watcherGroup.Put("/config", watcherHandler.UpdateConfig)
 	watcherGroup.Get("/state", watcherHandler.GetState)
 	watcherGroup.Post("/start", watcherHandler.StartWatcher)
 	watcherGroup.Post("/stop", watcherHandler.StopWatcher)
 
-	// Translation routes (protected)
 	translationGroup := api.Group("/translation")
-	translationGroup.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
+	translationGroup.Use(middleware.JWTValidator(jwtConfig))
 	translationGroup.Get("/jobs", translationHandler.ListJobs)
 	translationGroup.Get("/jobs/:id", translationHandler.GetJob)
 	translationGroup.Post("/jobs", translationHandler.CreateJob)
@@ -256,14 +247,11 @@ func main() {
 	translationGroup.Put("/jobs/:id/segments/:segment_uuid", translationHandler.UpdateSegment)
 	translationGroup.Get("/jobs/:id/flagged", translationHandler.GetFlaggedSegments)
 
-	// WebSocket ticket endpoint (protected, used to get short-lived ticket for WS connection)
-	// Rate limited to prevent Redis exhaustion (H-1 fix)
 	wsTicketLimiters := middleware.WSTicketLimiters(trustedProxies)
 	protected.Post("/auth/ws-ticket", wsTicketLimiters.GetTicket, wsHandler.GetWSTicket)
 
-	// Admin routes (protected + require admin role)
 	adminGroup := api.Group("/admin")
-	adminGroup.Use(middleware.JWTValidator(middleware.NewJWTConfig()))
+	adminGroup.Use(middleware.JWTValidator(jwtConfig))
 	adminGroup.Use(middleware.RequireAdmin())
 	adminLimiter := middleware.AdminLimiters(trustedProxies)
 	adminGroup.Get("/users", adminLimiter.Management, adminHandler.ListUsers)

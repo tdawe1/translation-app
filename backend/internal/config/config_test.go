@@ -10,6 +10,7 @@ import (
 func TestLoad_Development(t *testing.T) {
 	// Clear environment
 	os.Clearenv()
+	os.Setenv("TEST_ENV", "true")
 	os.Setenv("ENV", "development")
 
 	cfg := Load()
@@ -31,6 +32,7 @@ func TestLoad_Production_RequiresJWTSecret(t *testing.T) {
 
 func TestLoad_Production_WithJWTSecret(t *testing.T) {
 	os.Clearenv()
+	os.Setenv("TEST_ENV", "true")
 	os.Setenv("ENV", "production")
 	os.Setenv("JWT_SECRET", "my-super-secret-jwt-key-for-prod")
 

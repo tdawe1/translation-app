@@ -6,15 +6,16 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/tdawe1/translation-app/internal/auth"
-	apperrors "github.com/tdawe1/translation-app/internal/errors"
 	"github.com/tdawe1/translation-app/internal/email"
+	apperrors "github.com/tdawe1/translation-app/internal/errors"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/password"
 	"github.com/tdawe1/translation-app/internal/validation"
@@ -33,24 +34,22 @@ func getAPIError(err error) *apperrors.APIError {
 	return apiErr
 }
 
-// AuthHandler handles authentication endpoints
 type AuthHandler struct {
-	userService  *auth.UserService
-	tokenService *auth.TokenService
-	emailService *email.Service
-	redis        *redis.Client
-	sessionConfig SessionConfig // Cookie configuration for set/clear operations
+	userService   *auth.UserService
+	tokenService  *auth.TokenService
+	emailService  *email.Service
+	redis         *redis.Client
+	blocklist     *auth.TokenBlocklist
+	sessionConfig SessionConfig
 }
 
-// NewAuthHandler creates a new auth handler with the given session config.
-// The session config ensures that SetSessionCookie and ClearSessionCookie
-// use matching Domain, Secure, and SameSite attributes.
-func NewAuthHandler(userService *auth.UserService, tokenService *auth.TokenService, emailService *email.Service, redis *redis.Client, sessionConfig SessionConfig) *AuthHandler {
+func NewAuthHandler(userService *auth.UserService, tokenService *auth.TokenService, emailService *email.Service, redis *redis.Client, sessionConfig SessionConfig, blocklist *auth.TokenBlocklist) *AuthHandler {
 	return &AuthHandler{
-		userService:  userService,
-		tokenService: tokenService,
-		emailService: emailService,
-		redis:        redis,
+		userService:   userService,
+		tokenService:  tokenService,
+		emailService:  emailService,
+		redis:         redis,
+		blocklist:     blocklist,
 		sessionConfig: sessionConfig,
 	}
 }
@@ -201,9 +200,29 @@ func (h *AuthHandler) getMeLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	return c.JSON(UserToResponse(user))
 }
 
-// Logout handles logout
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
-	// Clear cookie with matching session config attributes (critical for production)
+	token := c.Cookies("session_token")
+	if token == "" {
+		auth := c.Get("Authorization")
+		if auth != "" {
+			parts := strings.Split(auth, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				token = parts[1]
+			}
+		}
+	}
+
+	if token != "" && h.blocklist != nil {
+		claims, err := h.tokenService.ValidateToken(token)
+		if err == nil {
+			ctx := context.Background()
+			expiry := time.Until(claims.ExpiresAt.Time)
+			if expiry > 0 {
+				h.blocklist.Add(ctx, claims.UserID, claims.JTI, expiry)
+			}
+		}
+	}
+
 	ClearSessionCookie(c, h.sessionConfig)
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -384,4 +403,3 @@ func generateSecureToken() string {
 	}
 	return base64.URLEncoding.EncodeToString(b)
 }
-

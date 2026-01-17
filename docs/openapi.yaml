@@ -1,0 +1,410 @@
+openapi: 3.1.0
+info:
+  title: GengoWatcher API
+  version: 1.0.0
+  description: Multi-tenant job monitoring SaaS API
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Development
+
+paths:
+  /auth/register:
+    post:
+      summary: Register new user
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 12
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+        '400':
+          description: Validation error
+        '409':
+          description: User already exists
+
+  /auth/login:
+    post:
+      summary: Login
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+        '401':
+          description: Invalid credentials
+
+  /auth/logout:
+    post:
+      summary: Logout
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logout successful
+
+  /auth/magic-link:
+    post:
+      summary: Request magic link
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Magic link sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /auth/verify:
+    get:
+      summary: Verify magic link
+      tags: [Auth]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '307':
+          description: Redirect to dashboard on success
+        '400':
+          description: Invalid or expired token
+
+  /me:
+    get:
+      summary: Get current user
+      tags: [User]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  email:
+                    type: string
+                  role:
+                    type: string
+
+  /me/password:
+    put:
+      summary: Change password
+      tags: [User]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_password, new_password]
+              properties:
+                old_password:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 12
+      responses:
+        '200':
+          description: Password updated
+        '400':
+          description: Invalid password or request
+        '401':
+          description: Invalid old password
+
+  /watcher/config:
+    get:
+      summary: Get watcher config
+      tags: [Watcher]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Watcher configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                  rss_feed_url:
+                    type: string
+                  websocket_enabled:
+                    type: boolean
+                  gengo_user_id:
+                    type: string
+                  min_reward:
+                    type: number
+                  max_reward:
+                    type: number
+                  included_language_pairs:
+                    type: array
+                    items:
+                      type: string
+                  enable_desktop_notifications:
+                    type: boolean
+                  enable_sound_notifications:
+                    type: boolean
+                  enable_email_notifications:
+                    type: boolean
+                  notification_email:
+                    type: string
+                  auto_accept_enabled:
+                    type: boolean
+                  auto_accept_min_reward:
+                    type: number
+                  auto_accept_max_reward:
+                    type: number
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+
+    put:
+      summary: Update watcher config
+      tags: [Watcher]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rss_feed_url:
+                  type: string
+                websocket_enabled:
+                  type: boolean
+                gengo_user_id:
+                  type: string
+                min_reward:
+                  type: number
+                max_reward:
+                  type: number
+                included_language_pairs:
+                  type: array
+                  items:
+                    type: string
+                enable_desktop_notifications:
+                  type: boolean
+                enable_sound_notifications:
+                  type: boolean
+                enable_email_notifications:
+                  type: boolean
+                notification_email:
+                  type: string
+                  format: email
+                auto_accept_enabled:
+                  type: boolean
+                auto_accept_min_reward:
+                  type: number
+                auto_accept_max_reward:
+                  type: number
+      responses:
+        '200':
+          description: Config updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatcherConfig'
+        '400':
+          description: Invalid request
+
+  /watcher/state:
+    get:
+      summary: Get watcher state
+      tags: [Watcher]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Watcher state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                  watcher_status:
+                    type: string
+                  total_jobs_found:
+                    type: integer
+                  total_jobs_accepted:
+                    type: integer
+                  total_earnings:
+                    type: number
+                  last_activity:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+
+  /watcher/start:
+    post:
+      summary: Start watcher
+      tags: [Watcher]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Watcher started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '400':
+          description: Start error
+
+  /watcher/stop:
+    post:
+      summary: Stop watcher
+      tags: [Watcher]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Watcher stopped
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '400':
+          description: Stop error
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    WatcherConfig:
+      type: object
+      properties:
+        user_id:
+          type: string
+        rss_feed_url:
+          type: string
+        websocket_enabled:
+          type: boolean
+        gengo_user_id:
+          type: string
+        min_reward:
+          type: number
+        max_reward:
+          type: number
+        included_language_pairs:
+          type: array
+          items:
+            type: string
+        enable_desktop_notifications:
+          type: boolean
+        enable_sound_notifications:
+          type: boolean
+        enable_email_notifications:
+          type: boolean
+        notification_email:
+          type: string
+          format: email
+        auto_accept_enabled:
+          type: boolean
+        auto_accept_min_reward:
+          type: number
+        auto_accept_max_reward:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/tdawe1/translation-app/internal/auth"
 )
 
 // validateJWTSecretOnStartup validates JWT_SECRET at application startup.
@@ -93,10 +95,10 @@ func getJWTConfig() *JWTConfig {
 	}
 
 	jwtConfig = &JWTConfig{
-		Secret:      secret,
-		Lookup:      "cookie:session_token",
-		AuthScheme:  "Bearer",
-		ContextKey:  "user",
+		Secret:     secret,
+		Lookup:     "cookie:session_token",
+		AuthScheme: "Bearer",
+		ContextKey: "user",
 	}
 	return jwtConfig
 }
@@ -136,11 +138,12 @@ func isTestEnv() bool {
 
 // JWTConfig holds JWT middleware configuration
 type JWTConfig struct {
-	Secret        string
+	Secret       string
 	Lookup       string
 	AuthScheme   string
-	ContextKey    string
+	ContextKey   string
 	ErrorHandler fiber.ErrorHandler
+	Blocklist    *auth.TokenBlocklist
 }
 
 // NewJWTConfig creates a new JWT config with options
@@ -149,7 +152,7 @@ func NewJWTConfig(options ...func(*JWTConfig)) *JWTConfig {
 		Secret:     validateJWTSecret(os.Getenv("JWT_SECRET")),
 		Lookup:     "cookie:session_token",
 		AuthScheme: "Bearer",
-		ContextKey:  "user",
+		ContextKey: "user",
 	}
 
 	for _, option := range options {
@@ -159,17 +162,22 @@ func NewJWTConfig(options ...func(*JWTConfig)) *JWTConfig {
 	// Re-validate after options have been applied (in case an option modified Secret)
 	// In test mode, we're more lenient
 	if !isTestEnv() && (config.Secret == "" || len(config.Secret) < minSecretLength) {
-		log.Fatalf("FATAL: JWT_SECRET validation failed after applying options. " +
+		log.Fatalf("FATAL: JWT_SECRET validation failed after applying options. "+
 			"Secret must be at least %d characters.", minSecretLength)
 	}
 
 	return config
 }
 
-// WithSecret sets a custom JWT secret (useful for testing)
 func WithSecret(secret string) func(*JWTConfig) {
 	return func(cfg *JWTConfig) {
 		cfg.Secret = secret
+	}
+}
+
+func WithBlocklist(blocklist *auth.TokenBlocklist) func(*JWTConfig) {
+	return func(cfg *JWTConfig) {
+		cfg.Blocklist = blocklist
 	}
 }
 
@@ -227,6 +235,25 @@ func JWTValidator(config *JWTConfig) fiber.Handler {
 				"error": "Invalid or expired token",
 				"code":  "INVALID_TOKEN",
 			})
+		}
+
+		// Check if token is in blocklist (revoked)
+		if config.Blocklist != nil {
+			userID, _ := claims["sub"].(string)
+			jti, _ := claims["jti"].(string)
+			if userID != "" && jti != "" {
+				ctx := context.Background()
+				blocked, err := config.Blocklist.IsBlocked(ctx, userID, jti)
+				if err != nil {
+					log.Printf("[JWT] Blocklist check failed: %v", err)
+				} else if blocked {
+					log.Printf("[JWT] Token is revoked for user=%s", userID)
+					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+						"error": "Token has been revoked",
+						"code":  "TOKEN_REVOKED",
+					})
+				}
+			}
 		}
 
 		log.Printf("[JWT] Token validated successfully for user=%v", claims["sub"])
@@ -306,7 +333,7 @@ func WebSocketAuth(config *JWTConfig) fiber.Handler {
 		Secret:     config.Secret,
 		Lookup:     "query:token",
 		AuthScheme: "Bearer",
-		ContextKey:  "user_id",
+		ContextKey: "user_id",
 	}
 
 	return JWTValidator(cfg)

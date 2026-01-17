@@ -10,22 +10,18 @@ import (
 
 // TokenService handles JWT token generation and validation
 type TokenService struct {
-	secret      []byte
-	accessTTL   time.Duration
-	issuer      string
+	secret    []byte
+	accessTTL time.Duration
+	issuer    string
 }
 
-// TokenClaims represents the JWT claims structure
-// Matches the claims generated in GenerateAccessToken:
-// - sub: user ID (UUID string)
-// - role: user role ("user", "admin", etc.)
-// - type: token type ("access", "refresh", etc.)
-// - exp, iat, iss: standard JWT claims
 type TokenClaims struct {
-	UserID string `json:"sub"`
-	Role   string `json:"role"`
-	Type   string `json:"type"`
-	jwt.RegisteredClaims
+	UserID           string
+	JTI              string
+	Role             string
+	Type             string
+	ExpiresAt        jwt.NumericDate
+	RegisteredClaims jwt.RegisteredClaims
 }
 
 // NewTokenService creates a new token service
@@ -37,13 +33,13 @@ func NewTokenService(secret string) *TokenService {
 	}
 }
 
-// GenerateAccessToken creates a new access token for a user
-// The role is included in claims to enable role-based access control
 func (s *TokenService) GenerateAccessToken(userID uuid.UUID, role string) (string, error) {
 	now := time.Now()
+	jti := uuid.New().String()
 
 	claims := jwt.MapClaims{
 		"sub":  userID.String(),
+		"jti":  jti,
 		"role": role,
 		"exp":  now.Add(s.accessTTL).Unix(),
 		"iat":  now.Unix(),
@@ -55,10 +51,8 @@ func (s *TokenService) GenerateAccessToken(userID uuid.UUID, role string) (strin
 	return token.SignedString(s.secret)
 }
 
-// ValidateToken validates a JWT token and returns the claims
 func (s *TokenService) ValidateToken(tokenString string) (*TokenClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Validate signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
 		}
@@ -71,20 +65,27 @@ func (s *TokenService) ValidateToken(tokenString string) (*TokenClaims, error) {
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		userID, _ := claims["sub"].(string)
+		jti, _ := claims["jti"].(string)
 		role, _ := claims["role"].(string)
 		tokenType, _ := claims["type"].(string)
+		var exp *jwt.NumericDate
+		if expFloat, ok := claims["exp"].(float64); ok {
+			expUnix := int64(expFloat)
+			exp = &jwt.NumericDate{Time: time.Unix(expUnix, 0)}
+		}
 
 		return &TokenClaims{
-			UserID: userID,
-			Role:   role,
-			Type:   tokenType,
+			UserID:    userID,
+			JTI:       jti,
+			Role:      role,
+			Type:      tokenType,
+			ExpiresAt: *exp,
 		}, nil
 	}
 
 	return nil, jwt.ErrTokenInvalidClaims
 }
 
-// ExtractUserID extracts the user ID from a token string
 func (s *TokenService) ExtractUserID(tokenString string) (uuid.UUID, error) {
 	claims, err := s.ValidateToken(tokenString)
 	if err != nil {

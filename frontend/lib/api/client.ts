@@ -113,7 +113,10 @@ class HttpClient {
       // Handle 401 Unauthorized - try to read error message first
       if (response.status === 401) {
         // Try to read the actual error message from the response body
-        const data = await response.json().catch(() => ({}));
+        const data = await response.json().catch((error) => {
+          console.error("Failed to parse 401 error response:", error);
+          return {};
+        });
         clearTokenStorage(); // Use TokenService to clear token
         // If optional mode, return null instead of throwing
         if (options.optional) {
@@ -130,7 +133,10 @@ class HttpClient {
 
       // Handle other errors
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
+        const data = await response.json().catch((error) => {
+          console.error("Failed to parse error response:", error);
+          return {};
+        });
         throw new ApiErrorClass(
           (data.error as string) || response.statusText,
           (data.code as string) || "UNKNOWN_ERROR",
@@ -147,7 +153,9 @@ class HttpClient {
       this.pendingRequests.set(cacheKey, requestPromise);
 
       requestPromise
-        .catch(() => {})
+        .catch((error: unknown) => {
+          console.error("[HttpClient] Request failed:", error);
+        })
         .finally(() => {
           this.pendingRequests.delete(cacheKey);
         });

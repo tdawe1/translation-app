@@ -54,10 +54,10 @@ func TestMagicLink_AtomicConsume(t *testing.T) {
 		BaseURL:   "http://localhost:3000",
 	})
 
-	// Create session config for test (uses development defaults)
 	sessionConfig := handlers.DefaultSessionConfig()
 	sessionConfig.Secure = cfg.CookieSecure
-	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, sessionConfig)
+	blocklist := auth.NewTokenBlocklist(redisClient)
+	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, sessionConfig, blocklist)
 
 	// Create test app
 	app := fiber.New(fiber.Config{
@@ -237,6 +237,7 @@ func TestMagicLink_AtomicConsume(t *testing.T) {
 func TestPasswordChange(t *testing.T) {
 	db := RequireDB(t)
 	wrappedDB := database.Wrap(db)
+	redisClient := RequireRedis(t)
 
 	cfg := &config.Config{
 		JWTSecret:    "test-secret-for-testing-only-32-chars-min",
@@ -246,12 +247,11 @@ func TestPasswordChange(t *testing.T) {
 	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
 	userSvc := auth.NewUserService(wrappedDB, tokenSvc)
 
-	// Create session config for test
 	sessionConfig := handlers.DefaultSessionConfig()
 	sessionConfig.Secure = cfg.CookieSecure
-	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, nil, nil, sessionConfig)
+	blocklist := auth.NewTokenBlocklist(redisClient)
+	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, nil, redisClient, sessionConfig, blocklist)
 
-	// Create test app
 	app := fiber.New(fiber.Config{
 		AppName:               "GengoWatcher Test",
 		DisableStartupMessage: true,
@@ -343,6 +343,7 @@ func TestPasswordChange(t *testing.T) {
 func TestUserResponse_IncludesOAuthAccounts(t *testing.T) {
 	db := RequireDB(t)
 	wrappedDB := database.Wrap(db)
+	redisClient := RequireRedis(t)
 
 	cfg := &config.Config{
 		JWTSecret:    "test-secret-for-testing-only-32-chars-min",
@@ -352,10 +353,10 @@ func TestUserResponse_IncludesOAuthAccounts(t *testing.T) {
 	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
 	userSvc := auth.NewUserService(wrappedDB, tokenSvc)
 
-	// Create session config for test
 	sessionConfig := handlers.DefaultSessionConfig()
 	sessionConfig.Secure = cfg.CookieSecure
-	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, nil, nil, sessionConfig)
+	blocklist := auth.NewTokenBlocklist(redisClient)
+	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, nil, redisClient, sessionConfig, blocklist)
 
 	// Create test app
 	app := fiber.New(fiber.Config{

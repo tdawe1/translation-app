@@ -29,8 +29,9 @@ type Config struct {
 	DBConnMaxIdleTime    time.Duration
 
 	// Security
-	JWTSecret                string
+	JWTSecret                 string
 	LemonSqueezyWebhookSecret string
+	RedisURL                  string // Required in production
 
 	// Email (Resend)
 	ResendAPIKey string
@@ -42,8 +43,8 @@ type Config struct {
 	GoogleOAuthClientSecret string
 	GitHubOAuthClientID     string
 	GitHubOAuthClientSecret string
-	OAuthRedirectURL       string // Base URL for OAuth callbacks (backend)
-	FrontendURL            string // Frontend URL for redirects after successful login
+	OAuthRedirectURL        string // Base URL for OAuth callbacks (backend)
+	FrontendURL             string // Frontend URL for redirects after successful login
 
 	// CORS
 	AllowedOrigins string // Comma-separated list
@@ -52,8 +53,8 @@ type Config struct {
 	TrustedProxies string // Comma-separated list of CIDR ranges
 
 	// Cookies
-	CookieSecure  bool   // Set Secure flag on cookies
-	CookieDomain  string // Domain for cookies (empty for localhost, ".example.com" for prod)
+	CookieSecure   bool   // Set Secure flag on cookies
+	CookieDomain   string // Domain for cookies (empty for localhost, ".example.com" for prod)
 	CookieSameSite string // SameSite policy: "Lax", "Strict", or "None"
 }
 
@@ -61,19 +62,21 @@ type Config struct {
 // It will panic if required values are missing in production
 func Load() *Config {
 	cfg := &Config{
-		Port:                 getEnv("PORT", "8000"),
-		Env:                  getEnv("ENV", "development"),
-		DBHost:               getEnv("DB_HOST", "localhost"),
-		DBPort:               getEnv("DB_PORT", "5432"),
-		DBUser:               getEnv("DB_USER", "gengo"),
-		DBPassword:           getEnv("DB_PASSWORD", "devpass"),
-		DBName:               getEnv("DB_NAME", "gengowatcher"),
-		DBSSLMode:            getEnv("DB_SSLMODE", "disable"),
-		DBMaxOpenConnections: getEnvInt("DB_MAX_OPEN_CONNS", 25),
-		DBMaxIdleConnections: getEnvInt("DB_MAX_IDLE_CONNS", 10),
-		DBConnMaxLifetime:    getEnvDuration("DB_CONN_MAX_LIFETIME", 1*time.Hour),
-		DBConnMaxIdleTime:    getEnvDuration("DB_CONN_MAX_IDLE_TIME", 10*time.Minute),
-		JWTSecret:            getEnv("JWT_SECRET", ""),
+		Port:       getEnv("PORT", "8000"),
+		Env:        getEnv("ENV", "development"),
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "gengo"),
+		DBPassword: getEnv("DB_PASSWORD", ""),
+
+		DBName:                    getEnv("DB_NAME", "gengowatcher"),
+		DBSSLMode:                 getEnv("DB_SSLMODE", "disable"),
+		DBMaxOpenConnections:      getEnvInt("DB_MAX_OPEN_CONNS", 25),
+		DBMaxIdleConnections:      getEnvInt("DB_MAX_IDLE_CONNS", 10),
+		DBConnMaxLifetime:         getEnvDuration("DB_CONN_MAX_LIFETIME", 1*time.Hour),
+		DBConnMaxIdleTime:         getEnvDuration("DB_CONN_MAX_IDLE_TIME", 10*time.Minute),
+		JWTSecret:                 getEnv("JWT_SECRET", ""),
+		RedisURL:                  getEnv("REDIS_URL", ""),
 		LemonSqueezyWebhookSecret: getEnv("LEMONSQUEE_WEBHOOK_SECRET", ""),
 		ResendAPIKey:              getEnv("RESEND_API_KEY", ""),
 		FromEmail:                 getEnv("FROM_EMAIL", "noreply@gengowatcher.example"),
@@ -82,22 +85,44 @@ func Load() *Config {
 		GoogleOAuthClientSecret:   getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
 		GitHubOAuthClientID:       getEnv("GITHUB_OAUTH_CLIENT_ID", ""),
 		GitHubOAuthClientSecret:   getEnv("GITHUB_OAUTH_CLIENT_SECRET", ""),
-		OAuthRedirectURL:         getEnv("OAUTH_REDIRECT_URL", "http://localhost:8000"),
-		FrontendURL:              getEnv("FRONTEND_URL", "http://localhost:3001"),
+		OAuthRedirectURL:          getEnv("OAUTH_REDIRECT_URL", "http://localhost:8000"),
+		FrontendURL:               getEnv("FRONTEND_URL", "http://localhost:3001"),
 		AllowedOrigins:            getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001"),
-		TrustedProxies:           getEnv("TRUSTED_PROXIES", ""), // Empty = don't trust any proxy
+		TrustedProxies:            getEnv("TRUSTED_PROXIES", ""), // Empty = don't trust any proxy
 		CookieSecure:              getEnv("ENV", "development") == "production",
-		CookieDomain:              getEnv("COOKIE_DOMAIN", ""),    // Empty = current host only
+		CookieDomain:              getEnv("COOKIE_DOMAIN", ""), // Empty = current host only
 		CookieSameSite:            getEnv("COOKIE_SAMESITE", "Lax"),
 	}
 
-	// P0-4 FIX: No hardcoded JWT_SECRET in any environment (except tests)
-	// In test environment (detected by TEST_ENV=true or ENV=test), allow missing JWT_SECRET
+	// P0-4 FIX: No hardcoded secrets in any environment (except tests)
+	// In test environment (detected by TEST_ENV=true or ENV=test), allow missing secrets
 	isTestEnv := os.Getenv("TEST_ENV") == "true" || cfg.Env == "test"
+
+	// JWT_SECRET is always required (except tests)
 	if cfg.JWTSecret == "" && !isTestEnv {
 		panic("JWT_SECRET environment variable is required. " +
 			"Please set it to a random string of at least 32 characters. " +
 			"Generate one with: openssl rand -hex 32")
+	}
+
+	// P0-1.02 FIX: Fail-fast on missing critical secrets in production (except tests)
+	if cfg.IsProduction() && !isTestEnv {
+		missingSecrets := []string{}
+
+		if cfg.RedisURL == "" {
+			missingSecrets = append(missingSecrets, "REDIS_URL")
+		}
+		if cfg.DBPassword == "" {
+			missingSecrets = append(missingSecrets, "DB_PASSWORD")
+		}
+		if cfg.ResendAPIKey == "" {
+			missingSecrets = append(missingSecrets, "RESEND_API_KEY")
+		}
+
+		if len(missingSecrets) > 0 {
+			panic("Production environment requires the following secrets: " +
+				strings.Join(missingSecrets, ", "))
+		}
 	}
 
 	// For tests, use a consistent test secret if not already set
