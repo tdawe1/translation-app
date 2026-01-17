@@ -50,6 +50,7 @@ func setupTranslationTestEnv(t *testing.T) translationTestEnv {
 	group := app.Group("/api/v1/translation", jwtMiddleware)
 	group.Get("/jobs", handler.ListJobs)
 	group.Get("/jobs/:id", handler.GetJob)
+	group.Delete("/jobs/:id", handler.DeleteJob)
 	group.Post("/jobs", handler.CreateJob)
 	group.Post("/jobs/:id/approve", handler.ApproveJob)
 	group.Post("/jobs/:id/reject", handler.RejectJob)
@@ -221,4 +222,58 @@ func TestTranslation_GetFlaggedSegments(t *testing.T) {
 	assert.Equal(t, float64(1), result["count"])
 	segments := result["segments"].([]interface{})
 	assert.Len(t, segments, 1)
+}
+
+func TestTranslation_DeleteJob(t *testing.T) {
+	env := setupTranslationTestEnv(t)
+	job := createTranslationJob(t, env, models.TranslationJobStatusCompleted)
+	createTranslationSegment(t, env, job.ID, false)
+
+	req := httptest.NewRequest("DELETE", "/api/v1/translation/jobs/"+job.ID.String(), nil)
+	req.Header.Set("Authorization", "Bearer "+env.token)
+
+	resp, err := env.app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "Job deleted successfully", result["message"])
+	assert.Equal(t, job.ID.String(), result["id"])
+
+	var deletedJob models.TranslationJob
+	err = env.db.First(&deletedJob, "id = ?", job.ID).Error
+	assert.Error(t, err, "Job should be deleted")
+
+	var deletedSegment models.TranslationSegment
+	err = env.db.First(&deletedSegment, "job_id = ?", job.ID).Error
+	assert.Error(t, err, "Segments should be deleted")
+}
+
+func TestTranslation_DeleteJob_InProgress(t *testing.T) {
+	env := setupTranslationTestEnv(t)
+	job := createTranslationJob(t, env, models.TranslationJobStatusProcessing)
+
+	req := httptest.NewRequest("DELETE", "/api/v1/translation/jobs/"+job.ID.String(), nil)
+	req.Header.Set("Authorization", "Bearer "+env.token)
+
+	resp, err := env.app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+	var result map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Contains(t, result["error"], "Cannot delete job that is in progress")
+}
+
+func TestTranslation_DeleteJob_NotFound(t *testing.T) {
+	env := setupTranslationTestEnv(t)
+	nonExistentID := uuid.New()
+
+	req := httptest.NewRequest("DELETE", "/api/v1/translation/jobs/"+nonExistentID.String(), nil)
+	req.Header.Set("Authorization", "Bearer "+env.token)
+
+	resp, err := env.app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }

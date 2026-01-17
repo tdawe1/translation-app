@@ -12,10 +12,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	"github.com/tdawe1/translation-app/internal/auth"
 	"github.com/tdawe1/translation-app/internal/email"
 	apperrors "github.com/tdawe1/translation-app/internal/errors"
+	"github.com/tdawe1/translation-app/internal/logger"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/password"
 	"github.com/tdawe1/translation-app/internal/validation"
@@ -219,7 +221,7 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 			expiry := time.Until(claims.ExpiresAt.Time)
 			if expiry > 0 {
 				if err := h.blocklist.Add(ctx, claims.UserID, claims.JTI, expiry); err != nil {
-					log.Printf("[Auth] Warning: failed to blocklist token: %v", err)
+					logger.Log.Warn("failed_to_blocklist_token", zap.Error(err))
 				}
 			}
 		}
@@ -272,7 +274,7 @@ func (h *AuthHandler) RequestMagicLink(c *fiber.Ctx) error {
 	_, apiErr := h.userService.GetUserByEmail(req.Email)
 	if apiErr != nil {
 		// Don't reveal whether user exists - always return success
-		log.Printf("Magic link requested for non-existent email: %s", req.Email)
+		logger.Log.Warn("magic_link_for_nonexistent_email", zap.String("email", req.Email))
 		return c.JSON(fiber.Map{"message": "If an account exists, a magic link has been sent"})
 	}
 
@@ -283,7 +285,7 @@ func (h *AuthHandler) RequestMagicLink(c *fiber.Ctx) error {
 	ctx := context.Background()
 	key := fmt.Sprintf("magiclink:%s", token)
 	if err := h.redis.Set(ctx, key, req.Email, 15*time.Minute).Err(); err != nil {
-		log.Printf("Failed to store magic link token: %v", err)
+		logger.Log.Error("failed_to_store_magic_link_token", zap.Error(err))
 		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Failed to generate magic link")
 	}
 

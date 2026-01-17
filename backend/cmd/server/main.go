@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -10,15 +9,17 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/helmet"
-	"github.com/gofiber/fiber/v2/middleware/logger"
+	fiberlogger "github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	"github.com/tdawe1/translation-app/internal/auth"
 	"github.com/tdawe1/translation-app/internal/config"
 	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/email"
 	"github.com/tdawe1/translation-app/internal/handlers"
+	"github.com/tdawe1/translation-app/internal/logger"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/models"
 	"github.com/tdawe1/translation-app/internal/seeds"
@@ -33,16 +34,19 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 
+	logger.Init(cfg.Env)
+	defer logger.Sync()
+
 	// Initialize database with dependency injection
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logger.Log.Fatal("failed_to_initialize_database", zap.Error(err))
 	}
 
 	// Get underlying GORM DB for migrations
 	gormDB, ok := database.GetPool(db)
 	if !ok {
-		log.Fatalf("Failed to get GORM database instance")
+		logger.Log.Fatal("failed_to_get_gorm_database")
 	}
 
 	// Auto migrate
@@ -63,7 +67,7 @@ func main() {
 		&models.TranslationJob{},
 		&models.TranslationSegment{},
 	); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		logger.Log.Fatal("failed_to_run_migrations", zap.Error(err))
 	}
 
 	// Close database connection on exit
@@ -73,13 +77,13 @@ func main() {
 	// Initialize Redis
 	redisOpts, err := redis.ParseURL(getEnv("REDIS_URL", "redis://localhost:6379/0"))
 	if err != nil {
-		log.Fatalf("Failed to parse Redis URL: %v", err)
+		logger.Log.Fatal("failed_to_parse_redis_url", zap.Error(err))
 	}
 	redisClient := redis.NewClient(redisOpts)
 
 	// Test Redis connection
 	if _, err := redisClient.Ping(context.Background()).Result(); err != nil {
-		log.Printf("Warning: Redis connection failed: %v", err)
+		logger.Log.Warn("redis_connection_failed", zap.Error(err))
 	}
 
 	tokenSvc := auth.NewTokenService(cfg.JWTSecret)
@@ -125,9 +129,10 @@ func main() {
 		EnablePrintRoutes:     cfg.IsDevelopment(),
 	})
 
-	// Middleware
+	middleware.SetupPrometheus(app)
+
 	app.Use(recover.New())
-	app.Use(logger.New())
+	app.Use(fiberlogger.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.AllowedOrigins,
 		AllowCredentials: true,
@@ -245,6 +250,7 @@ func main() {
 	translationGroup.Use(middleware.JWTValidator(jwtConfig))
 	translationGroup.Get("/jobs", translationHandler.ListJobs)
 	translationGroup.Get("/jobs/:id", translationHandler.GetJob)
+	translationGroup.Delete("/jobs/:id", translationHandler.DeleteJob)
 	translationGroup.Post("/jobs", translationHandler.CreateJob)
 	translationGroup.Post("/jobs/:id/approve", translationHandler.ApproveJob)
 	translationGroup.Post("/jobs/:id/reject", translationHandler.RejectJob)
@@ -270,17 +276,17 @@ func main() {
 	app.Get("/ws", wsHandler.HandleWebSocket())
 
 	// Start server
-	log.Printf("Server starting on port %s (env: %s)", cfg.Port, cfg.Env)
+	logger.Log.Info("server_starting", zap.String("port", cfg.Port), zap.String("env", cfg.Env))
 	go func() {
 		if err := app.Listen(":" + cfg.Port); err != nil {
-			log.Fatal(err)
+			logger.Log.Fatal("server_listen_error", zap.Error(err))
 		}
 	}()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
-	log.Println("Gracefully shutting down...")
+	logger.Log.Info("gracefully_shutting_down")
 	_ = app.Shutdown()
 }
 
