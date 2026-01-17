@@ -1,0 +1,62 @@
+{
+  "common": {
+    "loading": "読み込み中...",
+    "error": "エラー",
+    "success": "成功",
+    "invalidRequest": "無効なリクエスト",
+    "unauthorized": "認証されていません",
+    "forbidden": "禁止されています",
+    "notFound": "見つかりません",
+    "internalError": "サーバー内部エラー"
+  },
+  "auth": {
+    "invalidCredentials": "メールまたはパスワードが正しくありません",
+    "userNotFound": "ユーザーが見つかりません",
+    "userExists": "ユーザーは既に存在します",
+    "invalidToken": "無効なトークン",
+    "tokenExpired": "トークンの有効期限が切れています",
+    "logoutFailed": "ログアウトに失敗しました",
+    "passwordTooShort": "パスワードは8文字以上である必要があります",
+    "passwordsDoNotMatch": "パスワードが一致しません",
+    "invalidEmail": "無効なメールアドレス",
+    "oauthFailed": "OAuth認証に失敗しました",
+    "magicLinkSent": "マジックリンクをメールに送信しました",
+    "magicLinkFailed": "マジックリンクの送信に失敗しました"
+  },
+  "watcher": {
+    "notConfigured": "Watcherが設定されていません",
+    "alreadyRunning": "Watcherは既に実行中です",
+    "notRunning": "Watcherは実行されていません",
+    "startFailed": "Watcherの開始に失敗しました",
+    "stopFailed": "Watcherの停止に失敗しました",
+    "configNotFound": "Watcher設定が見つかりません",
+    "invalidConfig": "Watcher設定が無効です",
+    "jobNotFound": "翻訳ジョブが見つかりません",
+    "segmentNotFound": "翻訳セグメントが見つかりません",
+    "jobDeleted": "翻訳ジョブを削除しました",
+    "jobDeleteFailed": "翻訳ジョブの削除に失敗しました"
+  },
+  "validation": {
+    "required": "この項目は必須です",
+    "invalidEmail": "メール形式が無効です",
+    "invalidURL": "URL形式が無効です",
+    "invalidFile": "無効なファイル形式",
+    "fileTooLarge": "ファイルサイズが大きすぎます",
+    "invalidNumber": "数値形式が無効です",
+    "invalidBoolean": "真偽値形式が無効です",
+    "minValue": "値は少なくとも%dである必要があります",
+    "maxValue": "値は最大%dである必要があります",
+    "minLength": "長さは少なくとも%d文字である必要があります",
+    "maxLength": "長さは最大%d文字である必要があります"
+  },
+  "server": {
+    "serverStarted": "%sでサーバーを起動しました",
+    "serverStopped": "サーバーを停止しました",
+    "gracefulShutdown": "グレースフルシャットダウンを開始しました",
+    "shutdownTimeout": "シャットダウンのタイムアウト、強制終了します",
+    "databaseConnected": "データベースに接続しました",
+    "databaseFailed": "データベースへの接続に失敗しました",
+    "redisConnected": "Redisに接続しました",
+    "redisFailed": "Redisへの接続に失敗しました"
+  }
+}

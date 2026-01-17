@@ -1,0 +1,104 @@
+{
+  "common": {
+    "loading": "読み込み中...",
+    "error": "エラー",
+    "success": "成功",
+    "cancel": "キャンセル",
+    "save": "保存",
+    "delete": "削除",
+    "edit": "編集",
+    "create": "作成",
+    "update": "更新",
+    "confirm": "確認",
+    "back": "戻る",
+    "next": "次へ",
+    "search": "検索",
+    "filter": "フィルター",
+    "clear": "クリア",
+    "refresh": "更新",
+    "actions": "操作"
+  },
+  "auth": {
+    "signIn": "サインイン",
+    "signOut": "サインアウト",
+    "signUp": "登録",
+    "email": "メール",
+    "password": "パスワード",
+    "forgotPassword": "パスワードを忘れた場合",
+    "resetPassword": "パスワードをリセット",
+    "invalidCredentials": "メールまたはパスワードが正しくありません",
+    "signInWithGoogle": "Googleでサインイン",
+    "signInWithGitHub": "GitHubでサインイン",
+    "magicLink": "マジックリンクを送信",
+    "magicLinkSent": "マジックリンクをメールに送信しました",
+    "name": "名前"
+  },
+  "dashboard": {
+    "title": "ダッシュボード",
+    "welcome": "お帰りなさい",
+    "overview": "概要",
+    "recentActivity": "最近のアクティビティ",
+    "stats": {
+      "totalJobs": "総ジョブ数",
+      "activeJobs": "稼働中のジョブ",
+      "completedJobs": "完了したジョブ",
+      "failedJobs": "失敗したジョブ"
+    }
+  },
+  "watcher": {
+    "title": "Gengo Watcher",
+    "createJob": "新しいジョブを作成",
+    "jobDetails": "ジョブ詳細",
+    "filters": {
+      "title": "フィルター",
+      "status": "ステータス",
+      "dateRange": "日付範囲",
+      "sourceFile": "ソースファイル",
+      "allStatuses": "すべてのステータス",
+      "activeFilters": "有効なフィルター",
+      "clearAll": "すべてクリア"
+    },
+    "status": {
+      "pending": "保留",
+      "processing": "処理中",
+      "completed": "完了",
+      "failed": "失敗"
+    },
+    "segments": {
+      "total": "総セグメント数",
+      "translated": "翻訳済み",
+      "pending": "保留",
+      "failed": "失敗"
+    },
+    "actions": {
+      "deleteJob": "ジョブを削除",
+      "deleteConfirmation": "このジョブを削除してもよろしいですか？",
+      "viewDetails": "詳細を見る",
+      "retryFailed": "失敗したセグメントを再試行"
+    }
+  },
+  "settings": {
+    "title": "設定",
+    "profile": "プロフィール",
+    "account": "アカウント",
+    "notifications": "通知",
+    "language": "言語",
+    "theme": "テーマ"
+  },
+  "api": {
+    "error": "エラーが発生しました",
+    "networkError": "ネットワークエラー",
+    "serverError": "サーバーエラー",
+    "unauthorized": "未認証",
+    "forbidden": "禁止",
+    "notFound": "見つかりません",
+    "validationError": "検証エラー"
+  },
+  "languages": {
+    "en": "英語",
+    "es": "スペイン語",
+    "fr": "フランス語",
+    "de": "ドイツ語",
+    "ja": "日本語"
+  }
+}

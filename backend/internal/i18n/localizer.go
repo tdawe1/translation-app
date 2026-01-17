@@ -18,6 +18,7 @@ var (
 	Spanish    = language.Spanish
 	French     = language.French
 	German     = language.German
+	Japanese   = language.Japanese
 )
 
 // Init initializes i18n bundle
@@ -27,7 +28,7 @@ func Init() error {
 		bundle = i18n.NewBundle(language.English)
 		bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
 
-		for _, lang := range []string{"en", "es", "fr", "de"} {
+		for _, lang := range []string{"en", "es", "fr", "de", "ja"} {
 			path := filepath.Join("i18n", lang, fmt.Sprintf("active.%s.json", lang))
 			data, err := os.ReadFile(path)
 			if err != nil {
