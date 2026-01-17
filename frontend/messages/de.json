@@ -1,0 +1,103 @@
+{
+  "common": {
+    "loading": "Laden...",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "create": "Erstellen",
+    "update": "Aktualisieren",
+    "confirm": "Bestätigen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "search": "Suchen",
+    "filter": "Filtern",
+    "clear": "Löschen",
+    "refresh": "Aktualisieren",
+    "actions": "Aktionen"
+  },
+  "auth": {
+    "signIn": "Anmelden",
+    "signOut": "Abmelden",
+    "signUp": "Registrieren",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "forgotPassword": "Passwort vergessen?",
+    "resetPassword": "Passwort zurücksetzen",
+    "invalidCredentials": "Ungültige E-Mail oder Passwort",
+    "signInWithGoogle": "Mit Google anmelden",
+    "signInWithGitHub": "Mit GitHub anmelden",
+    "magicLink": "Magischen Link senden",
+    "magicLinkSent": "Magischer Link an Ihre E-Mail gesendet",
+    "name": "Name"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Willkommen zurück",
+    "overview": "Übersicht",
+    "recentActivity": "Letzte Aktivität",
+    "stats": {
+      "totalJobs": "Gesamtaufträge",
+      "activeJobs": "Aktive Aufträge",
+      "completedJobs": "Abgeschlossene Aufträge",
+      "failedJobs": "Fehlgeschlagene Aufträge"
+    }
+  },
+  "watcher": {
+    "title": "Gengo Watcher",
+    "createJob": "Neuen Auftrag erstellen",
+    "jobDetails": "Auftragsdetails",
+    "filters": {
+      "title": "Filter",
+      "status": "Status",
+      "dateRange": "Datumsbereich",
+      "sourceFile": "Quelldatei",
+      "allStatuses": "Alle Status",
+      "activeFilters": "Aktive Filter",
+      "clearAll": "Alle löschen"
+    },
+    "status": {
+      "pending": "Ausstehend",
+      "processing": "In Bearbeitung",
+      "completed": "Abgeschlossen",
+      "failed": "Fehlgeschlagen"
+    },
+    "segments": {
+      "total": "Gesamtsegmente",
+      "translated": "Übersetzt",
+      "pending": "Ausstehend",
+      "failed": "Fehlgeschlagen"
+    },
+    "actions": {
+      "deleteJob": "Auftrag löschen",
+      "deleteConfirmation": "Sind Sie sicher, dass Sie diesen Auftrag löschen möchten?",
+      "viewDetails": "Details anzeigen",
+      "retryFailed": "Fehlgeschlagene Segmente wiederholen"
+    }
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "profile": "Profil",
+    "account": "Konto",
+    "notifications": "Benachrichtigungen",
+    "language": "Sprache",
+    "theme": "Design"
+  },
+  "api": {
+    "error": "Ein Fehler ist aufgetreten",
+    "networkError": "Netzwerkfehler",
+    "serverError": "Serverfehler",
+    "unauthorized": "Unautorisiert",
+    "forbidden": "Verboten",
+    "notFound": "Nicht gefunden",
+    "validationError": "Validierungsfehler"
+  },
+  "languages": {
+    "en": "Englisch",
+    "es": "Spanisch",
+    "fr": "Französisch",
+    "de": "Deutsch"
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "update": "Update",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "search": "Search",
+    "filter": "Filter",
+    "clear": "Clear",
+    "refresh": "Refresh",
+    "actions": "Actions"
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "signUp": "Sign Up",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot Password?",
+    "resetPassword": "Reset Password",
+    "invalidCredentials": "Invalid email or password",
+    "signInWithGoogle": "Sign in with Google",
+    "signInWithGitHub": "Sign in with GitHub",
+    "magicLink": "Send Magic Link",
+    "magicLinkSent": "Magic link sent to your email",
+    "name": "Name"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome back",
+    "overview": "Overview",
+    "recentActivity": "Recent Activity",
+    "stats": {
+      "totalJobs": "Total Jobs",
+      "activeJobs": "Active Jobs",
+      "completedJobs": "Completed Jobs",
+      "failedJobs": "Failed Jobs"
+    }
+  },
+  "watcher": {
+    "title": "Gengo Watcher",
+    "createJob": "Create New Job",
+    "jobDetails": "Job Details",
+    "filters": {
+      "title": "Filters",
+      "status": "Status",
+      "dateRange": "Date Range",
+      "sourceFile": "Source File",
+      "allStatuses": "All Statuses",
+      "activeFilters": "Active Filters",
+      "clearAll": "Clear All"
+    },
+    "status": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "segments": {
+      "total": "Total Segments",
+      "translated": "Translated",
+      "pending": "Pending",
+      "failed": "Failed"
+    },
+    "actions": {
+      "deleteJob": "Delete Job",
+      "deleteConfirmation": "Are you sure you want to delete this job?",
+      "viewDetails": "View Details",
+      "retryFailed": "Retry Failed Segments"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "account": "Account",
+    "notifications": "Notifications",
+    "language": "Language",
+    "theme": "Theme"
+  },
+  "api": {
+    "error": "An error occurred",
+    "networkError": "Network error",
+    "serverError": "Server error",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "notFound": "Not found",
+    "validationError": "Validation error"
+  },
+  "languages": {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German"
+  }
+}
