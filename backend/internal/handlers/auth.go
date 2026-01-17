@@ -218,7 +218,9 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 			ctx := context.Background()
 			expiry := time.Until(claims.ExpiresAt.Time)
 			if expiry > 0 {
-				h.blocklist.Add(ctx, claims.UserID, claims.JTI, expiry)
+				if err := h.blocklist.Add(ctx, claims.UserID, claims.JTI, expiry); err != nil {
+					log.Printf("[Auth] Warning: failed to blocklist token: %v", err)
+				}
 			}
 		}
 	}

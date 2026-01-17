@@ -74,6 +74,10 @@ func (s *TokenService) ValidateToken(tokenString string) (*TokenClaims, error) {
 			exp = &jwt.NumericDate{Time: time.Unix(expUnix, 0)}
 		}
 
+		if exp == nil {
+			return nil, jwt.ErrTokenInvalidClaims
+		}
+
 		return &TokenClaims{
 			UserID:    userID,
 			JTI:       jti,

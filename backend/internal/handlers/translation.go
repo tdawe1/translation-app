@@ -518,10 +518,12 @@ func (h *TranslationHandler) syncJobStatusFromRedis(ctx context.Context, job *mo
 		}
 	}
 
-	h.db.Model(job).Updates(map[string]interface{}{
-		"status":   job.Status,
-		"progress": job.Progress,
-	})
+	h.db.Model(&models.TranslationJob{}).
+		Where("id = ? AND user_id = ?", job.ID, job.UserID).
+		Updates(map[string]interface{}{
+			"status":   job.Status,
+			"progress": job.Progress,
+		})
 }
 
 func (h *TranslationHandler) syncSegmentsFromRedis(ctx context.Context, job *models.TranslationJob) {

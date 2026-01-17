@@ -609,6 +609,7 @@ def create_job_manager(
     redis_host: str = "localhost",
     redis_port: int = 6379,
     redis_db: int = 0,
+    user_id: Optional[str] = None,
 ) -> JobManager:
     """Factory function to create a configured job manager.
 
@@ -616,6 +617,7 @@ def create_job_manager(
         redis_host: Redis server host
         redis_port: Redis server port
         redis_db: Redis database number
+        user_id: Optional user ID for multi-tenancy namespacing
 
     Returns:
         Configured JobManager instance
@@ -624,4 +626,5 @@ def create_job_manager(
         redis_host=redis_host,
         redis_port=redis_port,
         redis_db=redis_db,
+        user_id=user_id,
     )
