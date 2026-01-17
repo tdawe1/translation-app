@@ -3,9 +3,9 @@ import {getMessages} from 'next-intl/server';
 import {notFound} from 'next/navigation';
 import type {ReactNode} from 'react';
 
-type Locale = 'en' | 'es' | 'fr' | 'de';
+type Locale = 'en' | 'es' | 'fr' | 'de' | 'ja';
 
-const locales: Locale[] = ['en', 'es', 'fr', 'de'];
+const locales: Locale[] = ['en', 'es', 'fr', 'de', 'ja'];
 
 export default async function LocaleLayout({
   children,
