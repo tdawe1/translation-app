@@ -1,0 +1,62 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "success": "Succès",
+    "invalidRequest": "Requête invalide",
+    "unauthorized": "Non autorisé",
+    "forbidden": "Interdit",
+    "notFound": "Non trouvé",
+    "internalError": "Erreur interne du serveur"
+  },
+  "auth": {
+    "invalidCredentials": "E-mail ou mot de passe invalide",
+    "userNotFound": "Utilisateur non trouvé",
+    "userExists": "L'utilisateur existe déjà",
+    "invalidToken": "Jeton invalide",
+    "tokenExpired": "Jeton expiré",
+    "logoutFailed": "Échec de la déconnexion",
+    "passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères",
+    "passwordsDoNotMatch": "Les mots de passe ne correspondent pas",
+    "invalidEmail": "Adresse e-mail invalide",
+    "oauthFailed": "Échec de l'authentification OAuth",
+    "magicLinkSent": "Lien magique envoyé à votre e-mail",
+    "magicLinkFailed": "Échec de l'envoi du lien magique"
+  },
+  "watcher": {
+    "notConfigured": "Watcher non configuré",
+    "alreadyRunning": "Le watcher est déjà en cours d'exécution",
+    "notRunning": "Le watcher n'est pas en cours d'exécution",
+    "startFailed": "Échec du démarrage du watcher",
+    "stopFailed": "Échec de l'arrêt du watcher",
+    "configNotFound": "Configuration du watcher non trouvée",
+    "invalidConfig": "Configuration du watcher invalide",
+    "jobNotFound": "Tâche de traduction non trouvée",
+    "segmentNotFound": "Segment de traduction non trouvé",
+    "jobDeleted": "Tâche de traduction supprimée",
+    "jobDeleteFailed": "Échec de la suppression de la tâche de traduction"
+  },
+  "validation": {
+    "required": "Ce champ est obligatoire",
+    "invalidEmail": "Format d'e-mail invalide",
+    "invalidURL": "Format d'URL invalide",
+    "invalidFile": "Type de fichier invalide",
+    "fileTooLarge": "Le fichier est trop volumineux",
+    "invalidNumber": "Format de nombre invalide",
+    "invalidBoolean": "Format booléen invalide",
+    "minValue": "La valeur doit être au moins %d",
+    "maxValue": "La valeur doit être au plus %d",
+    "minLength": "La longueur doit être d'au moins %d caractères",
+    "maxLength": "La longueur doit être d'au plus %d caractères"
+  },
+  "server": {
+    "serverStarted": "Serveur démarré sur %s",
+    "serverStopped": "Serveur arrêté",
+    "gracefulShutdown": "Arrêt élégant initié",
+    "shutdownTimeout": "Délai d'arrêt dépassé, forçant la sortie",
+    "databaseConnected": "Base de données connectée",
+    "databaseFailed": "Échec de la connexion à la base de données",
+    "redisConnected": "Redis connecté",
+    "redisFailed": "Échec de la connexion à Redis"
+  }
+}
