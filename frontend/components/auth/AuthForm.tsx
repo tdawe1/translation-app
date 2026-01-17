@@ -49,7 +49,7 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
         return;
       }
       if (password !== confirmPassword) {
-        setError(tCommon('error'));
+        setError(t('passwordsDoNotMatch'));
         return;
       }
     }
