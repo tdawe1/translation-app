@@ -410,7 +410,7 @@ func (h *TranslationHandler) deleteJobLogic(c *fiber.Ctx, userID uuid.UUID) erro
 	}
 
 	if err := h.db.Where("job_id = ?", jobID).Delete(&models.TranslationSegment{}).Error; err != nil {
-		log.Printf("Warning: failed to delete segments for job %s: %v", jobID, err)
+logger.Log.Warn("failed to delete segments for job", zap.String("job_id", jobID.String()), zap.Error(err))
 	}
 
 	if err := h.db.Delete(&job).Error; err != nil {
