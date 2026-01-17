@@ -73,7 +73,7 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
 
   const isLogin = mode === "login";
   const submitText = isLogin ? t('signIn') : t('signUp');
-  const loadingText = isLogin ? `${tCommon('loading')}...` : `${tCommon('loading')}...`;
+  const loadingText = isLogin ? tCommon('loading') : tCommon('loading');
   const disabled = isLoading || isSubmitting;
 
   return (
