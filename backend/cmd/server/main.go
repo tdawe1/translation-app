@@ -161,7 +161,7 @@ func main() {
 		// This endpoint is ONLY available in development mode
 		dev.Post("/seed-admin", func(c *fiber.Ctx) error {
 			// Only allow in development or test environment
-			if os.Getenv("ENV") != "development" && os.Getenv("ENV") != "test" {
+			if !cfg.IsDevelopment() && cfg.Env != "test" {
 				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
 			}
 

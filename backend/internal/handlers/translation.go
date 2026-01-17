@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,10 +13,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 
 	"github.com/tdawe1/translation-app/internal/database"
 	apperrors "github.com/tdawe1/translation-app/internal/errors"
+	"github.com/tdawe1/translation-app/internal/logger"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/models"
 )
@@ -276,7 +277,7 @@ func (h *TranslationHandler) createJobLogic(c *fiber.Ctx, userID uuid.UUID) erro
 		"id":            job.ID.String(),
 		"job_id":        job.ID.String(),
 		"user_id":       userID.String(),
-		"source_file":   req.SourceFile,
+		"source_file":   validatedSourceFile,
 		"source_lang":   req.SourceLang,
 		"target_lang":   req.TargetLang,
 		"project_type":  req.ProjectType,
@@ -410,7 +411,7 @@ func (h *TranslationHandler) deleteJobLogic(c *fiber.Ctx, userID uuid.UUID) erro
 	}
 
 	if err := h.db.Where("job_id = ?", jobID).Delete(&models.TranslationSegment{}).Error; err != nil {
-logger.Log.Warn("failed to delete segments for job", zap.String("job_id", jobID.String()), zap.Error(err))
+		logger.Log.Warn("failed to delete segments for job", zap.String("job_id", jobID.String()), zap.Error(err))
 	}
 
 	if err := h.db.Delete(&job).Error; err != nil {
