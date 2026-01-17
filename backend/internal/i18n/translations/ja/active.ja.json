@@ -44,13 +44,13 @@
     "fileTooLarge": "ファイルサイズが大きすぎます",
     "invalidNumber": "数値形式が無効です",
     "invalidBoolean": "真偽値形式が無効です",
-    "minValue": "値は少なくとも%dである必要があります",
-    "maxValue": "値は最大%dである必要があります",
-    "minLength": "長さは少なくとも%d文字である必要があります",
-    "maxLength": "長さは最大%d文字である必要があります"
+    "minValue": "値は少なくとも{{.Value}}である必要があります",
+    "maxValue": "値は最大{{.Value}}である必要があります",
+    "minLength": "長さは少なくとも{{.Value}}文字である必要があります",
+    "maxLength": "長さは最大{{.Value}}文字である必要があります"
   },
   "server": {
-    "serverStarted": "%sでサーバーを起動しました",
+    "serverStarted": "{{.Address}}でサーバーを起動しました",
     "serverStopped": "サーバーを停止しました",
     "gracefulShutdown": "グレースフルシャットダウンを開始しました",
     "shutdownTimeout": "シャットダウンのタイムアウト、強制終了します",

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,6 +21,7 @@ import (
 	"github.com/tdawe1/translation-app/internal/database"
 	"github.com/tdawe1/translation-app/internal/email"
 	"github.com/tdawe1/translation-app/internal/handlers"
+	appi18n "github.com/tdawe1/translation-app/internal/i18n"
 	"github.com/tdawe1/translation-app/internal/logger"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/models"
@@ -36,6 +39,10 @@ func main() {
 
 	logger.Init(cfg.Env)
 	defer logger.Sync()
+
+	if err := appi18n.Init(); err != nil {
+		logger.Log.Fatal("failed_to_initialize_i18n", zap.Error(err))
+	}
 
 	// Initialize database with dependency injection
 	db, err := database.New(cfg)
@@ -279,6 +286,10 @@ func main() {
 	logger.Log.Info("server_starting", zap.String("port", cfg.Port), zap.String("env", cfg.Env))
 	go func() {
 		if err := app.Listen(":" + cfg.Port); err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				logger.Log.Info("server_closed")
+				return
+			}
 			logger.Log.Fatal("server_listen_error", zap.Error(err))
 		}
 	}()

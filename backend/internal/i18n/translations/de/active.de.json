@@ -44,13 +44,13 @@
     "fileTooLarge": "Datei ist zu groß",
     "invalidNumber": "Ungültiges Zahlenformat",
     "invalidBoolean": "Ungültiges boolesches Format",
-    "minValue": "Wert muss mindestens %d betragen",
-    "maxValue": "Wert darf höchstens %d betragen",
-    "minLength": "Länge muss mindestens %d Zeichen betragen",
-    "maxLength": "Länge darf höchstens %d Zeichen betragen"
+    "minValue": "Wert muss mindestens {{.Value}} betragen",
+    "maxValue": "Wert darf höchstens {{.Value}} betragen",
+    "minLength": "Länge muss mindestens {{.Value}} Zeichen betragen",
+    "maxLength": "Länge darf höchstens {{.Value}} Zeichen betragen"
   },
   "server": {
-    "serverStarted": "Server gestartet auf %s",
+    "serverStarted": "Server gestartet auf {{.Address}}",
     "serverStopped": "Server gestoppt",
     "gracefulShutdown": "Elegantes Herunterfahren eingeleitet",
     "shutdownTimeout": "Herunterfahren-Timeout, erzinge Beendigung",
