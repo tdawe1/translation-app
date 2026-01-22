@@ -31,7 +31,9 @@
     "signInWithGitHub": "Iniciar con GitHub",
     "magicLink": "Enviar Enlace Mágico",
     "magicLinkSent": "Enlace mágico enviado a tu correo",
-    "name": "Nombre"
+    "name": "Nombre",
+    "passwordTooShort": "La contraseña debe tener al menos 8 caracteres",
+    "passwordsDoNotMatch": "Las contraseñas no coinciden"
   },
   "dashboard": {
     "title": "Tablero",

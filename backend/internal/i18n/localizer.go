@@ -47,6 +47,13 @@ func Init() error {
 
 // Localizer returns a localizer for given language tag
 func Localizer(tag language.Tag) *i18n.Localizer {
+	if bundle == nil {
+		// Lazily initialize the bundle if Init has not been called yet.
+		// We intentionally ignore the error here because the bundle is created
+		// before any translation files are parsed, so it will be non-nil even
+		// if parsing fails.
+		_ = Init()
+	}
 	return i18n.NewLocalizer(bundle, tag.String())
 }
 
@@ -69,9 +76,9 @@ func ParseLanguageTag(locale string) language.Tag {
 		return language.English
 	}
 
-	tag, err := language.Parse(locale)
-	if err != nil {
+	tags, _, err := language.ParseAcceptLanguage(locale)
+	if err != nil || len(tags) == 0 {
 		return language.English
 	}
-	return tag
+	return tags[0]
 }

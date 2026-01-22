@@ -1,62 +1,202 @@
-{
-  "common": {
-    "loading": "Loading...",
-    "error": "Error",
-    "success": "Success",
-    "invalidRequest": "Invalid request",
-    "unauthorized": "Unauthorized",
-    "forbidden": "Forbidden",
-    "notFound": "Not found",
-    "internalError": "Internal server error"
+[
+  {
+    "id": "common.loading",
+    "translation": "Loading..."
   },
-  "auth": {
-    "invalidCredentials": "Invalid email or password",
-    "userNotFound": "User not found",
-    "userExists": "User already exists",
-    "invalidToken": "Invalid token",
-    "tokenExpired": "Token expired",
-    "logoutFailed": "Failed to logout",
-    "passwordTooShort": "Password must be at least 8 characters",
-    "passwordsDoNotMatch": "Passwords do not match",
-    "invalidEmail": "Invalid email address",
-    "oauthFailed": "OAuth authentication failed",
-    "magicLinkSent": "Magic link sent to your email",
-    "magicLinkFailed": "Failed to send magic link"
+  {
+    "id": "common.error",
+    "translation": "Error"
   },
-  "watcher": {
-    "notConfigured": "Watcher not configured",
-    "alreadyRunning": "Watcher is already running",
-    "notRunning": "Watcher is not running",
-    "startFailed": "Failed to start watcher",
-    "stopFailed": "Failed to stop watcher",
-    "configNotFound": "Watcher configuration not found",
-    "invalidConfig": "Invalid watcher configuration",
-    "jobNotFound": "Translation job not found",
-    "segmentNotFound": "Translation segment not found",
-    "jobDeleted": "Translation job deleted",
-    "jobDeleteFailed": "Failed to delete translation job"
+  {
+    "id": "common.success",
+    "translation": "Success"
   },
-  "validation": {
-    "required": "This field is required",
-    "invalidEmail": "Invalid email format",
-    "invalidURL": "Invalid URL format",
-    "invalidFile": "Invalid file type",
-    "fileTooLarge": "File is too large",
-    "invalidNumber": "Invalid number format",
-    "invalidBoolean": "Invalid boolean format",
-    "minValue": "Value must be at least {{.Value}}",
-    "maxValue": "Value must be at most {{.Value}}",
-    "minLength": "Length must be at least {{.Value}} characters",
-    "maxLength": "Length must be at most {{.Value}} characters"
+  {
+    "id": "common.invalidRequest",
+    "translation": "Invalid request"
   },
-  "server": {
-    "serverStarted": "Server started on {{.Address}}",
-    "serverStopped": "Server stopped",
-    "gracefulShutdown": "Graceful shutdown initiated",
-    "shutdownTimeout": "Shutdown timeout, forcing exit",
-    "databaseConnected": "Database connected",
-    "databaseFailed": "Failed to connect to database",
-    "redisConnected": "Redis connected",
-    "redisFailed": "Failed to connect to Redis"
+  {
+    "id": "common.unauthorized",
+    "translation": "Unauthorized"
+  },
+  {
+    "id": "common.forbidden",
+    "translation": "Forbidden"
+  },
+  {
+    "id": "common.notFound",
+    "translation": "Not found"
+  },
+  {
+    "id": "common.internalError",
+    "translation": "Internal server error"
+  },
+  {
+    "id": "auth.invalidCredentials",
+    "translation": "Invalid email or password"
+  },
+  {
+    "id": "auth.userNotFound",
+    "translation": "User not found"
+  },
+  {
+    "id": "auth.userExists",
+    "translation": "User already exists"
+  },
+  {
+    "id": "auth.invalidToken",
+    "translation": "Invalid token"
+  },
+  {
+    "id": "auth.tokenExpired",
+    "translation": "Token expired"
+  },
+  {
+    "id": "auth.logoutFailed",
+    "translation": "Failed to logout"
+  },
+  {
+    "id": "auth.passwordTooShort",
+    "translation": "Password must be at least 8 characters"
+  },
+  {
+    "id": "auth.passwordsDoNotMatch",
+    "translation": "Passwords do not match"
+  },
+  {
+    "id": "auth.invalidEmail",
+    "translation": "Invalid email address"
+  },
+  {
+    "id": "auth.oauthFailed",
+    "translation": "OAuth authentication failed"
+  },
+  {
+    "id": "auth.magicLinkSent",
+    "translation": "Magic link sent to your email"
+  },
+  {
+    "id": "auth.magicLinkFailed",
+    "translation": "Failed to send magic link"
+  },
+  {
+    "id": "watcher.notConfigured",
+    "translation": "Watcher not configured"
+  },
+  {
+    "id": "watcher.alreadyRunning",
+    "translation": "Watcher is already running"
+  },
+  {
+    "id": "watcher.notRunning",
+    "translation": "Watcher is not running"
+  },
+  {
+    "id": "watcher.startFailed",
+    "translation": "Failed to start watcher"
+  },
+  {
+    "id": "watcher.stopFailed",
+    "translation": "Failed to stop watcher"
+  },
+  {
+    "id": "watcher.configNotFound",
+    "translation": "Watcher configuration not found"
+  },
+  {
+    "id": "watcher.invalidConfig",
+    "translation": "Invalid watcher configuration"
+  },
+  {
+    "id": "watcher.jobNotFound",
+    "translation": "Translation job not found"
+  },
+  {
+    "id": "watcher.segmentNotFound",
+    "translation": "Translation segment not found"
+  },
+  {
+    "id": "watcher.jobDeleted",
+    "translation": "Translation job deleted"
+  },
+  {
+    "id": "watcher.jobDeleteFailed",
+    "translation": "Failed to delete translation job"
+  },
+  {
+    "id": "validation.required",
+    "translation": "This field is required"
+  },
+  {
+    "id": "validation.invalidEmail",
+    "translation": "Invalid email format"
+  },
+  {
+    "id": "validation.invalidURL",
+    "translation": "Invalid URL format"
+  },
+  {
+    "id": "validation.invalidFile",
+    "translation": "Invalid file type"
+  },
+  {
+    "id": "validation.fileTooLarge",
+    "translation": "File is too large"
+  },
+  {
+    "id": "validation.invalidNumber",
+    "translation": "Invalid number format"
+  },
+  {
+    "id": "validation.invalidBoolean",
+    "translation": "Invalid boolean format"
+  },
+  {
+    "id": "validation.minValue",
+    "translation": "Value must be at least {{.Value}}"
+  },
+  {
+    "id": "validation.maxValue",
+    "translation": "Value must be at most {{.Value}}"
+  },
+  {
+    "id": "validation.minLength",
+    "translation": "Length must be at least {{.Value}} characters"
+  },
+  {
+    "id": "validation.maxLength",
+    "translation": "Length must be at most {{.Value}} characters"
+  },
+  {
+    "id": "server.serverStarted",
+    "translation": "Server started on {{.Address}}"
+  },
+  {
+    "id": "server.serverStopped",
+    "translation": "Server stopped"
+  },
+  {
+    "id": "server.gracefulShutdown",
+    "translation": "Graceful shutdown initiated"
+  },
+  {
+    "id": "server.shutdownTimeout",
+    "translation": "Shutdown timeout, forcing exit"
+  },
+  {
+    "id": "server.databaseConnected",
+    "translation": "Database connected"
+  },
+  {
+    "id": "server.databaseFailed",
+    "translation": "Failed to connect to database"
+  },
+  {
+    "id": "server.redisConnected",
+    "translation": "Redis connected"
+  },
+  {
+    "id": "server.redisFailed",
+    "translation": "Failed to connect to Redis"
   }
-}
+]
