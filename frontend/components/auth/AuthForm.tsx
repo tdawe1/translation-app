@@ -210,7 +210,7 @@ const oauthButtonClass = cn(
 
 export function OAuthButtons({ onOAuthLogin, disabled = false }: OAuthButtonsProps) {
   const t = useTranslations('auth');
-  const tCommon = useTranslations('common');
+  const tApi = useTranslations('api');
   const [error, setError] = useState<string | null>(null);
 
   const handleOAuth = async (provider: "google" | "github") => {
@@ -221,7 +221,7 @@ export function OAuthButtons({ onOAuthLogin, disabled = false }: OAuthButtonsPro
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError(tCommon('api.error'));
+        setError(tApi('error'));
       }
     }
   };
