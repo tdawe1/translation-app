@@ -1,6 +1,0 @@
-ruleDirs:
-- /home/thomas/translation-app/rules
-testConfigs:
-- testDir: /home/thomas/translation-app
-utilDirs:
-- /home/thomas/translation-app/utils

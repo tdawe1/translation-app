@@ -31,7 +31,9 @@
     "signInWithGitHub": "GitHubでサインイン",
     "magicLink": "マジックリンクを送信",
     "magicLinkSent": "マジックリンクをメールに送信しました",
-    "name": "名前"
+    "name": "名前",
+    "passwordTooShort": "パスワードは8文字以上である必要があります",
+    "passwordsDoNotMatch": "パスワードが一致しません"
   },
   "dashboard": {
     "title": "ダッシュボード",

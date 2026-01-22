@@ -1,62 +1,202 @@
-{
-  "common": {
-    "loading": "Laden...",
-    "error": "Fehler",
-    "success": "Erfolg",
-    "invalidRequest": "Ungültige Anfrage",
-    "unauthorized": "Nicht autorisiert",
-    "forbidden": "Verboten",
-    "notFound": "Nicht gefunden",
-    "internalError": "Interner Serverfehler"
+[
+  {
+    "id": "common.loading",
+    "translation": "Laden..."
   },
-  "auth": {
-    "invalidCredentials": "Ungültige E-Mail oder Passwort",
-    "userNotFound": "Benutzer nicht gefunden",
-    "userExists": "Benutzer existiert bereits",
-    "invalidToken": "Ungültiges Token",
-    "tokenExpired": "Token abgelaufen",
-    "logoutFailed": "Abmelden fehlgeschlagen",
-    "passwordTooShort": "Passwort muss mindestens 8 Zeichen haben",
-    "passwordsDoNotMatch": "Passwörter stimmen nicht überein",
-    "invalidEmail": "Ungültige E-Mail-Adresse",
-    "oauthFailed": "OAuth-Authentifizierung fehlgeschlagen",
-    "magicLinkSent": "Magischer Link an Ihre E-Mail gesendet",
-    "magicLinkFailed": "Senden des magischen Links fehlgeschlagen"
+  {
+    "id": "common.error",
+    "translation": "Fehler"
   },
-  "watcher": {
-    "notConfigured": "Watcher nicht konfiguriert",
-    "alreadyRunning": "Watcher läuft bereits",
-    "notRunning": "Watcher läuft nicht",
-    "startFailed": "Starten des Watchers fehlgeschlagen",
-    "stopFailed": "Stoppen des Watchers fehlgeschlagen",
-    "configNotFound": "Watcher-Konfiguration nicht gefunden",
-    "invalidConfig": "Ungültige Watcher-Konfiguration",
-    "jobNotFound": "Übersetzungsauftrag nicht gefunden",
-    "segmentNotFound": "Übersetzungssegment nicht gefunden",
-    "jobDeleted": "Übersetzungsauftrag gelöscht",
-    "jobDeleteFailed": "Löschen des Übersetzungsauftrags fehlgeschlagen"
+  {
+    "id": "common.success",
+    "translation": "Erfolg"
   },
-  "validation": {
-    "required": "Dieses Feld ist erforderlich",
-    "invalidEmail": "Ungültiges E-Mail-Format",
-    "invalidURL": "Ungültiges URL-Format",
-    "invalidFile": "Ungültiger Dateityp",
-    "fileTooLarge": "Datei ist zu groß",
-    "invalidNumber": "Ungültiges Zahlenformat",
-    "invalidBoolean": "Ungültiges boolesches Format",
-    "minValue": "Wert muss mindestens {{.Value}} betragen",
-    "maxValue": "Wert darf höchstens {{.Value}} betragen",
-    "minLength": "Länge muss mindestens {{.Value}} Zeichen betragen",
-    "maxLength": "Länge darf höchstens {{.Value}} Zeichen betragen"
+  {
+    "id": "common.invalidRequest",
+    "translation": "Ungültige Anfrage"
   },
-  "server": {
-    "serverStarted": "Server gestartet auf {{.Address}}",
-    "serverStopped": "Server gestoppt",
-    "gracefulShutdown": "Elegantes Herunterfahren eingeleitet",
-    "shutdownTimeout": "Herunterfahren-Timeout, erzinge Beendigung",
-    "databaseConnected": "Datenbank verbunden",
-    "databaseFailed": "Verbindung zur Datenbank fehlgeschlagen",
-    "redisConnected": "Redis verbunden",
-    "redisFailed": "Verbindung zu Redis fehlgeschlagen"
+  {
+    "id": "common.unauthorized",
+    "translation": "Nicht autorisiert"
+  },
+  {
+    "id": "common.forbidden",
+    "translation": "Verboten"
+  },
+  {
+    "id": "common.notFound",
+    "translation": "Nicht gefunden"
+  },
+  {
+    "id": "common.internalError",
+    "translation": "Interner Serverfehler"
+  },
+  {
+    "id": "auth.invalidCredentials",
+    "translation": "Ungültige E-Mail oder Passwort"
+  },
+  {
+    "id": "auth.userNotFound",
+    "translation": "Benutzer nicht gefunden"
+  },
+  {
+    "id": "auth.userExists",
+    "translation": "Benutzer existiert bereits"
+  },
+  {
+    "id": "auth.invalidToken",
+    "translation": "Ungültiges Token"
+  },
+  {
+    "id": "auth.tokenExpired",
+    "translation": "Token abgelaufen"
+  },
+  {
+    "id": "auth.logoutFailed",
+    "translation": "Abmelden fehlgeschlagen"
+  },
+  {
+    "id": "auth.passwordTooShort",
+    "translation": "Passwort muss mindestens 8 Zeichen haben"
+  },
+  {
+    "id": "auth.passwordsDoNotMatch",
+    "translation": "Passwörter stimmen nicht überein"
+  },
+  {
+    "id": "auth.invalidEmail",
+    "translation": "Ungültige E-Mail-Adresse"
+  },
+  {
+    "id": "auth.oauthFailed",
+    "translation": "OAuth-Authentifizierung fehlgeschlagen"
+  },
+  {
+    "id": "auth.magicLinkSent",
+    "translation": "Magischer Link an Ihre E-Mail gesendet"
+  },
+  {
+    "id": "auth.magicLinkFailed",
+    "translation": "Senden des magischen Links fehlgeschlagen"
+  },
+  {
+    "id": "watcher.notConfigured",
+    "translation": "Watcher nicht konfiguriert"
+  },
+  {
+    "id": "watcher.alreadyRunning",
+    "translation": "Watcher läuft bereits"
+  },
+  {
+    "id": "watcher.notRunning",
+    "translation": "Watcher läuft nicht"
+  },
+  {
+    "id": "watcher.startFailed",
+    "translation": "Starten des Watchers fehlgeschlagen"
+  },
+  {
+    "id": "watcher.stopFailed",
+    "translation": "Stoppen des Watchers fehlgeschlagen"
+  },
+  {
+    "id": "watcher.configNotFound",
+    "translation": "Watcher-Konfiguration nicht gefunden"
+  },
+  {
+    "id": "watcher.invalidConfig",
+    "translation": "Ungültige Watcher-Konfiguration"
+  },
+  {
+    "id": "watcher.jobNotFound",
+    "translation": "Übersetzungsauftrag nicht gefunden"
+  },
+  {
+    "id": "watcher.segmentNotFound",
+    "translation": "Übersetzungssegment nicht gefunden"
+  },
+  {
+    "id": "watcher.jobDeleted",
+    "translation": "Übersetzungsauftrag gelöscht"
+  },
+  {
+    "id": "watcher.jobDeleteFailed",
+    "translation": "Löschen des Übersetzungsauftrags fehlgeschlagen"
+  },
+  {
+    "id": "validation.required",
+    "translation": "Dieses Feld ist erforderlich"
+  },
+  {
+    "id": "validation.invalidEmail",
+    "translation": "Ungültiges E-Mail-Format"
+  },
+  {
+    "id": "validation.invalidURL",
+    "translation": "Ungültiges URL-Format"
+  },
+  {
+    "id": "validation.invalidFile",
+    "translation": "Ungültiger Dateityp"
+  },
+  {
+    "id": "validation.fileTooLarge",
+    "translation": "Datei ist zu groß"
+  },
+  {
+    "id": "validation.invalidNumber",
+    "translation": "Ungültiges Zahlenformat"
+  },
+  {
+    "id": "validation.invalidBoolean",
+    "translation": "Ungültiges boolesches Format"
+  },
+  {
+    "id": "validation.minValue",
+    "translation": "Wert muss mindestens {{.Value}} betragen"
+  },
+  {
+    "id": "validation.maxValue",
+    "translation": "Wert darf höchstens {{.Value}} betragen"
+  },
+  {
+    "id": "validation.minLength",
+    "translation": "Länge muss mindestens {{.Value}} Zeichen betragen"
+  },
+  {
+    "id": "validation.maxLength",
+    "translation": "Länge darf höchstens {{.Value}} Zeichen betragen"
+  },
+  {
+    "id": "server.serverStarted",
+    "translation": "Server gestartet auf {{.Address}}"
+  },
+  {
+    "id": "server.serverStopped",
+    "translation": "Server gestoppt"
+  },
+  {
+    "id": "server.gracefulShutdown",
+    "translation": "Elegantes Herunterfahren eingeleitet"
+  },
+  {
+    "id": "server.shutdownTimeout",
+    "translation": "Herunterfahren-Timeout, erzwinge Beendigung"
+  },
+  {
+    "id": "server.databaseConnected",
+    "translation": "Datenbank verbunden"
+  },
+  {
+    "id": "server.databaseFailed",
+    "translation": "Verbindung zur Datenbank fehlgeschlagen"
+  },
+  {
+    "id": "server.redisConnected",
+    "translation": "Redis verbunden"
+  },
+  {
+    "id": "server.redisFailed",
+    "translation": "Verbindung zu Redis fehlgeschlagen"
   }
-}
+]
