@@ -45,8 +45,13 @@ func Init() error {
 	return initErr
 }
 
-// Localizer returns a localizer for given language tag
+// Localizer returns a localizer for given language tag.
+// Panics if Init() has not been called successfully.
+// This is a programming error and should be caught during development.
 func Localizer(tag language.Tag) *i18n.Localizer {
+	if bundle == nil {
+		panic("i18n: Localizer called before Init() - call i18n.Init() at application startup")
+	}
 	return i18n.NewLocalizer(bundle, tag.String())
 }
 
