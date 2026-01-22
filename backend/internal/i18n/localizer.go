@@ -47,6 +47,9 @@ func Init() error {
 
 // Localizer returns a localizer for given language tag
 func Localizer(tag language.Tag) *i18n.Localizer {
+	if bundle == nil {
+		panic("i18n bundle not initialized: ensure Init() is called at application startup")
+	}
 	return i18n.NewLocalizer(bundle, tag.String())
 }
 
