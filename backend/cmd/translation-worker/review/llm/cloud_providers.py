@@ -17,11 +17,11 @@ from .base import BaseProvider, ProviderConfig, ProviderResponse
 logger = logging.getLogger(__name__)
 
 try:
-    import requests
+    import httpx
 
-    REQUESTS_AVAILABLE = True
+    HTTPX_AVAILABLE = True
 except ImportError:
-    REQUESTS_AVAILABLE = False
+    HTTPX_AVAILABLE = False
 
 
 class OpenRouterProvider(BaseProvider):
@@ -61,8 +61,8 @@ class OpenRouterProvider(BaseProvider):
         )
 
     def is_available(self) -> bool:
-        if not REQUESTS_AVAILABLE:
-            raise ImportError("requests package required")
+        if not HTTPX_AVAILABLE:
+            raise ImportError("httpx package required")
         if not self.config.api_key:
             raise ValueError("API key required for OpenRouterProvider")
         return True
@@ -72,11 +72,9 @@ class OpenRouterProvider(BaseProvider):
         wait=wait_exponential(multiplier=1, min=1, max=60),
         retry=retry_if_exception_type((Exception,)),
     )
-    def generate(
+    async def generate_async(
         self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
-        import requests
-
         start = time.time()
         max_tokens = max_tokens or self.config.max_tokens
 
@@ -94,12 +92,12 @@ class OpenRouterProvider(BaseProvider):
             "temperature": temperature,
         }
 
-        response = requests.post(
-            f"{self.BASE_URL}/chat/completions",
-            headers=headers,
-            json=body,
-            timeout=self.config.timeout,
-        )
+        async with httpx.AsyncClient(timeout=self.config.timeout) as client:
+            response = await client.post(
+                f"{self.BASE_URL}/chat/completions",
+                headers=headers,
+                json=body,
+            )
         response.raise_for_status()
         data = response.json()
 
@@ -116,13 +114,10 @@ class OpenRouterProvider(BaseProvider):
             latency_ms=latency,
         )
 
-    async def generate_async(
+    def generate(
         self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, lambda: self.generate(prompt, max_tokens, temperature)
-        )
+        return asyncio.run(self.generate_async(prompt, max_tokens, temperature))
 
 
 class GitHubModelsProvider(BaseProvider):
@@ -149,8 +144,8 @@ class GitHubModelsProvider(BaseProvider):
         super().__init__(config)
 
     def is_available(self) -> bool:
-        if not REQUESTS_AVAILABLE:
-            raise ImportError("requests package required")
+        if not HTTPX_AVAILABLE:
+            raise ImportError("httpx package required")
         if not self.config.api_key:
             raise ValueError("GitHub token required")
         return True
@@ -160,11 +155,9 @@ class GitHubModelsProvider(BaseProvider):
         wait=wait_exponential(multiplier=1, min=1, max=60),
         retry=retry_if_exception_type((Exception,)),
     )
-    def generate(
+    async def generate_async(
         self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
-        import requests
-
         start = time.time()
         max_tokens = max_tokens or self.config.max_tokens
 
@@ -180,12 +173,12 @@ class GitHubModelsProvider(BaseProvider):
             "temperature": temperature,
         }
 
-        response = requests.post(
-            f"{self.BASE_URL}/chat/completions",
-            headers=headers,
-            json=body,
-            timeout=self.config.timeout,
-        )
+        async with httpx.AsyncClient(timeout=self.config.timeout) as client:
+            response = await client.post(
+                f"{self.BASE_URL}/chat/completions",
+                headers=headers,
+                json=body,
+            )
         response.raise_for_status()
         data = response.json()
 
@@ -202,13 +195,10 @@ class GitHubModelsProvider(BaseProvider):
             latency_ms=latency,
         )
 
-    async def generate_async(
+    def generate(
         self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, lambda: self.generate(prompt, max_tokens, temperature)
-        )
+        return asyncio.run(self.generate_async(prompt, max_tokens, temperature))
 
 
 class AWSBedrockProvider(BaseProvider):
@@ -410,10 +400,9 @@ class VertexAIProvider(BaseProvider):
         wait=wait_exponential(multiplier=1, min=1, max=60),
         retry=retry_if_exception_type((Exception,)),
     )
-    def generate(
+    async def generate_async(
         self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
-        import requests
         from google.auth.transport.requests import Request
 
         start = time.time()
@@ -442,9 +431,8 @@ class VertexAIProvider(BaseProvider):
             },
         }
 
-        response = requests.post(
-            endpoint, headers=headers, json=body, timeout=self.config.timeout
-        )
+        async with httpx.AsyncClient(timeout=self.config.timeout) as client:
+            response = await client.post(endpoint, headers=headers, json=body)
         response.raise_for_status()
         data = response.json()
 
@@ -464,13 +452,10 @@ class VertexAIProvider(BaseProvider):
             latency_ms=latency,
         )
 
-    async def generate_async(
+    def generate(
         self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, lambda: self.generate(prompt, max_tokens, temperature)
-        )
+        return asyncio.run(self.generate_async(prompt, max_tokens, temperature))
 
 
 def get_openrouter_provider(

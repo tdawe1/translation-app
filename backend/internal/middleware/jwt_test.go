@@ -10,11 +10,14 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/tdawe1/translation-app/internal/logger"
 )
 
 // Set test environment before running tests
 func init() {
 	os.Setenv("TEST_ENV", "true")
+	logger.Init("test")
 }
 
 func TestJWTConfig_InTestEnvironment(t *testing.T) {

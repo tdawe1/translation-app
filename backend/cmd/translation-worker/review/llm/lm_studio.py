@@ -7,10 +7,9 @@ This provider connects to that API for translation tasks.
 
 from typing import List, Optional
 from dataclasses import dataclass
-import requests
+import httpx
 import asyncio
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 from review.llm.base import BaseProvider, ProviderConfig, ProviderResponse
 from review.llm.ollama import TranslationResult
@@ -31,9 +30,7 @@ class LMStudioProvider(BaseProvider):
     DEFAULT_MODEL = "local-model"
     DEFAULT_BASE_URL = "http://localhost:1234/v1"
 
-    def __init__(
-        self, base_url: str = None, model: str = None
-    ):
+    def __init__(self, base_url: str = None, model: str = None):
         """
         Initialize LM Studio provider.
 
@@ -47,12 +44,11 @@ class LMStudioProvider(BaseProvider):
         config = ProviderConfig(
             api_key="",  # LM Studio doesn't use API keys
             base_url=base_url,
-            model=model
+            model=model,
         )
         super().__init__(config)
 
         self._lm_config = LMStudioConfig(base_url=base_url, model=model)
-        self._executor = ThreadPoolExecutor(max_workers=3)
 
     @property
     def name(self) -> str:
@@ -69,32 +65,39 @@ class LMStudioProvider(BaseProvider):
         """Model name."""
         return self._lm_config.model
 
-    def is_available(self) -> bool:
+    async def is_available_async(self) -> bool:
         """Check if LM Studio server is running."""
         try:
-            response = requests.get(f"{self._lm_config.base_url}/models", timeout=5)
+            async with httpx.AsyncClient(timeout=5) as client:
+                response = await client.get(f"{self._lm_config.base_url}/models")
             return response.status_code == 200
-        except requests.exceptions.RequestException:
+        except httpx.RequestError:
             return False
 
-    def list_models(self) -> List[str]:
+    def is_available(self) -> bool:
+        """Check if LM Studio server is running."""
+        return asyncio.run(self.is_available_async())
+
+    async def list_models_async(self) -> List[str]:
         """List available models from LM Studio."""
         try:
-            response = requests.get(f"{self._lm_config.base_url}/models", timeout=10)
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(f"{self._lm_config.base_url}/models")
             response.raise_for_status()
             data = response.json()
             return [m["id"] for m in data.get("data", [])]
-        except requests.exceptions.RequestException:
+        except httpx.HTTPStatusError:
             return []
 
-    def generate(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.0
+    def list_models(self) -> List[str]:
+        """List available models from LM Studio."""
+        return asyncio.run(self.list_models_async())
+
+    async def generate_async(
+        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
         """
-        Generate text using LM Studio.
+        Generate text asynchronously using LM Studio.
 
         Args:
             prompt: Input prompt
@@ -104,7 +107,7 @@ class LMStudioProvider(BaseProvider):
         Returns:
             ProviderResponse: Standardized response object with text, model, usage, latency
         """
-        if not self.is_available():
+        if not await self.is_available_async():
             raise RuntimeError("LM Studio server not available")
 
         start = time.time()
@@ -119,12 +122,12 @@ class LMStudioProvider(BaseProvider):
         if max_tokens:
             payload["max_tokens"] = max_tokens
 
-        response = requests.post(
-            f"{self._lm_config.base_url}/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=self._lm_config.timeout,
-        )
+        async with httpx.AsyncClient(timeout=self._lm_config.timeout) as client:
+            response = await client.post(
+                f"{self._lm_config.base_url}/chat/completions",
+                json=payload,
+                headers=headers,
+            )
         response.raise_for_status()
 
         data = response.json()
@@ -138,19 +141,38 @@ class LMStudioProvider(BaseProvider):
             text=text,
             model=self._lm_config.model,
             usage={
-                "prompt_tokens": data.get("usage", {}).get("prompt_tokens", len(prompt)),
-                "completion_tokens": data.get("usage", {}).get("completion_tokens", len(text)),
-                "total_tokens": data.get("usage", {}).get("total_tokens", len(prompt) + len(text)),
+                "prompt_tokens": data.get("usage", {}).get(
+                    "prompt_tokens", len(prompt)
+                ),
+                "completion_tokens": data.get("usage", {}).get(
+                    "completion_tokens", len(text)
+                ),
+                "total_tokens": data.get("usage", {}).get(
+                    "total_tokens", len(prompt) + len(text)
+                ),
             },
             latency_ms=latency,
-            raw_response=data
+            raw_response=data,
         )
 
+    def generate(
+        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
+    ) -> ProviderResponse:
+        """
+        Generate text using LM Studio.
+
+        Args:
+            prompt: Input prompt
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+
+        Returns:
+            ProviderResponse: Standardized response object with text, model, usage, latency
+        """
+        return asyncio.run(self.generate_async(prompt, max_tokens, temperature))
+
     async def generate_async(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.0
+        self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
         """
         Generate text asynchronously using LM Studio.
@@ -163,16 +185,12 @@ class LMStudioProvider(BaseProvider):
         Returns:
             ProviderResponse: Standardized response object
         """
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            self._executor, self.generate, prompt, max_tokens, temperature
-        )
 
-    def translate(
+    async def translate_async(
         self, text: str, source_lang: str = "ja", target_lang: str = "en"
     ) -> TranslationResult:
         """
-        Translate text using LM Studio model.
+        Translate text asynchronously using LM Studio model.
 
         Args:
             text: Source text to translate
@@ -182,7 +200,7 @@ class LMStudioProvider(BaseProvider):
         Returns:
             TranslationResult with translated text or error
         """
-        if not self.is_available():
+        if not await self.is_available_async():
             return TranslationResult(
                 success=False,
                 translated_text="",
@@ -210,12 +228,12 @@ class LMStudioProvider(BaseProvider):
         }
 
         try:
-            response = requests.post(
-                f"{self._lm_config.base_url}/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=self._lm_config.timeout,
-            )
+            async with httpx.AsyncClient(timeout=self._lm_config.timeout) as client:
+                response = await client.post(
+                    f"{self._lm_config.base_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
             response.raise_for_status()
 
             data = response.json()
@@ -229,7 +247,7 @@ class LMStudioProvider(BaseProvider):
                 model=self._lm_config.model,
             )
 
-        except (requests.exceptions.RequestException, KeyError, IndexError) as e:
+        except (httpx.RequestError, httpx.HTTPStatusError, KeyError, IndexError) as e:
             return TranslationResult(
                 success=False,
                 translated_text="",
@@ -238,6 +256,22 @@ class LMStudioProvider(BaseProvider):
                 model=self._lm_config.model,
                 error=str(e),
             )
+
+    def translate(
+        self, text: str, source_lang: str = "ja", target_lang: str = "en"
+    ) -> TranslationResult:
+        """
+        Translate text using LM Studio model.
+
+        Args:
+            text: Source text to translate
+            source_lang: Source language code
+            target_lang: Target language code
+
+        Returns:
+            TranslationResult with translated text or error
+        """
+        return asyncio.run(self.translate_async(text, source_lang, target_lang))
 
     def _build_system_prompt(self, source_lang: str, target_lang: str) -> str:
         """Build system prompt for LM Studio."""

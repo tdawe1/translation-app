@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -12,9 +13,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"github.com/tdawe1/translation-app/internal/database"
 	apperrors "github.com/tdawe1/translation-app/internal/errors"
+	"github.com/tdawe1/translation-app/internal/logger"
 	"github.com/tdawe1/translation-app/internal/middleware"
 	"github.com/tdawe1/translation-app/internal/models"
 )
@@ -273,7 +277,7 @@ func (h *TranslationHandler) createJobLogic(c *fiber.Ctx, userID uuid.UUID) erro
 		"id":            job.ID.String(),
 		"job_id":        job.ID.String(),
 		"user_id":       userID.String(),
-		"source_file":   req.SourceFile,
+		"source_file":   validatedSourceFile,
 		"source_lang":   req.SourceLang,
 		"target_lang":   req.TargetLang,
 		"project_type":  req.ProjectType,
@@ -382,6 +386,51 @@ func (h *TranslationHandler) rejectJobLogic(c *fiber.Ctx, userID uuid.UUID) erro
 	h.db.Where("id = ?", jobID).First(job)
 
 	return c.JSON(jobToResponse(job))
+}
+
+func (h *TranslationHandler) DeleteJob(c *fiber.Ctx) error {
+	return middleware.RequireAuth(h.deleteJobLogic)(c)
+}
+
+func (h *TranslationHandler) deleteJobLogic(c *fiber.Ctx, userID uuid.UUID) error {
+	jobID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidJobID, "Invalid job ID")
+	}
+
+	var job models.TranslationJob
+	if err := h.db.Where("id = ? AND user_id = ?", jobID, userID).First(&job).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return RespondWithError(c, fiber.StatusNotFound, apperrors.ErrJobNotFound, "Job not found")
+		}
+		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrDatabase, "Failed to find job")
+	}
+
+	if job.Status == "processing" || job.Status == "pending" {
+		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Cannot delete job that is in progress")
+	}
+
+	if err := h.db.Where("job_id = ?", jobID).Delete(&models.TranslationSegment{}).Error; err != nil {
+		logger.Log.Warn("failed to delete segments for job", zap.String("job_id", jobID.String()), zap.Error(err))
+	}
+
+	if err := h.db.Delete(&job).Error; err != nil {
+		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrDatabase, "Failed to delete job")
+	}
+
+	ctx := context.Background()
+	if job.RedisJobID != "" {
+		h.redis.Del(ctx, job.RedisJobID)
+		h.redis.Del(ctx, fmt.Sprintf("%s:segments", job.RedisJobID))
+	} else {
+		h.redis.Del(ctx, fmt.Sprintf("trans:%s", jobID.String()))
+		h.redis.Del(ctx, fmt.Sprintf("trans:%s:segments", jobID.String()))
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Job deleted successfully",
+		"id":      jobID.String(),
+	})
 }
 
 func (h *TranslationHandler) UpdateSegment(c *fiber.Ctx) error {

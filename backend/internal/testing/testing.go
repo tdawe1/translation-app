@@ -5,32 +5,35 @@ import (
 	"os"
 
 	"github.com/tdawe1/translation-app/internal/config"
+	"github.com/tdawe1/translation-app/internal/logger"
 )
 
 // SetupTestEnvironment initializes environment variables for testing.
 // Call this in TestMain or at the start of tests that require config.
 func SetupTestEnvironment() {
+	logger.Init("test")
+
 	// Set required environment variables with safe defaults for testing
 	envVars := map[string]string{
-		"JWT_SECRET":                      "test-secret-key-32-characters-long-for-hs256!",
-		"DB_HOST":                         "localhost",
-		"DB_PORT":                         "5432",
-		"DB_USER":                         "test",
-		"DB_PASSWORD":                     "test",
-		"DB_NAME":                         "testdb",
-		"DB_SSLMODE":                      "disable",
-		"RESEND_API_KEY":                  "test-key",
-		"FROM_EMAIL":                      "test@example.com",
-		"FROM_NAME":                       "TestApp",
-		"GOOGLE_OAUTH_CLIENT_ID":          "test-client-id",
-		"GOOGLE_OAUTH_CLIENT_SECRET":      "test-client-secret",
-		"GITHUB_OAUTH_CLIENT_ID":          "test-client-id",
-		"GITHUB_OAUTH_CLIENT_SECRET":      "test-client-secret",
-		"OAUTH_REDIRECT_URL":              "http://localhost:8000",
-		"FRONTEND_URL":                    "http://localhost:3001",
-		"LEMONSQUEEZY_WEBHOOK_SECRET":     "test-webhook-secret",
-		"ALLOWED_ORIGINS":                 "http://localhost:3000,http://localhost:3001",
-		"ENV":                             "test",
+		"JWT_SECRET":                  "test-secret-key-32-characters-long-for-hs256!",
+		"DB_HOST":                     "localhost",
+		"DB_PORT":                     "5432",
+		"DB_USER":                     "test",
+		"DB_PASSWORD":                 "test",
+		"DB_NAME":                     "testdb",
+		"DB_SSLMODE":                  "disable",
+		"RESEND_API_KEY":              "test-key",
+		"FROM_EMAIL":                  "test@example.com",
+		"FROM_NAME":                   "TestApp",
+		"GOOGLE_OAUTH_CLIENT_ID":      "test-client-id",
+		"GOOGLE_OAUTH_CLIENT_SECRET":  "test-client-secret",
+		"GITHUB_OAUTH_CLIENT_ID":      "test-client-id",
+		"GITHUB_OAUTH_CLIENT_SECRET":  "test-client-secret",
+		"OAUTH_REDIRECT_URL":          "http://localhost:8000",
+		"FRONTEND_URL":                "http://localhost:3001",
+		"LEMONSQUEEZY_WEBHOOK_SECRET": "test-webhook-secret",
+		"ALLOWED_ORIGINS":             "http://localhost:3000,http://localhost:3001",
+		"ENV":                         "test",
 	}
 
 	for key, value := range envVars {

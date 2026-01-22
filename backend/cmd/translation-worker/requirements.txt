@@ -2,8 +2,12 @@
 # Python 3.11+ required
 
 # === Core Dependencies ===
-# Configuration (TOML parsing)
+# Configuration (TOML, YAML, JSON parsing)
 tomli>=2.0.0
+pyyaml>=6.0
+
+# Async HTTP client
+httpx>=0.27.0
 
 # Process monitoring
 psutil>=5.9.0

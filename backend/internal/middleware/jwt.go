@@ -10,7 +10,10 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
+
 	"github.com/tdawe1/translation-app/internal/auth"
+	"github.com/tdawe1/translation-app/internal/logger"
 )
 
 // validateJWTSecretOnStartup validates JWT_SECRET at application startup.
@@ -26,9 +29,9 @@ func ValidateJWTSecretOnStartup() {
 	// In test environment, just log a warning and continue
 	if isTestEnv {
 		if secret == "" {
-			log.Printf("INFO: JWT_SECRET not set in test environment, using test default")
+			logger.Log.Info("jwt_secret_not_set_in_test_using_default")
 		} else if len(secret) < minSecretLength {
-			log.Printf("WARNING: JWT_SECRET too short for production use (%d chars)", len(secret))
+			logger.Log.Warn("jwt_secret_too_short_for_production", zap.Int("length", len(secret)))
 		}
 		return
 	}
@@ -44,7 +47,7 @@ func ValidateJWTSecretOnStartup() {
 			"Current length: %d. Please generate a stronger secret.", minSecretLength, len(secret))
 	}
 
-	log.Printf("INFO: JWT_SECRET validated (length: %d chars)", len(secret))
+	logger.Log.Info("jwt_secret_validated", zap.Int("length", len(secret)))
 }
 
 const (
@@ -196,7 +199,7 @@ func JWTValidator(config *JWTConfig) fiber.Handler {
 		// 1. Try cookie first (most secure - httpOnly)
 		token = c.Cookies("session_token")
 		if token != "" {
-			log.Printf("[JWT] Token extracted from cookie")
+			logger.Log.Debug("jwt_token_extracted_from_cookie")
 		} else {
 			// 2. Try Authorization header (for sessionStorage compatibility)
 			auth := c.Get("Authorization")
@@ -204,7 +207,7 @@ func JWTValidator(config *JWTConfig) fiber.Handler {
 				parts := strings.Split(auth, " ")
 				if len(parts) == 2 && parts[0] == config.AuthScheme {
 					token = parts[1]
-					log.Printf("[JWT] Token extracted from Authorization header")
+					logger.Log.Debug("jwt_token_extracted_from_header")
 				}
 			}
 		}
@@ -224,7 +227,7 @@ func JWTValidator(config *JWTConfig) fiber.Handler {
 		// Validate token
 		claims, err := validateToken(token, config.Secret)
 		if err != nil {
-			log.Printf("[JWT] Token validation failed: %v", err)
+			logger.Log.Warn("jwt_token_validation_failed", zap.Error(err))
 			if config.ErrorHandler != nil {
 				return config.ErrorHandler(c, err)
 			}

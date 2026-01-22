@@ -39,11 +39,11 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 try:
-    import requests
+    import httpx
 
-    REQUESTS_AVAILABLE = True
+    HTTPX_AVAILABLE = True
 except ImportError:
-    REQUESTS_AVAILABLE = False
+    HTTPX_AVAILABLE = False
 
 
 class AnthropicProvider(BaseProvider):
@@ -268,10 +268,8 @@ class GeminiProvider(BaseProvider):
 
     def is_available(self) -> bool:
         """Check if API key is set."""
-        if not REQUESTS_AVAILABLE:
-            raise ImportError(
-                "requests package is required. Install: pip install requests"
-            )
+        if not HTTPX_AVAILABLE:
+            raise ImportError("httpx package is required. Install: pip install httpx")
         if not self.config.api_key or self.config.api_key == "":
             raise ValueError("API key is required for GeminiProvider")
         return True
@@ -290,12 +288,10 @@ class GeminiProvider(BaseProvider):
         wait=wait_exponential(multiplier=1, min=1, max=60),
         retry=retry_if_exception_type((Exception,)),
     )
-    def generate(
+    async def generate_async(
         self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
         """Generate completion using Vertex AI Gemini API (2026)."""
-        import requests
-
         start = time.time()
 
         max_tokens = max_tokens or self.config.max_tokens
@@ -320,12 +316,12 @@ class GeminiProvider(BaseProvider):
             "Content-Type": "application/json",
         }
 
-        response = requests.post(
-            f"{endpoint}:generateContent",
-            json=request_body,
-            headers=headers,
-            timeout=self.config.timeout,
-        )
+        async with httpx.AsyncClient(timeout=self.config.timeout) as client:
+            response = await client.post(
+                f"{endpoint}:generateContent",
+                json=request_body,
+                headers=headers,
+            )
         response.raise_for_status()
 
         data = response.json()
@@ -347,14 +343,11 @@ class GeminiProvider(BaseProvider):
             latency_ms=latency,
         )
 
-    async def generate_async(
+    def generate(
         self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.0
     ) -> ProviderResponse:
-        """Async version using asyncio.to_thread."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, lambda: self.generate(prompt, max_tokens, temperature)
-        )
+        """Sync version."""
+        return asyncio.run(self.generate_async(prompt, max_tokens, temperature))
 
 
 def get_provider(

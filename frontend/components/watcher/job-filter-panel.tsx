@@ -7,21 +7,26 @@
 
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { BentoCard } from "@/components/ui/base/BentoCard";
 import { Button } from "@/components/ui/base/Button";
 import { DESIGN } from "@/lib/design/tokens";
 import { cn } from "@/lib/utils";
 import { QUICK_FILTERS } from "./utils/constants";
+import { QuickFilterPresets } from "./QuickFilterPresets";
+import { FilterSection } from "./FilterSection";
+import { SourceFilter } from "./SourceFilter";
+import { SortByFilter } from "./SortByFilter";
+import { RewardRangeFilter } from "./RewardRangeFilter";
+import { TimeFilter } from "./TimeFilter";
+import { useRewardInput } from "@/lib/hooks/useRewardInput";
+import { useActiveFiltersCount } from "@/lib/hooks/useActiveFiltersCount";
 import type {
-  FilterSource,
   JobFilters,
   QuickFilterPreset,
-  SortBy,
-  TimeFilter,
 } from "./utils/types";
 
-export type { FilterSource, JobFilters, SortBy, TimeFilter } from "./utils/types";
+export type { JobFilters } from "./utils/types";
 
 export interface JobFilterPanelProps {
   /** Current filter values */
@@ -47,27 +52,17 @@ export function JobFilterPanel({
   totalCount,
   compact = false,
 }: JobFilterPanelProps) {
-  // Local state for reward range inputs
-  const [minRewardInput, setMinRewardInput] = useState(
-    filters.minReward?.toString() ?? ""
-  );
-  const [maxRewardInput, setMaxRewardInput] = useState(
-    filters.maxReward?.toString() ?? ""
-  );
+  const activeFiltersCount = useActiveFiltersCount(filters);
 
-  // Calculate active filters count
-  const activeFiltersCount = useMemo(() => {
-    let count = 0;
-    if (filters.source !== "all") count++;
-    if (filters.minReward !== null) count++;
-    if (filters.maxReward !== null) count++;
-    if (filters.timeFilter !== "all") count++;
-    if (filters.languagePairs.length > 0) count++;
-    return count;
-  }, [filters]);
+  const rewardInput = useRewardInput({
+    minReward: filters.minReward,
+    maxReward: filters.maxReward,
+    onRewardChange: (min, max) => {
+      onFiltersChange({ ...filters, minReward: min, maxReward: max });
+    },
+  });
 
-  // Reset all filters
-  const handleReset = useCallback(() => {
+  const handleReset = () => {
     const resetFilters: JobFilters = {
       source: "all",
       sortBy: "newest",
@@ -77,44 +72,33 @@ export function JobFilterPanel({
       languagePairs: [],
     };
     onFiltersChange(resetFilters);
-    setMinRewardInput("");
-    setMaxRewardInput("");
-  }, [onFiltersChange]);
+    rewardInput.setMinInput("");
+    rewardInput.setMaxInput("");
+  };
 
-  // Apply quick filter preset
-  const applyQuickFilter = useCallback(
-    (preset: QuickFilterPreset) => {
-      const newFilters = preset.apply(filters);
-      onFiltersChange(newFilters);
-      setMinRewardInput(newFilters.minReward?.toString() ?? "");
-      setMaxRewardInput(newFilters.maxReward?.toString() ?? "");
-    },
-    [filters, onFiltersChange]
-  );
+  const applyQuickFilter = (preset: QuickFilterPreset) => {
+    const newFilters = preset.apply(filters);
+    onFiltersChange(newFilters);
+    rewardInput.setMinInput(newFilters.minReward?.toString() ?? "");
+    rewardInput.setMaxInput(newFilters.maxReward?.toString() ?? "");
+  };
 
-  // Update single filter
-  const updateFilter = useCallback(
-    <K extends keyof JobFilters>(key: K, value: JobFilters[K]) => {
-      onFiltersChange({ ...filters, [key]: value });
-    },
-    [filters, onFiltersChange]
-  );
+  const updateFilter = <K extends keyof JobFilters>(key: K, value: JobFilters[K]) => {
+    onFiltersChange({ ...filters, [key]: value });
+  };
 
-  // Apply reward range
-  const applyRewardRange = useCallback(() => {
-    const min = minRewardInput ? parseFloat(minRewardInput) : null;
-    const max = maxRewardInput ? parseFloat(maxRewardInput) : null;
-    onFiltersChange({
-      ...filters,
-      minReward: min,
-      maxReward: max,
-    });
-  }, [filters, minRewardInput, maxRewardInput, onFiltersChange]);
+  const getActivePresetId = (): string | null => {
+    if (activeFiltersCount === 0) return "all";
+    if (filters.minReward === 10) return "high-value";
+    if (filters.timeFilter === "today") return "new-today";
+    if (filters.source === "rss") return "rss-only";
+    if (filters.source === "websocket") return "websocket-only";
+    return null;
+  };
 
   const hasActiveFilters = activeFiltersCount > 0;
   const showStats = matchingCount !== undefined && totalCount !== undefined;
 
-  // Compact version: horizontal filter bar
   if (compact) {
     return (
       <BentoCard
@@ -123,7 +107,6 @@ export function JobFilterPanel({
         hoverDisabled
       >
         <div className="flex flex-wrap items-center gap-3">
-          {/* Quick Filters */}
           <div className="flex items-center gap-2">
             <span className={cn("text-xs", DESIGN.typography.label)}>
               Filter:
@@ -135,11 +118,7 @@ export function JobFilterPanel({
                 className={cn(
                   "px-3 py-1.5 text-xs font-mono border transition-colors duration-150",
                   "focus:outline-none focus:border-blue-600",
-                  filters.source === preset.id ||
-                    (preset.id === "high-value" && filters.minReward === 10) ||
-                    (preset.id === "new-today" && filters.timeFilter === "today") ||
-                    (preset.id === "rss-only" && filters.source === "rss") ||
-                    (preset.id === "websocket-only" && filters.source === "websocket")
+                  getActivePresetId() === preset.id
                     ? `border-${preset.accentColor}-600 ${DESIGN.colors.accent[preset.accentColor]}`
                     : "border-neutral-200 text-neutral-600 hover:border-blue-600"
                 )}
@@ -149,7 +128,6 @@ export function JobFilterPanel({
             ))}
           </div>
 
-          {/* Reset Button */}
           {hasActiveFilters && (
             <Button
               onClick={handleReset}
@@ -194,209 +172,49 @@ export function JobFilterPanel({
         )}
       </div>
 
-      {/* Quick Filter Presets */}
-      <div className="mb-6">
-        <p className={cn("text-xs mb-3", DESIGN.typography.label)}>
-          Quick Presets
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          {QUICK_FILTERS.map((preset, index) => {
-            const isActive =
-              (preset.id === "all" && activeFiltersCount === 0) ||
-              (preset.id === "high-value" && filters.minReward === 10) ||
-              (preset.id === "new-today" && filters.timeFilter === "today") ||
-              (preset.id === "rss-only" && filters.source === "rss") ||
-              (preset.id === "websocket-only" && filters.source === "websocket");
-
-            return (
-              <button
-                key={preset.id}
-                onClick={() => applyQuickFilter(preset)}
-                className={cn(
-                  "p-3 border text-left transition-colors duration-150",
-                  "focus:outline-none focus:border-blue-600",
-                  "hover:border-blue-600",
-                  isActive
-                    ? `border-${preset.accentColor}-600 ${DESIGN.colors.accent[preset.accentColor]} bg-neutral-50`
-                    : "border-neutral-200"
-                )}
-                style={{
-                  animationDelay: DESIGN.getStaggerDelay(index),
-                }}
-              >
-                <p className={cn(
-                  "text-sm font-medium mb-0.5",
-                  isActive ? DESIGN.colors.accent[preset.accentColor] : "text-neutral-700"
-                )}>
-                  {preset.label}
-                </p>
-                <p className="text-xs text-neutral-500">
-                  {preset.description}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <QuickFilterPresets
+        activePresetId={getActivePresetId()}
+        onApplyPreset={applyQuickFilter}
+      />
 
       {/* Divider */}
       <hr className="border-neutral-200 my-6" />
 
-      {/* Detailed Filters */}
       <div className="space-y-4">
-        {/* Source Filter */}
-        <div>
-          <label className={cn("block mb-2", DESIGN.typography.label)}>
-            Source
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { value: "all" as const, label: "All Sources" },
-              { value: "rss" as const, label: "RSS Feed" },
-              { value: "websocket" as const, label: "WebSocket" },
-            ].map((option) => (
-              <button
-                key={option.value}
-                onClick={() => updateFilter("source", option.value)}
-                className={cn(
-                  "px-4 py-2 text-sm font-mono border transition-colors duration-150",
-                  "focus:outline-none focus:border-blue-600",
-                  filters.source === option.value
-                    ? "border-blue-600 text-blue-600"
-                    : "border-neutral-200 text-neutral-600 hover:border-blue-600"
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <FilterSection label="Source">
+          <SourceFilter
+            value={filters.source}
+            onChange={(value) => updateFilter("source", value)}
+          />
+        </FilterSection>
 
-        {/* Sort By */}
-        <div>
-          <label className={cn("block mb-2", DESIGN.typography.label)}>
-            Sort By
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { value: "newest" as const, label: "Newest First" },
-              { value: "reward-high" as const, label: "Reward: High → Low" },
-              { value: "reward-low" as const, label: "Reward: Low → High" },
-            ].map((option) => (
-              <button
-                key={option.value}
-                onClick={() => updateFilter("sortBy", option.value)}
-                className={cn(
-                  "px-4 py-2 text-sm font-mono border transition-colors duration-150",
-                  "focus:outline-none focus:border-blue-600",
-                  filters.sortBy === option.value
-                    ? "border-blue-600 text-blue-600"
-                    : "border-neutral-200 text-neutral-600 hover:border-blue-600"
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <FilterSection label="Sort By">
+          <SortByFilter
+            value={filters.sortBy}
+            onChange={(value) => updateFilter("sortBy", value)}
+          />
+        </FilterSection>
 
-        {/* Reward Range */}
-        <div>
-          <label className={cn("block mb-2", DESIGN.typography.label)}>
-            Reward Range
-          </label>
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <input
-                type="number"
-                placeholder="Min $"
-                min="0"
-                step="0.01"
-                value={minRewardInput}
-                onChange={(e) => setMinRewardInput(e.target.value)}
-                onBlur={applyRewardRange}
-                onKeyDown={(e) => e.key === "Enter" && applyRewardRange()}
-                className={cn(
-                  "w-full px-3 py-2 text-sm font-mono border border-neutral-200",
-                  "focus:border-blue-600 focus:outline-none",
-                  "transition-colors duration-150"
-                )}
-              />
-            </div>
-            <span className="text-neutral-400">—</span>
-            <div className="flex-1">
-              <input
-                type="number"
-                placeholder="Max $"
-                min="0"
-                step="0.01"
-                value={maxRewardInput}
-                onChange={(e) => setMaxRewardInput(e.target.value)}
-                onBlur={applyRewardRange}
-                onKeyDown={(e) => e.key === "Enter" && applyRewardRange()}
-                className={cn(
-                  "w-full px-3 py-2 text-sm font-mono border border-neutral-200",
-                  "focus:border-blue-600 focus:outline-none",
-                  "transition-colors duration-150"
-                )}
-              />
-            </div>
-          </div>
-          {/* Quick reward presets */}
-          <div className="flex gap-2 mt-2">
-            {[
-              { label: "$5+", min: 5 },
-              { label: "$10+", min: 10 },
-              { label: "$20+", min: 20 },
-            ].map((preset) => (
-              <button
-                key={preset.label}
-                onClick={() => {
-                  setMinRewardInput(preset.min.toString());
-                  onFiltersChange({ ...filters, minReward: preset.min });
-                }}
-                className={cn(
-                  "px-2 py-1 text-xs font-mono border transition-colors duration-150",
-                  "focus:outline-none focus:border-green-600",
-                  filters.minReward === preset.min
-                    ? "border-green-600 text-green-600"
-                    : "border-neutral-200 text-neutral-500 hover:border-green-600"
-                )}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <FilterSection label="Reward Range">
+          <RewardRangeFilter
+            minInput={rewardInput.minInput}
+            maxInput={rewardInput.maxInput}
+            minReward={filters.minReward}
+            onMinInputChange={rewardInput.setMinInput}
+            onMaxInputChange={rewardInput.setMaxInput}
+            onApplyReward={rewardInput.applyRewardRange}
+            onQuickMinSelect={(min) => {
+              rewardInput.setMinReward(min);
+            }}
+          />
+        </FilterSection>
 
-        {/* Time Filter */}
-        <div>
-          <label className={cn("block mb-2", DESIGN.typography.label)}>
-            Time Period
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { value: "all" as const, label: "All Time" },
-              { value: "hour" as const, label: "Last Hour" },
-              { value: "today" as const, label: "Today" },
-              { value: "week" as const, label: "This Week" },
-            ].map((option) => (
-              <button
-                key={option.value}
-                onClick={() => updateFilter("timeFilter", option.value)}
-                className={cn(
-                  "px-4 py-2 text-sm font-mono border transition-colors duration-150",
-                  "focus:outline-none focus:border-blue-600",
-                  filters.timeFilter === option.value
-                    ? "border-blue-600 text-blue-600"
-                    : "border-neutral-200 text-neutral-600 hover:border-blue-600"
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <FilterSection label="Time Period">
+          <TimeFilter
+            value={filters.timeFilter}
+            onChange={(value) => updateFilter("timeFilter", value)}
+          />
+        </FilterSection>
       </div>
     </BentoCard>
   );
