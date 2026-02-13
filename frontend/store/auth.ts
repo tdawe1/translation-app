@@ -6,7 +6,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { User } from "@/lib/api";
 import { authApi } from "@/lib/api";
-import { clearToken as clearTokenStorage } from "@/lib/auth/tokens";
 
 interface AuthState {
   user: User | null;
@@ -51,7 +50,6 @@ export const useAuthStore = create<AuthState>()(
         }),
 
       clearToken: () => {
-        clearTokenStorage();
         set({ user: null, isAuthenticated: false, error: null });
       },
 

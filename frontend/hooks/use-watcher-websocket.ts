@@ -138,21 +138,6 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   const connect = useCallback(async () => {
     if (!enabled) return;
 
-    // Pre-flight check: ensure we have a token before attempting to connect
-    // This prevents spurious errors during authentication initialization
-    const token = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("access_token") : null;
-    if (!token) {
-      // No token available yet - don't log error, just wait for next retry
-      // The auth state will initialize and trigger a reconnection
-      if (enabled && reconnectAttemptsRef.current < RECONNECT_DELAYS.length) {
-        const delay = RECONNECT_DELAYS[reconnectAttemptsRef.current];
-        reconnectTimeoutRef.current = window.setTimeout(() => {
-          reconnectAttemptsRef.current++;
-          void connect();
-        }, delay);
-      }
-      return;
-    }
 
     // Fetch a one-time-use ticket for WebSocket authentication
     let wsUrl = WS_URL;

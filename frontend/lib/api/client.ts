@@ -2,7 +2,6 @@
  * HTTP Client with interceptors for auth and request deduplication
  */
 
-import { getToken, clearToken as clearTokenStorage } from "../auth/tokens";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -54,13 +53,6 @@ class HttpClient {
     return process.env.NEXT_PUBLIC_ENABLE_REQUEST_DEDUP !== "false";
   }
 
-  /**
-   * Check if we have a token before making authenticated requests
-   * Returns true if token exists, false otherwise
-   */
-  private hasToken(): boolean {
-    return getToken() !== null;
-  }
 
   /**
    * Generate a cache key for deduplication
@@ -91,16 +83,10 @@ class HttpClient {
       }
     }
 
-    // Add access token from TokenService if available
-    const token = getToken();
-    // HeadersInit is a union type, so we use a plain object for manipulation
     const headers: Record<string, string> = {
       ...(this.defaultHeaders as Record<string, string>),
       ...(options.headers as Record<string, string>),
     };
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
 
     // Create the request promise and store it for deduplication
     const requestPromise = (async () => {
@@ -117,7 +103,6 @@ class HttpClient {
           console.error("Failed to parse 401 error response:", error);
           return {};
         });
-        clearTokenStorage(); // Use TokenService to clear token
         // If optional mode, return null instead of throwing
         if (options.optional) {
           return null as T;

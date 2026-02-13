@@ -9,7 +9,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
 import { authApi, oauthApi, ApiErrorClass } from "@/lib/api";
-import { setToken } from "@/lib/auth/tokens";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { navigateToOAuth } from "@/lib/navigation";
 
@@ -26,8 +25,6 @@ export default function RegisterPage() {
     try {
       const response = await authApi.register({ email: data.email, password: data.password });
 
-      // Store access token using TokenService (httpOnly cookie is also set by backend)
-      setToken(response.access_token);
       setUser(response.user);
 
       // Redirect to dashboard

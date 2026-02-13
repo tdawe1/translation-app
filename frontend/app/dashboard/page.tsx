@@ -27,6 +27,7 @@ import { navigateToHome } from "@/lib/navigation";
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
+  const clearAuth = useAuthStore((state) => state.clear);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
@@ -36,7 +37,7 @@ export default function DashboardPage() {
     } catch (err) {
       // Continue with logout even if API call fails
     } finally {
-      sessionStorage.removeItem("access_token");
+      clearAuth();
       navigateToHome();
     }
   };

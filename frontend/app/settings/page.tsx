@@ -46,7 +46,6 @@ export default function SettingsPage() {
     } catch (err) {
       // Continue with logout even if API call fails
     } finally {
-      sessionStorage.removeItem("access_token");
       clear();
       router.push("/");
     }

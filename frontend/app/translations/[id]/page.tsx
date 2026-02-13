@@ -20,13 +20,14 @@ export default function TranslationJobPage() {
   const id = params?.id as string;
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const clearAuth = useAuthStore((state) => state.clear);
   const logout = async () => {
     try {
       await authApi.logout();
     } catch (err) {
       // Just continue
     } finally {
-      sessionStorage.removeItem("access_token");
+      clearAuth();
       navigateToHome();
     }
   };

@@ -48,7 +48,7 @@ export async function seedAdminUser(user: TestUser): Promise<string> {
 }
 
 /**
- * Set the JWT token in sessionStorage and wait for auth state to propagate.
+ * Set the JWT token as an httpOnly cookie and wait for auth state to propagate.
  * This bypasses the UI login flow for faster, more reliable tests.
  *
  * @param page - Playwright Page object
@@ -58,14 +58,18 @@ export async function authenticateWithToken(
   page: Page,
   token: string
 ): Promise<void> {
-  // Set token in sessionStorage (where the auth store expects it)
-  await page.goto('/');
-  await page.evaluate(({ accessToken }) => {
-    sessionStorage.setItem('access_token', accessToken);
-  }, { accessToken: token });
+  await page.context().addCookies([
+    {
+      name: 'session_token',
+      value: token,
+      url: 'http://localhost:8000',
+      httpOnly: true,
+      sameSite: 'Lax',
+      path: '/',
+    },
+  ]);
 
-  // Trigger auth state refresh by reloading the page
-  // This ensures the Zustand auth store picks up the token
+  await page.goto('/');
   await page.reload();
 
   // Navigate to dashboard to verify authentication worked
