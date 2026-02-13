@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from pathlib import Path
 import logging
+import os
 import sys
 
 # Ensure plugins are importable
@@ -141,7 +142,35 @@ class BaseParser(ABC):
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
-        return path
+
+        resolved = path.expanduser().resolve()
+        allowed_bases = []
+
+        env_vars = [
+            "WATCH_INCOMING_DIR",
+            "WATCH_PROCESSING_DIR",
+            "WATCH_TRANSLATED_DIR",
+            "WATCH_FAILED_DIR",
+        ]
+        for var in env_vars:
+            value = os.getenv(var)
+            if value:
+                allowed_bases.append(Path(value).expanduser().resolve())
+
+        for candidate in ("/watch", "/app/data/uploads"):
+            if os.path.exists(candidate):
+                allowed_bases.append(Path(candidate).resolve())
+
+        if allowed_bases:
+            for base in allowed_bases:
+                try:
+                    resolved.relative_to(base)
+                    return resolved
+                except ValueError:
+                    continue
+            raise ValueError("File path is outside allowed directories")
+
+        return resolved
 
 
 def check_library_available(library_name: str, import_name: str) -> bool:

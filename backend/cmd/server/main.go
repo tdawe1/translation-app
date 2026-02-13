@@ -219,13 +219,14 @@ func main() {
 
 	// Email verification routes (public) with rate limiting (#009 fix, P2 fix)
 	emailLimiter := middleware.EmailLimiters(trustedProxies)
+	verificationLimiter := middleware.VerificationLimiters(trustedProxies)
 	authGroup.Post("/verify-email/send", emailLimiter.SendVerification, emailVerificationHandler.SendVerificationEmail)
-	authGroup.Post("/verify-email", emailVerificationHandler.VerifyEmail)
+	authGroup.Post("/verify-email", verificationLimiter.VerifyEmail, emailVerificationHandler.VerifyEmail)
 	authGroup.Post("/magic-link", emailLimiter.SendMagicLink, magicLinkHandler.SendMagicLink)
-	authGroup.Post("/magic-link/verify", magicLinkHandler.VerifyMagicLink)
-	authGroup.Get("/magic-link/verify", magicLinkHandler.VerifyMagicLink) // Support GET for email redirect flow
+	authGroup.Post("/magic-link/verify", verificationLimiter.VerifyMagicLink, magicLinkHandler.VerifyMagicLink)
+	authGroup.Get("/magic-link/verify", verificationLimiter.VerifyMagicLink, magicLinkHandler.VerifyMagicLink) // Support GET for email redirect flow
 	authGroup.Post("/password-reset", emailLimiter.SendPasswordReset, passwordResetHandler.SendPasswordReset)
-	authGroup.Post("/password-reset/verify", passwordResetHandler.ResetPassword)
+	authGroup.Post("/password-reset/verify", verificationLimiter.VerifyPasswordReset, passwordResetHandler.ResetPassword)
 
 	// OAuth routes (public)
 	oauthGroup := api.Group("/oauth")

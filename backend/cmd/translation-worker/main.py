@@ -146,6 +146,26 @@ def get_redis_config(config: dict) -> tuple[str, int, int, Optional[str]]:
 class SegmentExtractor:
     """Extracts translatable segments from various file formats."""
 
+    def _allowed_bases(self) -> list[Path]:
+        env_vars = [
+            "WATCH_INCOMING_DIR",
+            "WATCH_PROCESSING_DIR",
+            "WATCH_TRANSLATED_DIR",
+            "WATCH_FAILED_DIR",
+        ]
+        bases = []
+        for var in env_vars:
+            value = os.getenv(var)
+            if value:
+                bases.append(Path(value).expanduser().resolve())
+
+        for candidate in ("/watch", "/app/data/uploads"):
+            candidate_path = Path(candidate)
+            if candidate_path.exists():
+                bases.append(candidate_path.resolve())
+
+        return bases
+
     def extract(self, source_file: str) -> list[dict]:
         """Extract segments from a source file.
 
@@ -157,12 +177,30 @@ class SegmentExtractor:
         """
         from pathlib import Path
 
-        file_path = Path(source_file)
-        if not file_path.exists():
+        file_path = Path(source_file).expanduser()
+        try:
+            resolved = file_path.resolve()
+        except FileNotFoundError:
             print(f"Warning: Source file not found: {source_file}")
             return []
 
-        ext = file_path.suffix.lower()
+        allowed_bases = self._allowed_bases()
+        if allowed_bases:
+            in_allowed_base = False
+            for base in allowed_bases:
+                try:
+                    resolved.relative_to(base)
+                    in_allowed_base = True
+                    break
+                except ValueError:
+                    continue
+            if not in_allowed_base:
+                print(
+                    f"Warning: Source file outside allowed directories: {source_file}"
+                )
+                return []
+
+        ext = resolved.suffix.lower()
 
         extractors = {
             ".docx": self._extract_docx,

@@ -16,19 +16,19 @@ import (
 
 // EmailVerificationHandler handles email verification requests
 type EmailVerificationHandler struct {
-	db             database.Database
+	db               database.Database
 	tokenAuthService *auth.TokenService
-	tokenService    *service.TokenService
-	emailService    *email.Service
+	tokenService     *service.TokenService
+	emailService     *email.Service
 }
 
 // NewEmailVerificationHandler creates a new email verification handler
 func NewEmailVerificationHandler(db database.Database, tokenAuthService *auth.TokenService, emailService *email.Service, tokenSvc *service.TokenService) *EmailVerificationHandler {
 	return &EmailVerificationHandler{
-		db:             db,
+		db:               db,
 		tokenAuthService: tokenAuthService,
-		tokenService:    tokenSvc,
-		emailService:    emailService,
+		tokenService:     tokenSvc,
+		emailService:     emailService,
 	}
 }
 
@@ -73,9 +73,8 @@ func (h *EmailVerificationHandler) SendVerificationEmail(c *fiber.Ctx) error {
 
 	// Check if already verified
 	if user.EmailVerified {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Email already verified",
-			"code":  "ALREADY_VERIFIED",
+		return c.JSON(fiber.Map{
+			"message": "If an account exists with this email, a verification link has been sent",
 		})
 	}
 

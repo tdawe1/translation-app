@@ -419,13 +419,12 @@ func (h *TranslationHandler) deleteJobLogic(c *fiber.Ctx, userID uuid.UUID) erro
 	}
 
 	ctx := context.Background()
-	if job.RedisJobID != "" {
-		h.redis.Del(ctx, job.RedisJobID)
-		h.redis.Del(ctx, fmt.Sprintf("%s:segments", job.RedisJobID))
-	} else {
-		h.redis.Del(ctx, fmt.Sprintf("trans:%s", jobID.String()))
-		h.redis.Del(ctx, fmt.Sprintf("trans:%s:segments", jobID.String()))
+	redisJobID := job.RedisJobID
+	if redisJobID == "" {
+		redisJobID = fmt.Sprintf("user:%s:trans:%s", userID.String(), jobID.String())
 	}
+	h.redis.Del(ctx, redisJobID)
+	h.redis.Del(ctx, fmt.Sprintf("%s:segments", redisJobID))
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Job deleted successfully",

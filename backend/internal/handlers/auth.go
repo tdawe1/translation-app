@@ -103,27 +103,29 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		if errObj == nil {
 			return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Internal error")
 		}
+		if errObj.Code == apperrors.ErrUserExists {
+			return c.JSON(fiber.Map{
+				"message": "Registration received",
+			})
+		}
+
 		status := h.statusCodeForError(errObj.Code)
 		return RespondWithAPIError(c, status, errObj)
 	}
 
-	// Set httpOnly cookie with proper session config
-	SetSessionCookie(c, result.AccessToken, h.sessionConfig)
+	_ = result
 
-	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
-		AccessToken: result.AccessToken,
-		User:        UserToResponse(result.User),
+	return c.JSON(fiber.Map{
+		"message": "Registration received",
 	})
 }
 
-// Login handles user login
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid request body")
 	}
 
-	// Validate email format before any database operations (M-3 fix)
 	if !validation.ValidateEmail(req.Email) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid email format",
@@ -145,10 +147,9 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		return RespondWithAPIError(c, status, errObj)
 	}
 
-	// Set httpOnly cookie with proper session config
 	SetSessionCookie(c, result.AccessToken, h.sessionConfig)
 
-	return c.JSON(AuthResponse{
+	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
 		AccessToken: result.AccessToken,
 		User:        UserToResponse(result.User),
 	})

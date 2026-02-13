@@ -165,6 +165,64 @@ func EmailLimiters(trustedProxies []string) struct {
 	}
 }
 
+func VerificationLimiters(trustedProxies []string) struct {
+	VerifyEmail         fiber.Handler
+	VerifyMagicLink     fiber.Handler
+	VerifyPasswordReset fiber.Handler
+} {
+	verifyEmailLimiter := limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 15 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return "verify_token:" + getClientIP(c, trustedProxies)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{
+				"error": "Too many verification attempts. Please try again later.",
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+
+	verifyMagicLinkLimiter := limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 15 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return "magic_verify:" + getClientIP(c, trustedProxies)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{
+				"error": "Too many verification attempts. Please try again later.",
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+
+	verifyPasswordResetLimiter := limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 15 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return "reset_verify:" + getClientIP(c, trustedProxies)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{
+				"error": "Too many verification attempts. Please try again later.",
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+
+	return struct {
+		VerifyEmail         fiber.Handler
+		VerifyMagicLink     fiber.Handler
+		VerifyPasswordReset fiber.Handler
+	}{
+		VerifyEmail:         verifyEmailLimiter,
+		VerifyMagicLink:     verifyMagicLinkLimiter,
+		VerifyPasswordReset: verifyPasswordResetLimiter,
+	}
+}
+
 // RoleBasedLimiterConfig configures rate limits for different user roles
 type RoleBasedLimiterConfig struct {
 	// MaxRequestsPerMinute for regular users
@@ -180,8 +238,8 @@ type RoleBasedLimiterConfig struct {
 // DefaultRoleBasedConfig returns sensible defaults for role-based rate limiting
 func DefaultRoleBasedConfig(trustedProxies []string) RoleBasedLimiterConfig {
 	return RoleBasedLimiterConfig{
-		UserMax:        60,  // 60 requests per minute for regular users
-		AdminMax:       0,   // 0 = unlimited for admins
+		UserMax:        60, // 60 requests per minute for regular users
+		AdminMax:       0,  // 0 = unlimited for admins
 		Expiration:     1 * time.Minute,
 		TrustedProxies: trustedProxies,
 	}
@@ -234,7 +292,7 @@ func RoleBasedLimiter(config RoleBasedLimiterConfig) fiber.Handler {
 // AdminLimiters returns rate limiters with higher limits for admin-only endpoints.
 // Use these for admin-specific routes where you want to allow burst operations.
 func AdminLimiters(trustedProxies []string) struct {
-	Management fiber.Handler
+	Management  fiber.Handler
 	Destructive fiber.Handler
 } {
 	// Admin management endpoints: 300 requests per minute (for bulk operations)
@@ -277,10 +335,10 @@ func AdminLimiters(trustedProxies []string) struct {
 	})
 
 	return struct {
-		Management fiber.Handler
+		Management  fiber.Handler
 		Destructive fiber.Handler
 	}{
-		Management: managementLimiter,
+		Management:  managementLimiter,
 		Destructive: destructiveLimiter,
 	}
 }
