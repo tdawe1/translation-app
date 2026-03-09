@@ -29,10 +29,19 @@ const inputClass = cn(
   "disabled:opacity-50 disabled:cursor-not-allowed"
 );
 
+function useSafeTranslations(namespace: Parameters<typeof useTranslations>[0]) {
+  try {
+    return useTranslations(namespace);
+  } catch (_error) {
+    // Fallback: echo the key if no NextIntlClientProvider is available
+    return ((key: string) => key) as any;
+  }
+}
+
 export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading = false }: AuthFormProps) {
-  const t = useTranslations('auth');
-  const tCommon = useTranslations('common');
-  const tApi = useTranslations('api');
+  const t = useSafeTranslations("auth");
+  const tCommon = useSafeTranslations("common");
+  const tApi = useSafeTranslations("api");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
