@@ -95,7 +95,7 @@ function getWebSocketUrl(): string {
 
   if (typeof window !== "undefined") {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${protocol}//${window.location.host}/ws`;
+    return `${protocol}//${window.location.host}/api/ws`;
   }
 
   return "";
@@ -106,6 +106,10 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | undefined>(undefined);
   const reconnectAttemptsRef = useRef(0);
+  const isConnectingRef = useRef(false);
+  const onJobRef = useRef(onJob);
+  const onEventRef = useRef(onEvent);
+  const onErrorRef = useRef(onError);
   // Explicit connection state ref to avoid race condition with readyState checks
   // This is set synchronously in onopen/onclose, ensuring consistent state
   const isConnectedRef = useRef(false);
@@ -118,6 +122,18 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
 
   const setState = useWatcherStore((state) => state.setState);
   const addJob = useJobsStore((state) => state.addJob);
+
+  useEffect(() => {
+    onJobRef.current = onJob;
+  }, [onJob]);
+
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
 
   // Calculate uptime in seconds
   const uptime = useMemo(() => {
@@ -140,6 +156,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
       window.clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = undefined;
     }
+    isConnectingRef.current = false;
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -149,6 +166,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   // Connect to WebSocket
   const connect = useCallback(async () => {
     if (!enabled) return;
+    if (isConnectingRef.current || wsRef.current) return;
 
     // Pre-flight check: ensure we have a token before attempting to connect
     // This prevents spurious errors during authentication initialization
@@ -166,9 +184,12 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
       return;
     }
 
+    isConnectingRef.current = true;
+
     // Fetch a one-time-use ticket for WebSocket authentication
     const baseWsUrl = getWebSocketUrl();
     if (!baseWsUrl) {
+      isConnectingRef.current = false;
       return;
     }
 
@@ -178,6 +199,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
       wsUrl = `${baseWsUrl}?ticket=${ticketResp.ticket}`;
       console.log("[WS] Got ticket, connecting...");
     } catch (err) {
+      isConnectingRef.current = false;
       // Only log error if all retries are exhausted (prevents console spam during init)
       const isFinalRetry = reconnectAttemptsRef.current >= RECONNECT_DELAYS.length - 1;
       if (isFinalRetry) {
@@ -201,6 +223,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
       ws.onopen = () => {
         console.log("[WS] Connected");
         reconnectAttemptsRef.current = 0;
+        isConnectingRef.current = false;
         isConnectedRef.current = true; // Set explicit state
         setConnectionStartTime(Date.now());
         setMessagesReceived(0);
@@ -222,7 +245,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
 
             case "event":
               console.log("[WS] Event:", message.event, message.data);
-              onEvent?.(message.event, message.data);
+              onEventRef.current?.(message.event, message.data);
 
               // Update store for known events
               if (message.event === "watcher.started" || message.event === "watcher.stopped") {
@@ -239,7 +262,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
 
             case "error":
               console.error("[WS] Error:", message.message);
-              onError?.(message.message);
+              onErrorRef.current?.(message.message);
               break;
 
             case "job":
@@ -254,7 +277,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
                   source: message.data.source,
                   timestamp: message.data.timestamp || new Date().toISOString(),
                 });
-                onJob?.(message.data);
+                onJobRef.current?.(message.data);
               } else {
                 console.warn("[WS] Invalid job data received:", message.data);
               }
@@ -271,6 +294,7 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
       ws.onclose = (event) => {
         console.log("[WS] Connection closed:", event.code, event.reason);
         wsRef.current = null;
+        isConnectingRef.current = false;
         isConnectedRef.current = false; // Clear explicit state
         // Clear connection metrics on disconnect
         setConnectionStartTime(null);
@@ -294,9 +318,10 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
       };
 
     } catch (err) {
+      isConnectingRef.current = false;
       console.error("[WS] Failed to create WebSocket:", err);
     }
-  }, [enabled, onEvent, onError, onJob, setState, addJob]);
+  }, [enabled, setState, addJob]);
 
   // Disconnect function
   const disconnect = useCallback(() => {

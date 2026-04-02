@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import socket
@@ -9,11 +10,12 @@ from urllib.parse import urlparse
 
 import httpx
 import psycopg
+import websockets
 from emergentintegrations.payments.stripe.checkout import (
     CheckoutSessionRequest,
     StripeCheckout,
 )
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -172,7 +174,15 @@ def get_transaction(session_id: str) -> dict | None:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(query, (session_id,))
             row = cur.fetchone()
-    return dict(row) if row else None
+
+    if not row:
+        return None
+
+    result = dict(row)
+    for key in ["created_at", "updated_at", "processed_at"]:
+        if result.get(key) is not None:
+            result[key] = result[key].isoformat()
+    return result
 
 
 def normalize_origin(origin_url: str, request: Request) -> str:
@@ -562,6 +572,46 @@ async def stripe_webhook(request: Request) -> Response:
             "payment_status": webhook_response.payment_status,
         }
     )
+
+
+@app.websocket("/api/ws")
+async def websocket_bridge(websocket: WebSocket) -> None:
+    await websocket.accept()
+    ensure_go_process()
+
+    upstream_url = f"ws://127.0.0.1:{GO_PORT}/ws"
+    if websocket.url.query:
+        upstream_url = f"{upstream_url}?{websocket.url.query}"
+
+    try:
+        async with websockets.connect(upstream_url) as upstream:
+            async def client_to_upstream() -> None:
+                while True:
+                    message = await websocket.receive_text()
+                    await upstream.send(message)
+
+            async def upstream_to_client() -> None:
+                async for message in upstream:
+                    if isinstance(message, bytes):
+                        await websocket.send_bytes(message)
+                    else:
+                        await websocket.send_text(message)
+
+            tasks = [
+                asyncio.create_task(client_to_upstream()),
+                asyncio.create_task(upstream_to_client()),
+            ]
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+            for task in pending:
+                task.cancel()
+            for task in done:
+                exc = task.exception()
+                if exc:
+                    raise exc
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        await websocket.close(code=1011)
 
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
