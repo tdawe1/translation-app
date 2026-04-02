@@ -41,6 +41,8 @@ openpyxl>=3.1.0
 # === Quality Assessment ===
 # COMET quality metric for translation evaluation
 unbabel-comet>=2.2.0
+# Keep protobuf on a patched 5.x release line until the worker stack is validated on v6.
+protobuf>=5.29.6,<6
 
 # === Fuzzy Matching ===
 # Levenshtein distance for glossary fuzzy matching

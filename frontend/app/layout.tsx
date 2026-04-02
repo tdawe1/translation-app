@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { NextIntlClientProvider } from "next-intl";
+import { getMessages } from "next-intl/server";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/provider";
 import { Toaster } from "@/components/ui/toast";
@@ -23,11 +25,13 @@ export const metadata: Metadata = {
   description: "Multi-tenant job monitoring with per-user watcher instances",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const messages = await getMessages();
+
   return (
     <html lang="en" className={`${ibmPlexSans.variable} ${ibmPlexMono.variable}`}>
       <body className="antialiased">
@@ -38,7 +42,9 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        <AuthProvider>{children}</AuthProvider>
+        <NextIntlClientProvider messages={messages}>
+          <AuthProvider>{children}</AuthProvider>
+        </NextIntlClientProvider>
         <Toaster />
       </body>
     </html>
