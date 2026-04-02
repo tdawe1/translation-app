@@ -9,10 +9,21 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import Link from "next/link";
-import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/base/Button";
 import { cn } from "@/lib/utils";
+
+const AUTH_COPY = {
+  login: {
+    submit: "Sign In",
+    google: "Continue with Google",
+    github: "Continue with GitHub",
+  },
+  register: {
+    submit: "Create Account",
+    google: "Create account with Google",
+    github: "Create account with GitHub",
+  },
+} as const;
 
 export interface AuthFormProps {
   mode: "login" | "register";
@@ -30,13 +41,12 @@ const inputClass = cn(
 );
 
 export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading = false }: AuthFormProps) {
-  const t = useTranslations('auth');
-  const tCommon = useTranslations('common');
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(errorMessage ?? null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const copy = AUTH_COPY[mode];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,11 +55,11 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
     // Validation for register mode
     if (mode === "register") {
       if (password.length < 8) {
-        setError(tCommon('error'));
+        setError("Use at least 8 characters.");
         return;
       }
       if (password !== confirmPassword) {
-        setError(tCommon('error'));
+        setError("Passwords do not match.");
         return;
       }
     }
@@ -61,7 +71,7 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError(tCommon('api.error'));
+        setError("Something went wrong. Please try again.");
       }
     } finally {
       setIsSubmitting(false);
@@ -72,8 +82,8 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
   const clearError = useCallback(() => setError(null), []);
 
   const isLogin = mode === "login";
-  const submitText = isLogin ? t('signIn') : t('signUp');
-  const loadingText = isLogin ? `${tCommon('loading')}...` : `${tCommon('loading')}...`;
+  const submitText = copy.submit;
+  const loadingText = "Working...";
   const disabled = isLoading || isSubmitting;
 
   return (
@@ -85,9 +95,10 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
             htmlFor="email"
             className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2"
           >
-            {t('email')}
+            Email
           </label>
           <input
+            data-testid={`${mode}-email-input`}
             id="email"
             name="email"
             type="email"
@@ -110,9 +121,10 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
             htmlFor="password"
             className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2"
           >
-            {t('password')}
+            Password
           </label>
           <input
+            data-testid={`${mode}-password-input`}
             id="password"
             name="password"
             type="password"
@@ -136,9 +148,10 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
               htmlFor="confirm-password"
               className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2"
             >
-              {tCommon('confirm')} {t('password')}
+              Confirm Password
             </label>
             <input
+              data-testid="register-confirm-password-input"
               id="confirm-password"
               name="confirm-password"
               type="password"
@@ -158,13 +171,17 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
 
         {/* Error Display */}
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-sm">
+          <div
+            data-testid={`${mode}-error-message`}
+            className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-sm"
+          >
             {error}
           </div>
         )}
 
         {/* Submit Button */}
         <Button
+          data-testid={`${mode}-submit-button`}
           type="submit"
           variant="primary"
           fullWidth
@@ -175,17 +192,6 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
           {submitText}
         </Button>
 
-        {/* Magic Link Link (Login only) */}
-        {isLogin && (
-          <div className="text-center">
-            <Link
-              href="/auth/magic-link"
-              className="text-sm font-mono text-neutral-500 uppercase tracking-widest transition-colors duration-150 hover:text-blue-600"
-            >
-              {t('magicLink')}
-            </Link>
-          </div>
-        )}
       </form>
 
       {/* OAuth Buttons */}
@@ -208,8 +214,6 @@ const oauthButtonClass = cn(
 );
 
 export function OAuthButtons({ onOAuthLogin, disabled = false }: OAuthButtonsProps) {
-  const t = useTranslations('auth');
-  const tCommon = useTranslations('common');
   const [error, setError] = useState<string | null>(null);
 
   const handleOAuth = async (provider: "google" | "github") => {
@@ -220,7 +224,7 @@ export function OAuthButtons({ onOAuthLogin, disabled = false }: OAuthButtonsPro
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError(tCommon('api.error'));
+        setError("Unable to continue with that provider right now.");
       }
     }
   };
@@ -238,7 +242,10 @@ export function OAuthButtons({ onOAuthLogin, disabled = false }: OAuthButtonsPro
 
       {/* Error Display */}
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm mb-3 rounded-sm">
+        <div
+          data-testid="oauth-error-message"
+          className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm mb-3 rounded-sm"
+        >
           {error}
         </div>
       )}
@@ -246,6 +253,7 @@ export function OAuthButtons({ onOAuthLogin, disabled = false }: OAuthButtonsPro
        {/* OAuth Buttons */}
       <div className="space-y-3">
         <button
+          data-testid="oauth-google-button"
           type="button"
           onClick={() => handleOAuth("google")}
           disabled={disabled}
@@ -269,9 +277,10 @@ export function OAuthButtons({ onOAuthLogin, disabled = false }: OAuthButtonsPro
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
             />
           </svg>
-          {t('signInWithGoogle')}
+          Continue with Google
         </button>
         <button
+          data-testid="oauth-github-button"
           type="button"
           onClick={() => handleOAuth("github")}
           disabled={disabled}
@@ -280,7 +289,7 @@ export function OAuthButtons({ onOAuthLogin, disabled = false }: OAuthButtonsPro
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
           </svg>
-          {t('signInWithGitHub')}
+          Continue with GitHub
         </button>
       </div>
     </>

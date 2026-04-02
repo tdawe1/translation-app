@@ -15,7 +15,28 @@ export function DashboardHeader({ user, onLogout }: DashboardHeaderProps) {
         <Link href="/" className="text-xl font-light tracking-tighter text-neutral-900 hover:text-blue-600 transition-colors duration-150">
           GengoWatcher
         </Link>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 sm:gap-6">
+          <Link
+            data-testid="dashboard-link"
+            href="/dashboard"
+            className="font-mono text-xs text-neutral-500 uppercase tracking-widest hover:text-blue-600 transition-colors duration-150"
+          >
+            Dashboard
+          </Link>
+          <Link
+            data-testid="translations-link"
+            href="/translations"
+            className="font-mono text-xs text-neutral-500 uppercase tracking-widest hover:text-blue-600 transition-colors duration-150"
+          >
+            Translations
+          </Link>
+          <Link
+            data-testid="billing-link"
+            href="/pricing"
+            className="font-mono text-xs text-neutral-500 uppercase tracking-widest hover:text-blue-600 transition-colors duration-150"
+          >
+            Billing
+          </Link>
           <span
             data-testid="user-email"
             className="hidden sm:block font-mono text-xs text-neutral-500 uppercase tracking-widest"

@@ -29,9 +29,17 @@ func ValidateJWTSecretOnStartup() {
 	// In test environment, just log a warning and continue
 	if isTestEnv {
 		if secret == "" {
-			logger.Log.Info("jwt_secret_not_set_in_test_using_default")
+			if logger.Log != nil {
+				logger.Log.Info("jwt_secret_not_set_in_test_using_default")
+			} else {
+				log.Print("jwt_secret_not_set_in_test_using_default")
+			}
 		} else if len(secret) < minSecretLength {
-			logger.Log.Warn("jwt_secret_too_short_for_production", zap.Int("length", len(secret)))
+			if logger.Log != nil {
+				logger.Log.Warn("jwt_secret_too_short_for_production", zap.Int("length", len(secret)))
+			} else {
+				log.Printf("jwt_secret_too_short_for_production length=%d", len(secret))
+			}
 		}
 		return
 	}
@@ -47,7 +55,11 @@ func ValidateJWTSecretOnStartup() {
 			"Current length: %d. Please generate a stronger secret.", minSecretLength, len(secret))
 	}
 
-	logger.Log.Info("jwt_secret_validated", zap.Int("length", len(secret)))
+	if logger.Log != nil {
+		logger.Log.Info("jwt_secret_validated", zap.Int("length", len(secret)))
+	} else {
+		log.Printf("jwt_secret_validated length=%d", len(secret))
+	}
 }
 
 const (
