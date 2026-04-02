@@ -77,3 +77,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+-e 
+# Environment files
+*.env
+*.env.*
