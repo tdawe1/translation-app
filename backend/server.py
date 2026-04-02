@@ -33,16 +33,16 @@ DEFAULT_ENV = {
     "DB_HOST": "127.0.0.1",
     "DB_PORT": "5432",
     "DB_USER": "gengo",
-    "DB_PASSWORD": "devpass",
     "DB_NAME": "gengowatcher",
     "DB_SSLMODE": "disable",
-    "JWT_SECRET": "launch-ready-development-secret-key-with-32-chars-min",
     "REDIS_URL": "redis://127.0.0.1:6379/0",
     "FRONTEND_URL": "http://127.0.0.1:3000",
     "OAUTH_REDIRECT_URL": "http://127.0.0.1:8002",
     "ALLOWED_ORIGINS": "http://127.0.0.1:3000,http://localhost:3000",
     "COOKIE_SAMESITE": "Lax",
 }
+
+REQUIRED_ENV = ("DB_PASSWORD", "JWT_SECRET")
 
 PLANS = {
     "pro": {
@@ -212,10 +212,20 @@ def load_env_file() -> None:
         os.environ.setdefault(key.strip(), value.strip())
 
 
+def _sql_literal(value: str) -> str:
+    return value.replace("'", "''")
+
+
 def merged_env() -> dict[str, str]:
     env = os.environ.copy()
     for key, value in DEFAULT_ENV.items():
         env.setdefault(key, value)
+
+    missing = [key for key in REQUIRED_ENV if not env.get(key)]
+    if missing:
+        joined = ", ".join(sorted(missing))
+        raise RuntimeError(f"Missing required environment variables for bridge startup: {joined}")
+
     env["PORT"] = str(GO_PORT)
     env["PATH"] = f"/usr/local/go/bin:{env.get('PATH', '')}"
     env.setdefault("HOME", "/root")
@@ -244,11 +254,19 @@ def ensure_postgres() -> None:
 
 
 def ensure_database() -> None:
-    sql = """
+    env = merged_env()
+    db_user = env["DB_USER"]
+    db_password = _sql_literal(env["DB_PASSWORD"])
+    db_name = env["DB_NAME"]
+    role_name = _sql_literal(db_user)
+
+    sql = f"""
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'gengo') THEN
-    CREATE ROLE gengo LOGIN PASSWORD 'devpass';
+  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '{role_name}') THEN
+    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', '{role_name}', '{db_password}');
+  ELSE
+    EXECUTE format('ALTER ROLE %I WITH PASSWORD %L', '{role_name}', '{db_password}');
   END IF;
 END
 $$;
@@ -268,7 +286,7 @@ $$;
             "--",
             "psql",
             "-tAc",
-            "SELECT 1 FROM pg_database WHERE datname='gengowatcher';",
+            f"SELECT 1 FROM pg_database WHERE datname='{_sql_literal(db_name)}';",
         ],
         check=True,
         capture_output=True,
@@ -277,7 +295,7 @@ $$;
 
     if db_exists != "1":
         subprocess.run(
-            ["runuser", "-u", "postgres", "--", "createdb", "-O", "gengo", "gengowatcher"],
+            ["runuser", "-u", "postgres", "--", "createdb", "-O", db_user, db_name],
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
