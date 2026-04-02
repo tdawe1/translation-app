@@ -87,7 +87,19 @@ export interface WebSocketMetrics {
 }
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws";
+
+function getWebSocketUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}/ws`;
+  }
+
+  return "";
+}
 
 export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   const { enabled = true, onJob, onEvent, onError } = options;
@@ -155,10 +167,15 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
     }
 
     // Fetch a one-time-use ticket for WebSocket authentication
-    let wsUrl = WS_URL;
+    const baseWsUrl = getWebSocketUrl();
+    if (!baseWsUrl) {
+      return;
+    }
+
+    let wsUrl = baseWsUrl;
     try {
       const ticketResp = await authApi.getWSTicket();
-      wsUrl = `${WS_URL}?ticket=${ticketResp.ticket}`;
+      wsUrl = `${baseWsUrl}?ticket=${ticketResp.ticket}`;
       console.log("[WS] Got ticket, connecting...");
     } catch (err) {
       // Only log error if all retries are exhausted (prevents console spam during init)

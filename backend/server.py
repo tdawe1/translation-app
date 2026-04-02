@@ -418,6 +418,11 @@ async def healthcheck(request: Request) -> Response:
         return JSONResponse(status_code=503, content={"status": "error", "detail": str(exc)})
 
 
+@app.get("/api/health")
+async def api_healthcheck(request: Request) -> Response:
+    return await healthcheck(request)
+
+
 @app.get("/api/v1/billing/plans")
 async def billing_plans() -> Response:
     return JSONResponse(
@@ -478,9 +483,25 @@ async def billing_checkout(payload: CheckoutRequestBody, request: Request) -> Re
 
 @app.get("/api/v1/billing/status/{session_id}")
 async def billing_status(session_id: str, request: Request) -> Response:
-    checkout = get_stripe_checkout(request)
-    stripe_status = await checkout.get_checkout_status(session_id)
     transaction = get_transaction(session_id)
+
+    try:
+        checkout = get_stripe_checkout(request)
+        stripe_status = await checkout.get_checkout_status(session_id)
+    except Exception as exc:
+        if transaction:
+            return JSONResponse(
+                {
+                    "session_id": session_id,
+                    "status": transaction["status"],
+                    "payment_status": transaction["payment_status"],
+                    "amount_total": int(float(transaction["amount"]) * 100),
+                    "currency": transaction["currency"],
+                    "transaction": transaction,
+                    "detail": "Status temporarily unavailable from Stripe; using stored transaction state.",
+                }
+            )
+        return JSONResponse(status_code=502, content={"error": "Unable to fetch billing status", "detail": str(exc)})
 
     plan_id = transaction["plan_id"] if transaction else "pro"
     plan = PLANS.get(plan_id, PLANS["pro"])

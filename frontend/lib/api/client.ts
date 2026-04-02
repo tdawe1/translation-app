@@ -4,7 +4,7 @@
 
 import { getToken, clearToken as clearTokenStorage } from "../auth/tokens";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.REACT_APP_BACKEND_URL || "";
 
 /**
  * ApiErrorClass represents a structured API error
