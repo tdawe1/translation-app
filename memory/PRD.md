@@ -12,23 +12,22 @@ I want to finish this application and prepare it for launch
 
 ## Architecture decisions
 - Kept the existing Next.js frontend and Go backend rather than rewriting the product
-- Added a Python FastAPI bridge at `/app/backend/server.py` so the custom Go backend can run inside this environment and proxy through the platform backend service
-- Installed PostgreSQL, Redis, and Go 1.25.4 in the container, then configured the bridge to start and proxy the Go API
-- Added Stripe billing through the backend bridge using the environment Stripe test key and a `payment_transactions` PostgreSQL table
+- Kept the backend as a single Go Fiber service instead of introducing a second Python server layer
+- Added Stripe billing directly to the Go backend using the environment Stripe key and a `payment_transactions` PostgreSQL table
 - Switched the frontend API client to same-origin by default and exposed billing/status flows on `/api/v1/billing/*`
-- Routed realtime WebSocket traffic through `/api/ws` so preview traffic reaches the backend correctly
+- Added Go-native aliases for `/api/health` and `/api/ws` so preview and same-origin frontend traffic keep working without a proxy bridge
 
 ## What has been implemented
 - Frontend startup fixed: dependencies installed with modern Yarn, production build passing, app served successfully in preview
-- Backend startup fixed: Go service now boots behind the Python bridge with PostgreSQL + Redis available
+- Backend startup fixed: Go service now owns the required HTTP, websocket, and billing routes directly
 - Public launch pages polished: upgraded landing page, added pricing page, improved navigation, and linked billing paths
 - Reliable auth flow: email/password registration and login working from the live preview, dashboard redirect verified
 - Dashboard navigation improved with Dashboard / Translations / Billing / Settings links
 - Settings page extended with a billing section and pricing access
-- Stripe checkout session creation implemented with server-side fixed plan pricing and status polling endpoint
+- Stripe checkout session creation implemented in Go with server-side fixed plan pricing and status polling endpoint
 - Billing status endpoint fixed to return structured JSON, including stored transaction fallback and serialized timestamps
 - Health endpoint exposed at `/api/health`
-- Realtime websocket URL fixed for preview by routing through `/api/ws`; dashboard shows connected status in preview
+- Realtime websocket URL fixed for preview by serving `/api/ws` from the Go backend; dashboard shows connected status in preview
 
 ## Prioritized backlog
 ### P0
