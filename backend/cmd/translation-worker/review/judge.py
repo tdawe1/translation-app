@@ -241,4 +241,4 @@ def create_judge(
     Returns:
         Configured TranslationJudge instance
     """
-    return TranslationJudge(timeout=timeout, enabled=enabled)
+    return TranslationJudge(model=model, timeout=timeout, enabled=enabled)
