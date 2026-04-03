@@ -164,3 +164,43 @@ export interface FlaggedSegmentsResponse {
   segments: TranslationSegment[];
   count: number;
 }
+
+export interface BillingPlan {
+  id: string;
+  name: string;
+  amount: number;
+  amount_display: string;
+  currency: string;
+  interval: string;
+  description: string;
+  features: string[];
+}
+
+export interface PaymentTransaction {
+  session_id: string;
+  plan_id: string;
+  plan_name: string;
+  amount: number;
+  currency: string;
+  status: string;
+  payment_status: string;
+  user_email?: string | null;
+  metadata?: Record<string, string>;
+  created_at?: string;
+  updated_at?: string;
+  processed_at?: string | null;
+}
+
+export interface BillingCheckoutResponse {
+  url: string;
+  session_id: string;
+}
+
+export interface BillingStatusResponse {
+  session_id: string;
+  status: string;
+  payment_status: string;
+  amount_total: number;
+  currency: string;
+  transaction?: PaymentTransaction | null;
+}

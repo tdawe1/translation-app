@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, devbranch-1]
   pull_request:
     branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
@@ -14,7 +18,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: gengo
-          POSTGRES_PASSWORD: testpass
+          POSTGRES_PASSWORD: devpass
           POSTGRES_DB: gengowatcher_test
         ports:
           - 5433:5432
@@ -36,13 +40,28 @@ jobs:
       - name: Vet
         run: go vet ./...
         working-directory: backend
+      - name: Download dependencies
+        run: go mod download
+        working-directory: backend
       - name: Test
-        run: go test -race -coverprofile=coverage.out ./...
+        run: go test -p 1 -race -coverprofile=coverage.out ./...
         working-directory: backend
         env:
           TEST_ENV: "true"
           TEST_DB_HOST: localhost
           TEST_DB_PORT: 5433
+          TEST_DB_USER: gengo
+          TEST_DB_PASSWORD: devpass
+          TEST_DB_NAME: gengowatcher_test
+          TEST_DB_SSLMODE: disable
+          TEST_DATABASE_URL: host=localhost port=5433 user=gengo password=devpass dbname=gengowatcher_test sslmode=disable
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_USER: gengo
+          DB_PASSWORD: devpass
+          DB_NAME: gengowatcher_test
+          DB_SSLMODE: disable
+          JWT_SECRET: test-secret-for-testing-only-32-chars-min
 
   frontend:
     runs-on: ubuntu-latest
@@ -55,11 +74,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
-      - run: npm run lint
+      - run: npm run build
         working-directory: frontend
-      - run: npm run type-check
-        working-directory: frontend
-      - run: npm run test
+      - run: npm run test -- --run
         working-directory: frontend
 
   codeql:

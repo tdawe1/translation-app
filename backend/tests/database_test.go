@@ -13,7 +13,7 @@ import (
 func TestDatabase_ConnectionPoolConfigured(t *testing.T) {
 	cfg := &config.Config{
 		DBHost:               "localhost",
-		DBPort:               "5432",
+		DBPort:               "5433",
 		DBUser:               "gengo",
 		DBPassword:           "devpass",
 		DBName:               "gengowatcher_test",
@@ -54,7 +54,7 @@ func TestDatabase_ConnectionPoolConfigured(t *testing.T) {
 func TestDatabase_ConnectionLifetimeSet(t *testing.T) {
 	cfg := &config.Config{
 		DBHost:               "localhost",
-		DBPort:               "5432",
+		DBPort:               "5433",
 		DBUser:               "gengo",
 		DBPassword:           "devpass",
 		DBName:               "gengowatcher_test",
@@ -86,7 +86,7 @@ func TestDatabase_PoolSettingsFromConfig(t *testing.T) {
 	// Test with custom pool settings
 	cfg := &config.Config{
 		DBHost:               "localhost",
-		DBPort:               "5432",
+		DBPort:               "5433",
 		DBUser:               "gengo",
 		DBPassword:           "devpass",
 		DBName:               "gengowatcher_test",

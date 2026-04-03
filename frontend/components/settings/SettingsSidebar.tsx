@@ -17,6 +17,7 @@ export interface SettingsSection {
 
 const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: "profile", label: "Profile", href: "/settings", accentColor: "blue" },
+  { id: "billing", label: "Billing", href: "/settings#billing", accentColor: "orange" },
   { id: "accounts", label: "Connected Accounts", href: "/settings#accounts", accentColor: "green" },
   { id: "danger", label: "Danger Zone", href: "/settings#danger", accentColor: "red" },
 ];
@@ -32,13 +33,22 @@ const ACCENT_COLORS: Record<SettingsSection["accentColor"], string> = {
   violet: "text-violet-600",
 };
 
+const ACTIVE_SECTION_CLASSES: Record<SettingsSection["accentColor"], string> = {
+  red: "border-red-600 bg-neutral-100 text-red-600",
+  orange: "border-orange-600 bg-neutral-100 text-orange-600",
+  yellow: "border-yellow-600 bg-neutral-100 text-yellow-600",
+  green: "border-green-600 bg-neutral-100 text-green-600",
+  cyan: "border-cyan-600 bg-neutral-100 text-cyan-600",
+  blue: "border-blue-600 bg-neutral-100 text-blue-600",
+  indigo: "border-indigo-600 bg-neutral-100 text-indigo-600",
+  violet: "border-violet-600 bg-neutral-100 text-violet-600",
+};
+
 interface SettingsSidebarProps {
   activeSection?: string;
 }
 
 export function SettingsSidebar({ activeSection = "profile" }: SettingsSidebarProps) {
-  const pathname = usePathname();
-
   return (
     <nav aria-label="Settings navigation" className="shrink-0">
       <h2 className="font-mono text-xs uppercase tracking-widest text-neutral-600 mb-4 font-medium">
@@ -52,10 +62,11 @@ export function SettingsSidebar({ activeSection = "profile" }: SettingsSidebarPr
           return (
             <li key={section.id}>
               <Link
+                data-testid={`settings-nav-${section.id}-link`}
                 href={section.href}
                 className={`block px-4 py-2 border-l-2 transition-colors duration-150 ${
                   isActive
-                    ? `border-${section.accentColor}-600 bg-neutral-100 ${accentColor}`
+                    ? ACTIVE_SECTION_CLASSES[section.accentColor]
                     : "border-transparent text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
                 }`}
               >

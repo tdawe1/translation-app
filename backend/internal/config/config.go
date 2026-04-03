@@ -31,6 +31,8 @@ type Config struct {
 	// Security
 	JWTSecret                 string
 	LemonSqueezyWebhookSecret string
+	StripeAPIKey              string
+	StripeWebhookSecret       string
 	RedisURL                  string // Required in production
 
 	// Email (Resend)
@@ -78,6 +80,8 @@ func Load() *Config {
 		JWTSecret:                 getEnv("JWT_SECRET", ""),
 		RedisURL:                  getEnv("REDIS_URL", ""),
 		LemonSqueezyWebhookSecret: getEnv("LEMONSQUEE_WEBHOOK_SECRET", ""),
+		StripeAPIKey:              getEnv("STRIPE_API_KEY", ""),
+		StripeWebhookSecret:       getEnv("STRIPE_WEBHOOK_SECRET", ""),
 		ResendAPIKey:              getEnv("RESEND_API_KEY", ""),
 		FromEmail:                 getEnv("FROM_EMAIL", "noreply@gengowatcher.example"),
 		FromName:                  getEnv("FROM_NAME", "GengoWatcher"),

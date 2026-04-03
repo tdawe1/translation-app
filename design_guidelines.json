@@ -1,0 +1,148 @@
+{
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "reasoning": "SaaS app with a 'sharp-edged data-factory' visual language requires Archetype 4. It provides authority, clarity, and function-first design. We'll use sharp edges, high contrast, and IBM Plex fonts.",
+  "typography": {
+    "heading_font": "IBM Plex Sans",
+    "body_font": "IBM Plex Sans",
+    "mono_font": "IBM Plex Mono",
+    "rules": {
+      "headings": "Tracking-tight, sharp contrast. Use uppercase for labels. font-semibold to font-bold.",
+      "body": "Clean, readable, leading-relaxed. Use IBM Plex Mono for metrics, ids, and watcher config data.",
+      "hierarchy": {
+        "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight font-bold text-gray-900",
+        "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-semibold text-gray-900",
+        "h3": "text-xl sm:text-2xl font-semibold text-gray-800",
+        "body": "text-base text-gray-600",
+        "label": "text-xs tracking-[0.2em] uppercase font-medium text-gray-500",
+        "data": "font-mono text-sm text-gray-800"
+      }
+    }
+  },
+  "colors": {
+    "background": "#FFFFFF",
+    "surface": "#F9FAFB",
+    "surface_alt": "#F3F4F6",
+    "border": "#E5E7EB",
+    "border_strong": "#111827",
+    "text": {
+      "primary": "#111827",
+      "secondary": "#4B5563",
+      "muted": "#9CA3AF"
+    },
+    "brand": {
+      "primary": "#111827",
+      "primary_hover": "#374151",
+      "accent": "#2563EB",
+      "destructive": "#EF4444",
+      "warning": "#F59E0B",
+      "success": "#10B981"
+    }
+  },
+  "spacing_and_layout": {
+    "container_padding": "p-6 md:p-12",
+    "section_gap": "gap-12 md:gap-24",
+    "grid_system": {
+      "marketing": "grid-cols-1 md:grid-cols-12 gap-6",
+      "dashboard": "grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-4"
+    },
+    "borders_and_shadows": {
+      "radius": "rounded-none",
+      "card_border": "border border-gray-200",
+      "shadow": "shadow-sm",
+      "focus_ring": "focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 focus:outline-none"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-gray-900 text-white rounded-none px-6 py-2.5 font-medium hover:bg-gray-800 transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-gray-900",
+      "secondary": "bg-white text-gray-900 border border-gray-300 rounded-none px-6 py-2.5 font-medium hover:bg-gray-50 transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-gray-900",
+      "ghost": "text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-none px-4 py-2 transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-gray-900",
+      "destructive": "bg-red-600 text-white rounded-none px-6 py-2.5 font-medium hover:bg-red-700 transition-colors"
+    },
+    "cards": {
+      "base": "bg-white border border-gray-200 rounded-none p-6",
+      "interactive": "bg-white border border-gray-200 rounded-none p-6 hover:border-gray-400 hover:shadow-md transition-all cursor-pointer"
+    },
+    "inputs": {
+      "text": "w-full border border-gray-300 bg-white rounded-none px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-colors font-mono text-sm"
+    },
+    "badges": {
+      "default": "inline-flex items-center px-2.5 py-0.5 border border-gray-200 text-xs font-mono font-medium bg-gray-50 text-gray-600",
+      "active": "inline-flex items-center px-2.5 py-0.5 border border-blue-200 text-xs font-mono font-medium bg-blue-50 text-blue-700"
+    }
+  },
+  "page_blueprints": {
+    "landing_page": {
+      "structure": [
+        "Navigation: Sticky header, glassmorphism disabled (solid white background), strict border-b.",
+        "Hero Section: H1 (text-6xl font-bold tracking-tighter), subtext, CTA buttons (Primary: Get Started, Secondary: Documentation). Use abstract geometric texture sparsely.",
+        "Social Proof/Logos: Black and white sponsor logos in a slow marquee.",
+        "Features Bento Grid: Asymmetrical grid showcasing Watcher config, Realtime Activity, Translation Jobs.",
+        "Footer: Deep gray (bg-gray-900) to contrast the white page, large bold branding, structural links."
+      ]
+    },
+    "pricing": {
+      "structure": [
+        "Header: Simple overline + Title ('Simple, predictable pricing').",
+        "Toggle: Monthly / Annually (styled as segmented control, sharp edges).",
+        "Pricing Cards: 3 columns. 'Pro' tier highlighted with a 2px black border and black primary button. Use checkmarks (Phosphor icons) for feature lists.",
+        "FAQ: Accordion style with 1px border-b separators."
+      ]
+    },
+    "auth": {
+      "structure": [
+        "Split screen layout: Left side contains auth forms centered in a white box. Right side features a data-center / server room technical image.",
+        "Forms: Email/Password, Magic Link separator, OAuth buttons with provider logos.",
+        "Focus: Highly visible focus states on all inputs."
+      ]
+    },
+    "dashboard": {
+      "structure": [
+        "Sidebar Navigation: Fixed left, ultra-light (bg-gray-50, border-r border-gray-200) for a clean data-factory look.",
+        "Header: Breadcrumbs, search bar, user dropdown.",
+        "Main Content: 12-column grid layout.",
+        "Watcher Controls: Card with status indicator (green dot for active), mono-spaced configuration details.",
+        "Realtime Activity Feed: List layout, font-mono timestamps, alternating row colors (bg-white/bg-gray-50).",
+        "Translation Jobs: Data table. Shadcn UI table component with pagination, sharp headers."
+      ]
+    },
+    "empty_states_and_reliability": {
+      "structure": [
+        "Empty State: Gray dashed border card, muted phosphor icon (e.g., FolderDashed), mono-spaced message 'No jobs found.', and a primary CTA to 'Create Job'.",
+        "Loading State: Skeleton loaders with sharp rectangles (rounded-none bg-gray-200 animate-pulse). No spinners; use progress bars or skeletons for a data-factory feel.",
+        "Error State: Red outlined card (border-red-200 bg-red-50), alert icon, clear error message (font-mono), and 'Retry' button."
+      ]
+    }
+  },
+  "media": {
+    "images": [
+      {
+        "category": "hero_background",
+        "url": "https://images.unsplash.com/photo-1762279388988-3f8abcc7dca2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMGRhdGF8ZW58MHx8fHwxNzc1MTMyMjkxfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract neon lines forming a futuristic landscape / digital data flow. Use with heavy white/gray overlay for light theme or invert for dark elements."
+      },
+      {
+        "category": "auth_background",
+        "url": "https://images.unsplash.com/photo-1680992046626-418f7e910589?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxzZXJ2ZXIlMjByb29tJTIwY2xlYW58ZW58MHx8fHwxNzc1MTMyMjkxfDA&ixlib=rb-4.1.0&q=85",
+        "description": "A rack of electronic equipment in a dark room. Good for split-screen auth side-panel."
+      },
+      {
+        "category": "feature_texture",
+        "url": "https://images.pexels.com/photos/18599089/pexels-photo-18599089.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Black and white vertical gradient texture for marketing section backgrounds."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Use Phosphor Icons (@phosphor-icons/react) for a sharp, technical look.",
+    "Do NOT use 'Inter' font. Stick strictly to IBM Plex Sans for UI text and IBM Plex Mono for metrics, ids, code, and logs.",
+    "Ensure all interactive elements have `data-testid` attributes for robust automated testing.",
+    "Maintain strict sharp corners (`rounded-none`) across all components (buttons, inputs, cards) to fulfill the 'data-factory' visual language.",
+    "For the realtime feed, use `font-mono` for timestamps and system messages.",
+    "Avoid glassmorphism. Use solid colors and strict borders instead.",
+    "Ensure hover states significantly alter the contrast of elements to make the interface feel highly responsive.",
+    "Build the dashboard using a CSS grid approach to keep columns perfectly aligned.",
+    "Use Shadcn UI for dropdowns, dialogs, and tables, but strip away any rounded corners to match the theme."
+  ]
+}

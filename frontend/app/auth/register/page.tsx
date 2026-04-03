@@ -8,10 +8,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
-import { authApi, oauthApi, ApiErrorClass } from "@/lib/api";
+import { authApi, ApiErrorClass } from "@/lib/api";
 import { setToken } from "@/lib/auth/tokens";
 import { AuthForm } from "@/components/auth/AuthForm";
-import { navigateToOAuth } from "@/lib/navigation";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -43,21 +42,6 @@ export default function RegisterPage() {
     }
   };
 
-  const handleOAuthRegister = async (provider: "google" | "github") => {
-    setError("");
-    try {
-      const response = await oauthApi.authorize(provider);
-      // Redirect to OAuth provider's authorization page (full page load required)
-      navigateToOAuth(response.auth_url);
-    } catch (err) {
-      if (err instanceof ApiErrorClass) {
-        setError(err.message);
-      } else {
-        setError("Failed to connect to OAuth provider");
-      }
-    }
-  };
-
   return (
     <main className="min-h-screen bg-neutral-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md">
@@ -76,7 +60,6 @@ export default function RegisterPage() {
           <AuthForm
             mode="register"
             onSubmit={handleSubmit}
-            onOAuthLogin={handleOAuthRegister}
             errorMessage={error}
             isLoading={isLoading}
           />

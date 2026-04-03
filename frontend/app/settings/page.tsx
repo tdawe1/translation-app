@@ -27,6 +27,17 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeSection, setActiveSection] = useState("profile");
 
+  useEffect(() => {
+    const syncSection = () => {
+      const hash = window.location.hash.replace("#", "");
+      setActiveSection(hash || "profile");
+    };
+
+    syncSection();
+    window.addEventListener("hashchange", syncSection);
+    return () => window.removeEventListener("hashchange", syncSection);
+  }, []);
+
   // Fetch fresh user data to get OAuth accounts
   useEffect(() => {
     const fetchUser = async () => {
@@ -110,6 +121,38 @@ export default function SettingsPage() {
                       Profile
                     </h2>
                     <ProfileSection user={user} isLoading={isLoading} setIsLoading={setIsLoading} />
+                  </BentoCard>
+                </section>
+
+                <section
+                  id="billing"
+                  aria-labelledby="billing-heading"
+                  className="scroll-mt-24"
+                >
+                  <BentoCard
+                    accentColor="orange"
+                    staggerIndex={1}
+                    testId="billing-card"
+                    className="p-6"
+                  >
+                    <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                      <div>
+                        <h2 id="billing-heading" className="font-mono text-xs uppercase tracking-widest text-orange-600 mb-4 font-semibold">
+                          Billing
+                        </h2>
+                        <h3 className="text-lg font-medium text-neutral-900">Free workspace with paid upgrade paths</h3>
+                        <p className="mt-2 max-w-2xl text-sm text-neutral-600 leading-relaxed">
+                          Manage launch pricing, open secure Stripe checkout, and keep billing attached to <span data-testid="settings-billing-email" className="font-mono text-neutral-900">{user?.email}</span>.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <Link href="/pricing" data-testid="settings-billing-open-pricing-link">
+                          <Button testId="settings-billing-open-pricing-button" variant="primary">
+                            Open pricing
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
                   </BentoCard>
                 </section>
 

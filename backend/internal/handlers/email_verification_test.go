@@ -87,7 +87,7 @@ func (w *databaseWrapper) Count(count *int64) *gorm.DB {
 
 // setupTestDB creates a test database connection for handler tests
 func setupTestDB(t *testing.T) *gorm.DB {
-	dsn := "host=localhost port=5432 user=gengo password=devpass dbname=gengowatcher_test sslmode=disable"
+	dsn := "host=localhost port=5433 user=gengo password=devpass dbname=gengowatcher_test sslmode=disable"
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	require.NoError(t, err, "Failed to connect to test database")

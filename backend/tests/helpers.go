@@ -55,6 +55,7 @@ func TestDB(t *testing.T) *gorm.DB {
 		&models.SubscriptionPlan{},
 		&models.Subscription{},
 		&models.BillingEvent{},
+		&models.PaymentTransaction{},
 		&models.AuditLog{},
 		&models.EmailVerificationToken{},
 		&models.MagicLinkToken{},
@@ -66,6 +67,7 @@ func TestDB(t *testing.T) *gorm.DB {
 
 	// Clean up any existing data
 	db.Exec("DELETE FROM audit_logs WHERE 1=1")
+	db.Exec("DELETE FROM payment_transactions WHERE 1=1")
 	db.Exec("DELETE FROM billing_events WHERE 1=1")
 	db.Exec("DELETE FROM refresh_tokens WHERE 1=1")
 	db.Exec("DELETE FROM api_keys WHERE 1=1")
@@ -80,6 +82,7 @@ func TestDB(t *testing.T) *gorm.DB {
 	t.Cleanup(func() {
 		// Clean up after test
 		db.Exec("DELETE FROM audit_logs WHERE 1=1")
+		db.Exec("DELETE FROM payment_transactions WHERE 1=1")
 		db.Exec("DELETE FROM billing_events WHERE 1=1")
 		db.Exec("DELETE FROM refresh_tokens WHERE 1=1")
 		db.Exec("DELETE FROM api_keys WHERE 1=1")
@@ -245,6 +248,7 @@ func RequireDB(t *testing.T) *gorm.DB {
 		&models.SubscriptionPlan{},
 		&models.Subscription{},
 		&models.BillingEvent{},
+		&models.PaymentTransaction{},
 		&models.AuditLog{},
 		&models.EmailVerificationToken{},
 		&models.MagicLinkToken{},
@@ -258,6 +262,7 @@ func RequireDB(t *testing.T) *gorm.DB {
 
 	// Clean up any existing data
 	db.Exec("DELETE FROM audit_logs WHERE 1=1")
+	db.Exec("DELETE FROM payment_transactions WHERE 1=1")
 	db.Exec("DELETE FROM billing_events WHERE 1=1")
 	db.Exec("DELETE FROM refresh_tokens WHERE 1=1")
 	db.Exec("DELETE FROM api_keys WHERE 1=1")
@@ -271,6 +276,7 @@ func RequireDB(t *testing.T) *gorm.DB {
 
 	t.Cleanup(func() {
 		db.Exec("DELETE FROM audit_logs WHERE 1=1")
+		db.Exec("DELETE FROM payment_transactions WHERE 1=1")
 		db.Exec("DELETE FROM billing_events WHERE 1=1")
 		db.Exec("DELETE FROM refresh_tokens WHERE 1=1")
 		db.Exec("DELETE FROM api_keys WHERE 1=1")

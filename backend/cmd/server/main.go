@@ -67,6 +67,7 @@ func main() {
 		&models.SubscriptionPlan{},
 		&models.Subscription{},
 		&models.BillingEvent{},
+		&models.PaymentTransaction{},
 		&models.AuditLog{},
 		&models.EmailVerificationToken{},
 		&models.MagicLinkToken{},
@@ -115,6 +116,7 @@ func main() {
 	emailVerificationHandler := handlers.NewEmailVerificationHandler(db, tokenSvc, emailSvc, tokenHandlerSvc)
 	magicLinkHandler := handlers.NewMagicLinkHandler(db, tokenSvc, emailSvc, tokenHandlerSvc, sessionConfig, cfg.FrontendURL)
 	passwordResetHandler := handlers.NewPasswordResetHandler(db, emailSvc, tokenHandlerSvc)
+	billingHandler := handlers.NewBillingHandler(db, cfg)
 
 	// Admin handler (requires admin role)
 	adminHandler := handlers.NewAdminHandler(gormDB)
@@ -158,6 +160,7 @@ func main() {
 
 	// Health check
 	app.Get("/health", healthHandler.Health)
+	app.Get("/api/health", healthHandler.Health)
 
 	// Dev-only admin seeding endpoint (for testing, development only)
 	if cfg.IsDevelopment() {
@@ -278,9 +281,16 @@ func main() {
 	// Webhook routes (public, verified via signature)
 	webhooks := api.Group("/webhooks")
 	webhooks.Post("/lemonsqueezy", lemonHandler.HandleWebhook)
+	app.Post("/api/webhook/stripe", billingHandler.HandleStripeWebhook)
+
+	billingGroup := api.Group("/billing")
+	billingGroup.Get("/plans", billingHandler.GetPlans)
+	billingGroup.Post("/checkout", billingHandler.CreateCheckout)
+	billingGroup.Get("/status/:session_id", middleware.JWTValidator(jwtConfig), billingHandler.GetStatus)
 
 	// WebSocket route (auth via short-lived ticket from /api/v1/auth/ws-ticket)
 	app.Get("/ws", wsHandler.HandleWebSocket())
+	app.Get("/api/ws", wsHandler.HandleWebSocket())
 
 	// Start server
 	logger.Log.Info("server_starting", zap.String("port", cfg.Port), zap.String("env", cfg.Env))

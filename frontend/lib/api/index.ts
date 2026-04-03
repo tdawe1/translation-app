@@ -11,6 +11,9 @@ export { client, HttpClient, ApiErrorClass as ApiError, ApiErrorClass } from "./
 // Export all types
 export type {
   ApiErrorResponse,
+  BillingCheckoutResponse,
+  BillingPlan,
+  BillingStatusResponse,
   User,
   OAuthAccount,
   AuthResponse,
@@ -27,11 +30,13 @@ export type {
   UpdateSegmentRequest,
   RejectJobRequest,
   FlaggedSegmentsResponse,
+  PaymentTransaction,
   TranslationJobStatus,
 } from "./types";
 
 // Export API modules
 export { authApi } from "./auth";
+export { billingApi } from "./billing";
 export { watcherApi } from "./watcher";
 export { oauthApi } from "./oauth";
 export { translationApi } from "./translation";

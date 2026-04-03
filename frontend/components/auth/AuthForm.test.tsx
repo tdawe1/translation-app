@@ -41,10 +41,12 @@ describe('AuthForm', () => {
       });
     });
 
-    it('should show magic link link in login mode', () => {
+    it('should not render a magic link link inside the shared form', () => {
       render(<AuthForm mode="login" onSubmit={mockOnSubmit} />);
 
-      expect(screen.getByRole('link', { name: /send magic link instead/i })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: /send magic link instead/i }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -125,15 +127,15 @@ describe('AuthForm', () => {
     it('should disable inputs and show loading text when isLoading is true', () => {
       render(<AuthForm mode="login" onSubmit={mockOnSubmit} isLoading={true} />);
 
-      expect(screen.getByRole('button', { name: /signing in/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /working/i })).toBeInTheDocument();
       expect(screen.getByLabelText(/email/i)).toBeDisabled();
       expect(screen.getByLabelText(/password/i)).toBeDisabled();
     });
 
-    it('should show creating account text for register mode', () => {
+    it('should show shared loading text for register mode', () => {
       render(<AuthForm mode="register" onSubmit={mockOnSubmit} isLoading={true} />);
 
-      expect(screen.getByRole('button', { name: /creating account/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /working/i })).toBeInTheDocument();
     });
   });
 
