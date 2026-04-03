@@ -86,6 +86,17 @@ import { useWatcherWebSocket } from '@/hooks/use-watcher-websocket';
 import { authApi } from '@/lib/api';
 import { toast } from '@/store/toast';
 
+const createWebSocketMetrics = (overrides: Partial<ReturnType<typeof useWatcherWebSocket>> = {}) => ({
+  connected: true,
+  reconnecting: false,
+  reconnectCount: 0,
+  connectionStartTime: null,
+  uptime: 0,
+  lastMessageTime: null,
+  messagesReceived: 0,
+  ...overrides,
+});
+
 // Mock window.location
 const mockLocation = { href: '' };
 Object.defineProperty(window, 'location', {
@@ -130,6 +141,8 @@ describe('Dashboard Flow', () => {
       setLoading: vi.fn(),
       setError: vi.fn(),
       clear: vi.fn(),
+      clearToken: vi.fn(),
+      fetchUser: vi.fn(),
       isAuthenticated: true,
       isLoading: false,
       error: null,
@@ -142,22 +155,22 @@ describe('Dashboard Flow', () => {
       configLoading: false,
       stateLoading: false,
       configError: null,
+      stateError: null,
       fetchConfig: mockFetchConfig,
       fetchState: mockFetchState,
       updateConfig: vi.fn(),
       startWatcher: mockStartWatcher,
       stopWatcher: mockStopWatcher,
+      setState: vi.fn(),
+      clear: vi.fn(),
     };
 
     // Default mock implementations with selector support
-    vi.mocked(useAuthStore).mockImplementation(createZustandMock(defaultAuthState));
+    vi.mocked(useAuthStore).mockImplementation(createZustandMock(defaultAuthState) as any);
 
-    vi.mocked(useWatcherStore).mockImplementation(createZustandMock(defaultWatcherState));
+    vi.mocked(useWatcherStore).mockImplementation(createZustandMock(defaultWatcherState) as any);
 
-    vi.mocked(useWatcherWebSocket).mockReturnValue({
-      connected: true,
-      reconnecting: false,
-    });
+    vi.mocked(useWatcherWebSocket).mockReturnValue(createWebSocketMetrics() as any);
 
     vi.mocked(authApi.logout).mockResolvedValue(undefined);
     vi.mocked(toast.success).mockImplementation(() => {});
@@ -196,12 +209,15 @@ describe('Dashboard Flow', () => {
         configLoading: true,
         stateLoading: true,
         configError: null,
+        stateError: null,
         fetchConfig: mockFetchConfig,
         fetchState: mockFetchState,
         updateConfig: vi.fn(),
         startWatcher: mockStartWatcher,
         stopWatcher: mockStopWatcher,
-      }));
+        setState: vi.fn(),
+        clear: vi.fn(),
+      }) as any);
 
       render(<DashboardPage />);
 
@@ -230,12 +246,15 @@ describe('Dashboard Flow', () => {
         configLoading: false,
         stateLoading: false,
         configError: null,
+        stateError: null,
         fetchConfig: mockFetchConfig,
         fetchState: mockFetchState,
         updateConfig: vi.fn(),
         startWatcher: mockStartWatcher,
         stopWatcher: mockStopWatcher,
-      }));
+        setState: vi.fn(),
+        clear: vi.fn(),
+      }) as any);
 
       render(<DashboardPage />);
 
@@ -254,12 +273,15 @@ describe('Dashboard Flow', () => {
         configLoading: false,
         stateLoading: false,
         configError: null,
+        stateError: null,
         fetchConfig: mockFetchConfig,
         fetchState: mockFetchState,
         updateConfig: vi.fn(),
         startWatcher: mockStartWatcher,
         stopWatcher: mockStopWatcher,
-      }));
+        setState: vi.fn(),
+        clear: vi.fn(),
+      }) as any);
 
       render(<DashboardPage />);
 
@@ -277,12 +299,15 @@ describe('Dashboard Flow', () => {
         configLoading: false,
         stateLoading: false,
         configError: null,
+        stateError: null,
         fetchConfig: mockFetchConfig,
         fetchState: mockFetchState,
         updateConfig: vi.fn(),
         startWatcher: mockStartWatcher,
         stopWatcher: mockStopWatcher,
-      }));
+        setState: vi.fn(),
+        clear: vi.fn(),
+      }) as any);
 
       render(<DashboardPage />);
 
@@ -297,12 +322,15 @@ describe('Dashboard Flow', () => {
         configLoading: false,
         stateLoading: false,
         configError: null,
+        stateError: null,
         fetchConfig: mockFetchConfig,
         fetchState: mockFetchState,
         updateConfig: vi.fn(),
         startWatcher: mockStartWatcher,
         stopWatcher: mockStopWatcher,
-      }));
+        setState: vi.fn(),
+        clear: vi.fn(),
+      }) as any);
 
       render(<DashboardPage />);
 
@@ -342,10 +370,7 @@ describe('Dashboard Flow', () => {
 
   describe('WebSocket connection indicator', () => {
     it('shows green dot when connected', async () => {
-      vi.mocked(useWatcherWebSocket).mockReturnValue({
-        connected: true,
-        reconnecting: false,
-      });
+      vi.mocked(useWatcherWebSocket).mockReturnValue(createWebSocketMetrics({ connected: true }) as any);
 
       render(<DashboardPage />);
 
@@ -355,10 +380,7 @@ describe('Dashboard Flow', () => {
     });
 
     it('hides green dot when not connected', async () => {
-      vi.mocked(useWatcherWebSocket).mockReturnValue({
-        connected: false,
-        reconnecting: false,
-      });
+      vi.mocked(useWatcherWebSocket).mockReturnValue(createWebSocketMetrics({ connected: false }) as any);
 
       render(<DashboardPage />);
 
@@ -393,12 +415,15 @@ describe('Dashboard Flow', () => {
         configLoading: false,
         stateLoading: false,
         configError: null,
+        stateError: null,
         fetchConfig: mockFetchConfig,
         fetchState: mockFetchState,
         updateConfig: vi.fn(),
         startWatcher: mockStartWatcher,
         stopWatcher: mockStopWatcher,
-      }));
+        setState: vi.fn(),
+        clear: vi.fn(),
+      }) as any);
 
       render(<DashboardPage />);
 
@@ -419,12 +444,15 @@ describe('Dashboard Flow', () => {
         configLoading: false,
         stateLoading: false,
         configError: null,
+        stateError: null,
         fetchConfig: mockFetchConfig,
         fetchState: mockFetchState,
         updateConfig: vi.fn(),
         startWatcher: mockStartWatcher,
         stopWatcher: mockStopWatcher,
-      }));
+        setState: vi.fn(),
+        clear: vi.fn(),
+      }) as any);
 
       render(<DashboardPage />);
 
@@ -441,12 +469,15 @@ describe('Dashboard Flow', () => {
         configLoading: false,
         stateLoading: false,
         configError: 'Failed to load configuration',
+        stateError: null,
         fetchConfig: mockFetchConfig,
         fetchState: mockFetchState,
         updateConfig: vi.fn(),
         startWatcher: mockStartWatcher,
         stopWatcher: mockStopWatcher,
-      }));
+        setState: vi.fn(),
+        clear: vi.fn(),
+      }) as any);
 
       render(<DashboardPage />);
 

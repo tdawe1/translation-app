@@ -12,7 +12,7 @@
  * the API_URL constant is correctly used in the code.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import LoginPage from '@/app/auth/login/page';
@@ -44,93 +44,44 @@ vi.mock('@/lib/api', () => ({
   },
 }));
 
-describe('OAuth Button Tests', () => {
+describe('Login Page Tests', () => {
   beforeEach(() => {
     // Reset environment
     process.env.NEXT_PUBLIC_API_URL = 'http://localhost:8000';
   });
 
-  describe('Google OAuth Button', () => {
-    it('should render Google OAuth button', () => {
+  describe('Auth form shell', () => {
+    it('should render the login heading and form', () => {
       render(<LoginPage />);
 
-      const googleButton = screen.getByRole('button', { name: /continue with google/i });
-      expect(googleButton).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument();
+      expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
     });
 
-    it('should have correct styling classes', () => {
+    it('should link to registration', () => {
       render(<LoginPage />);
 
-      const googleButton = screen.getByRole('button', { name: /continue with google/i });
-      expect(googleButton).toHaveClass('bg-white');
-      expect(googleButton).toHaveClass('border');
+      expect(screen.getByRole('link', { name: /create account/i })).toHaveAttribute(
+        'href',
+        '/auth/register',
+      );
     });
 
-    it('should display Google icon', () => {
+    it('should not render OAuth buttons until an OAuth handler is wired in', () => {
       render(<LoginPage />);
 
-      const googleButton = screen.getByRole('button', { name: /continue with google/i });
-      const svg = googleButton.querySelector('svg');
-      expect(svg).toBeInTheDocument();
-      expect(svg).toHaveAttribute('viewBox', '0 0 24 24');
-    });
-  });
-
-  describe('GitHub OAuth Button', () => {
-    it('should render GitHub OAuth button', () => {
-      render(<LoginPage />);
-
-      const githubButton = screen.getByRole('button', { name: /continue with github/i });
-      expect(githubButton).toBeInTheDocument();
-    });
-
-    it('should have correct styling classes', () => {
-      render(<LoginPage />);
-
-      const githubButton = screen.getByRole('button', { name: /continue with github/i });
-      expect(githubButton).toHaveClass('bg-white');
-      expect(githubButton).toHaveClass('border');
-    });
-
-    it('should display GitHub icon', () => {
-      render(<LoginPage />);
-
-      const githubButton = screen.getByRole('button', { name: /continue with github/i });
-      const svg = githubButton.querySelector('svg');
-      expect(svg).toBeInTheDocument();
-      expect(svg).toHaveAttribute('viewBox', '0 0 24 24');
+      expect(
+        screen.queryByRole('button', { name: /continue with google/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /continue with github/i }),
+      ).not.toBeInTheDocument();
     });
   });
 
-  describe('OAuth Button Layout', () => {
-    it('should display both OAuth buttons in the correct order', () => {
-      render(<LoginPage />);
-
-      const buttons = screen.getAllByRole('button');
-      
-      // Find OAuth buttons (not the sign-in form button)
-      const googleButton = screen.getByRole('button', { name: /continue with google/i });
-      const githubButton = screen.getByRole('button', { name: /continue with github/i });
-
-      // Google should come before GitHub
-      const allButtons = buttons.map((b) => b.textContent);
-      const googleIndex = allButtons.indexOf('Continue with Google');
-      const githubIndex = allButtons.indexOf('Continue with GitHub');
-
-      expect(googleIndex).toBeGreaterThan(-1);
-      expect(githubIndex).toBeGreaterThan(-1);
-      expect(googleIndex).toBeLessThan(githubIndex);
-    });
-
-    it('should show "or" divider between form and OAuth buttons', () => {
-      render(<LoginPage />);
-
-      const divider = screen.getByText('or');
-      expect(divider).toBeInTheDocument();
-    });
-  });
-
-  describe('API_URL Configuration', () => {
+  describe('API_URL configuration', () => {
     it('should use default API_URL when env var is not set', () => {
       delete process.env.NEXT_PUBLIC_API_URL;
 
@@ -138,8 +89,7 @@ describe('OAuth Button Tests', () => {
       const { unmount } = render(<LoginPage />);
       
       // The component should render without errors
-      expect(screen.getByRole('button', { name: /continue with google/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /continue with github/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
 
       unmount();
       process.env.NEXT_PUBLIC_API_URL = 'http://localhost:8000';
@@ -157,8 +107,7 @@ describe('OAuth Button Tests', () => {
         const { unmount } = render(<LoginPage />);
 
         // Component should render with any API_URL
-        expect(screen.getByRole('button', { name: /continue with google/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /continue with github/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
 
         unmount();
       });
@@ -174,18 +123,18 @@ describe('OAuth Button Tests', () => {
  * These tests verify the actual source code uses API_URL correctly
  * by checking the component file directly.
  */
-describe('OAuth Code Inspection', () => {
+describe('Login page rendering', () => {
   it('should verify API_URL is defined as constant with fallback', () => {
     // This test verifies the code structure by checking that the page
     // can be imported and renders (which it couldn't if API_URL was undefined)
     expect(() => render(<LoginPage />)).not.toThrow();
   });
 
-  it('should verify both OAuth buttons exist in DOM', () => {
+  it('should render exactly one submit button in the DOM', () => {
     render(<LoginPage />);
 
-    // Count buttons with "Continue with" text (OAuth buttons)
-    const oauthButtons = screen.getAllByRole('button', { name: /continue with/i });
-    expect(oauthButtons).toHaveLength(2);
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveTextContent(/sign in/i);
   });
 });

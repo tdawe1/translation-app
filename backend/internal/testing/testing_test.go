@@ -15,19 +15,24 @@ func TestSetupTestEnvironment(t *testing.T) {
 
 	// Verify environment variables are set
 	expectedVars := map[string]string{
-		"JWT_SECRET":              "test-secret-key-32-characters-long-for-hs256!",
-		"DB_HOST":                 "localhost",
-		"DB_PORT":                 "5432",
-		"DB_USER":                 "test",
-		"DB_PASSWORD":             "test",
-		"DB_NAME":                 "testdb",
-		"RESEND_API_KEY":          "test-key",
-		"FROM_EMAIL":              "test@example.com",
-		"GOOGLE_OAUTH_CLIENT_ID":  "test-client-id",
+		"JWT_SECRET":                 "test-secret-for-testing-only-32-chars-min",
+		"DB_HOST":                    "localhost",
+		"DB_PORT":                    "5433",
+		"DB_USER":                    "gengo",
+		"DB_PASSWORD":                "devpass",
+		"DB_NAME":                    "gengowatcher_test",
+		"TEST_DB_HOST":               "localhost",
+		"TEST_DB_PORT":               "5433",
+		"TEST_DB_USER":               "gengo",
+		"TEST_DB_PASSWORD":           "devpass",
+		"TEST_DB_NAME":               "gengowatcher_test",
+		"RESEND_API_KEY":             "test-key",
+		"FROM_EMAIL":                 "test@example.com",
+		"GOOGLE_OAUTH_CLIENT_ID":     "test-client-id",
 		"GOOGLE_OAUTH_CLIENT_SECRET": "test-client-secret",
-		"GITHUB_OAUTH_CLIENT_ID":  "test-client-id",
+		"GITHUB_OAUTH_CLIENT_ID":     "test-client-id",
 		"GITHUB_OAUTH_CLIENT_SECRET": "test-client-secret",
-		"ENV":                     "test",
+		"ENV":                        "test",
 	}
 
 	for key, expected := range expectedVars {
@@ -43,7 +48,7 @@ func TestSetupTestEnvironment(t *testing.T) {
 		t.Error("JWT_SECRET should be set in test environment")
 	}
 
-	if cfg.JWTSecret == "test-secret-key-32-characters-long-for-hs256!" {
+	if cfg.JWTSecret == "test-secret-for-testing-only-32-chars-min" {
 		t.Log("Test environment properly configured")
 	}
 }
@@ -65,8 +70,8 @@ func TestTestConfig(t *testing.T) {
 		t.Errorf("Env = %q, want 'test'", cfg.Env)
 	}
 
-	if cfg.DBName != "testdb" {
-		t.Errorf("DBName = %q, want 'testdb'", cfg.DBName)
+	if cfg.DBName != "gengowatcher_test" {
+		t.Errorf("DBName = %q, want 'gengowatcher_test'", cfg.DBName)
 	}
 }
 
