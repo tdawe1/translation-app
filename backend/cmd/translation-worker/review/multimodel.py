@@ -229,4 +229,4 @@ def create_multimodel_translator(
     Returns:
         Configured MultiModelTranslator instance
     """
-    return MultiModelTranslator(parallel=parallel)
+    return MultiModelTranslator(models=models, parallel=parallel)
