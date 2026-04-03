@@ -8,7 +8,20 @@ The style guide integration enables high-quality US English translations that fo
 
 1. Parses a Gengo-aligned style guide markdown file
 2. Generates optimized system prompts for LLM providers
-3. Validates translations against style rules
+3. Injects prompts into the translation provider at worker startup
+4. Validates translations against style rules post-translation
+5. Flags style violations for review in the queue workflow
+6. Emits structured JSON metrics (violations by category, flag rate, latency)
+
+## Execution Paths
+
+The style guide is applied in these execution paths:
+
+| Path | Prompt Injection | Style Checker | Metrics |
+|------|:---:|:---:|:---:|
+| **Queued worker jobs** | Yes | Yes | Yes |
+| **Document CLI flows** | Manual | Manual | No |
+| **Provider-based translation** | Via `system_prompt` | No | No |
 
 ## Configuration
 
@@ -17,8 +30,16 @@ Enable the style guide in `config.toml`:
 ```toml
 [style_guide]
 enabled = true
-path = "/path/to/gengo-style-guide.md"
+path = "./path/to/gengo-style-guide.md"
 ```
+
+**Important**: The `path` must point to a valid markdown file on the machine running the worker. When `enabled = true`, the worker will:
+- Parse the markdown file at startup
+- Build a system prompt from the parsed rules
+- Inject the prompt into the translation provider via `system_prompt`
+- Activate the `StyleChecker` with Gengo rules in the workflow
+
+When `enabled = false` (the default), the worker operates normally without style guide injection or style checking.
 
 ## Style Guide Format
 
@@ -44,6 +65,46 @@ When `gengo_rules_enabled=True` in the StyleChecker, the following checks are pe
 | `date_format` | Use US format | "21 September 2025" | "September 21, 2025" |
 | `time_format` | Use lowercase a.m./p.m. | "3:00 PM" | "3:00 p.m." |
 
+## Worker Startup
+
+The worker builds a real `TranslationWorkflow` at startup:
+
+1. Loads style guide prompt from config (if enabled)
+2. Builds translation provider from `translation.default_provider` + `translation.default_model` + env vars
+3. Builds judge provider (same family, no style prompt)
+4. Builds `StyleChecker` (if style guide enabled)
+5. Assembles `TranslationWorkflow` and passes it to `QueueConsumer`
+
+Required environment variables (depend on configured provider):
+- `OPENAI_API_KEY` for OpenAI provider
+- `ANTHROPIC_API_KEY` for Anthropic provider
+- `GEMINI_API_KEY` for Gemini provider
+
+Missing API keys produce a clear startup error.
+
+## Structured Metrics
+
+After each job, the workflow emits JSON metrics to stdout (prefixed with `[METRICS]`):
+
+```json
+{
+  "job_id": "abc123",
+  "segment_count": 15,
+  "flagged_count": 3,
+  "flag_rate": 0.2,
+  "style_violation_count": 2,
+  "style_violation_rate": 0.1333,
+  "style_violations_by_category": {"uk_spelling": 1, "oxford_comma": 1},
+  "flag_reasons": ["Style: uk_spelling - ...", "Low confidence"],
+  "overall_score": 0.85,
+  "provider_name": "openai",
+  "style_guide_enabled": true,
+  "processing_duration_ms": 4523
+}
+```
+
+These can be piped to a logging aggregator for dashboards.
+
 ## Python API
 
 ### Parsing Style Guide
@@ -51,7 +112,7 @@ When `gengo_rules_enabled=True` in the StyleChecker, the following checks are pe
 ```python
 from style_guide import parse_gengo_style_guide, ParsedStyleGuide
 
-guide = parse_gengo_style_guide(Path("/path/to/guide.md"))
+guide = parse_gengo_style_guide(Path("./path/to/guide.md"))
 
 for section_name, section in guide.sections.items():
     print(f"Section: {section.name}")
@@ -79,12 +140,11 @@ prompt = build_system_prompt(guide, config)
 from review.llm import get_provider
 
 provider = get_provider(
-    "anthropic",
-    api_key="sk-ant-...",
+    "openai",
+    api_key="sk-...",
+    model="gpt-5.2",
     system_prompt=prompt,  # Injected into all translation requests
 )
-
-result = await provider.translate(source_text)
 ```
 
 ### Style Checking Translations
@@ -103,17 +163,27 @@ for issue in issues:
 
 ## Testing
 
+Install dependencies first:
+
+```bash
+cd backend/cmd/translation-worker
+pip install -r requirements.txt
+```
+
+Run the full verification suite:
+
 ```bash
 cd backend/cmd/translation-worker
 
-# Run style guide tests
-pytest tests/test_style_guide/ -v
-
-# Run style checker tests
-pytest tests/test_audit/test_style_checker.py -v
-
-# Run integration tests
-pytest tests/test_integration/test_gengo_integration.py -v
+pytest tests/test_style_guide/test_parser.py \
+  tests/test_style_guide/test_prompt_builder.py \
+  tests/test_audit/test_style_checker.py \
+  tests/test_review/test_llm_providers.py \
+  tests/test_review/test_workflow.py \
+  tests/test_review/test_metrics.py \
+  tests/test_integration/test_gengo_integration.py \
+  tests/test_main.py \
+  tests/test_queue/test_consumer_gengo.py -v
 ```
 
 ## Files
@@ -123,10 +193,16 @@ pytest tests/test_integration/test_gengo_integration.py -v
 | `style_guide/parser.py` | Markdown parser for style guide files |
 | `style_guide/prompt_builder.py` | System prompt generator |
 | `audit/style_checker.py` | Translation style validator |
+| `review/workflow.py` | Workflow orchestrator (style checker + metrics) |
+| `review/metrics.py` | Structured job metrics |
+| `review/exporter.py` | CSV exporter (includes style_issues column) |
+| `main.py` | Worker startup, runtime construction helpers |
+| `tests/test_queue/test_consumer_gengo.py` | Queue consumer integration tests |
 
 ## Best Practices
 
 1. **Keep style guide updated**: As Gengo updates their guidelines, update the markdown file
 2. **Enable Gengo rules**: Set `gengo_rules_enabled=True` in StyleChecker for production
 3. **Review flagged issues**: The checker provides suggestions, not automatic corrections
-4. **Test with samples**: Use the integration tests as a template for validation
+4. **Monitor metrics**: Use the JSON metrics output for quality dashboards and alerting
+5. **Test with samples**: Use the integration tests as a template for validation

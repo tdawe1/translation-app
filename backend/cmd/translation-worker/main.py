@@ -322,12 +322,16 @@ def build_workflow(config: dict) -> TranslationWorkflow:
     )
 
     # Build workflow
+    style_checker = build_style_checker(config)
     workflow = TranslationWorkflow(
         translator=translator,
         judge=judge,
+        style_checker=style_checker,
     )
 
     print("  Workflow: initialized with real provider")
+    if style_checker:
+        print("  Style Checker: Gengo rules enabled in workflow")
     return workflow
 
 
@@ -479,6 +483,7 @@ class SegmentStore:
                     "flag_reason": getattr(seg, "flag_reason", ""),
                     "model_a_output": getattr(seg, "model_a_output", ""),
                     "model_b_output": getattr(seg, "model_b_output", ""),
+                    "style_issues": getattr(seg, "style_issues", []),
                 }
                 segments_data.append(json.dumps(seg_data))
 
@@ -644,8 +649,18 @@ class QueueConsumer:
             self.job_manager.publish_progress(
                 job_id,
                 1.0,
-                f"Translation complete: score={processed_job.overall_score:.2f}, flagged={processed_job.flagged_count}",
+                f"Translation complete: score={processed_job.overall_score:.2f}, "
+                f"flagged={processed_job.flagged_count}"
+                + (
+                    f", style_violations={self.workflow.last_metrics.style_violation_count}"
+                    if self.workflow.last_metrics
+                    else ""
+                ),
             )
+
+            # Emit structured metrics as JSON for logging pipeline
+            if self.workflow.last_metrics:
+                print(f"[METRICS] {self.workflow.last_metrics.to_json()}")
 
             print(
                 f"Job {job_id} processed: score={processed_job.overall_score:.2f}, flagged={processed_job.flagged_count}"

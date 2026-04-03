@@ -638,3 +638,218 @@ class TestWorkflowIntegration:
         )
 
         assert workflow.can_auto_approve(job) is False
+
+
+class TestStyleCheckerInWorkflow:
+    """Tests for style checker integration in the workflow."""
+
+    def test_style_checker_disabled_no_extra_flags(self):
+        """When style_checker is None, no style-related flagging occurs."""
+        mock_provider = Mock()
+        mock_provider.generate.return_value = Mock(
+            text="The colour costs 1,000 dollars."
+        )
+
+        translator = MultiModelTranslator(providers=[mock_provider])
+        workflow = TranslationWorkflow(
+            translator=translator,
+            style_checker=None,  # Disabled
+        )
+
+        job = workflow.create_job(
+            source_file="in.txt",
+            target_file="out.txt",
+            segments=[{"source": "テスト"}],
+        )
+        processed = workflow.process_job(job)
+
+        seg = processed.segments[0]
+        assert seg.style_issues == []
+        # Should not be flagged for style (may be flagged for other reasons)
+
+    def test_style_checker_enabled_flags_violations(self):
+        """When style_checker is enabled, Gengo violations flag segments."""
+        from audit.style_checker import StyleChecker
+
+        mock_provider = Mock()
+        # Return text with UK spelling + wrong currency format
+        mock_provider.generate.return_value = Mock(
+            text="The colour costs 1,000 dollars at 3:00 PM."
+        )
+
+        translator = MultiModelTranslator(providers=[mock_provider])
+        checker = StyleChecker(gengo_rules_enabled=True)
+
+        # Use a high-confidence mock judge so the segment isn't flagged
+        # by confidence alone — only style issues should flag it
+        from review.models import JudgeResult
+
+        mock_judge = TranslationJudge(enabled=False)  # Returns model_a, conf=1.0
+
+        workflow = TranslationWorkflow(
+            translator=translator,
+            judge=mock_judge,
+            style_checker=checker,
+            flagger=FlaggingEngine(random_sample_rate=0.0),
+        )
+
+        job = workflow.create_job(
+            source_file="in.txt",
+            target_file="out.txt",
+            segments=[{"source": "テスト文"}],
+        )
+        processed = workflow.process_job(job)
+
+        seg = processed.segments[0]
+        assert len(seg.style_issues) > 0
+
+        # Should be flagged (possibly by flagger or style checker)
+        assert seg.is_flagged is True
+
+        # Style issues should contain the expected categories regardless
+        # of whether the flagger or style checker set the flag first
+        issue_categories = {i["category"] for i in seg.style_issues}
+        assert "uk_spelling" in issue_categories
+        assert "currency_format" in issue_categories
+        assert "time_format" in issue_categories
+
+    def test_style_checker_clean_text_no_flag(self):
+        """Clean Gengo-compliant text should not get style-flagged."""
+        from audit.style_checker import StyleChecker
+
+        mock_provider = Mock()
+        # Return clean, Gengo-compliant text
+        mock_provider.generate.return_value = Mock(
+            text="The color costs US$1,000 at 3:00 p.m."
+        )
+
+        translator = MultiModelTranslator(providers=[mock_provider])
+        checker = StyleChecker(gengo_rules_enabled=True)
+        mock_judge = TranslationJudge(enabled=False)
+
+        workflow = TranslationWorkflow(
+            translator=translator,
+            judge=mock_judge,
+            style_checker=checker,
+            flagger=FlaggingEngine(random_sample_rate=0.0),
+        )
+
+        job = workflow.create_job(
+            source_file="in.txt",
+            target_file="out.txt",
+            segments=[{"source": "テスト文"}],
+        )
+        processed = workflow.process_job(job)
+
+        seg = processed.segments[0]
+        gengo_categories = {"uk_spelling", "currency_format", "time_format", "date_format", "oxford_comma"}
+        gengo_issues = [i for i in seg.style_issues if i.get("category") in gengo_categories]
+        assert len(gengo_issues) == 0
+
+    def test_metrics_populated_after_processing(self):
+        """Workflow should populate last_metrics after process_job."""
+        from audit.style_checker import StyleChecker
+
+        mock_provider = Mock()
+        mock_provider.generate.return_value = Mock(
+            text="The colour is grey."
+        )
+
+        translator = MultiModelTranslator(providers=[mock_provider])
+        checker = StyleChecker(gengo_rules_enabled=True)
+        mock_judge = TranslationJudge(enabled=False)
+
+        workflow = TranslationWorkflow(
+            translator=translator,
+            judge=mock_judge,
+            style_checker=checker,
+            flagger=FlaggingEngine(random_sample_rate=0.0),
+        )
+
+        job = workflow.create_job(
+            source_file="in.txt",
+            target_file="out.txt",
+            segments=[{"source": "テスト"}, {"source": "テスト2"}],
+        )
+        workflow.process_job(job)
+
+        m = workflow.last_metrics
+        assert m is not None
+        assert m.job_id == job.id
+        assert m.segment_count == 2
+        assert m.style_guide_enabled is True
+        assert m.style_violation_count > 0
+        assert "uk_spelling" in m.style_violations_by_category
+        assert m.processing_duration_ms is not None
+        assert m.processing_duration_ms >= 0
+
+        # Check JSON serialization
+        d = m.to_dict()
+        assert d["job_id"] == job.id
+        assert d["style_violation_rate"] > 0.0
+
+    def test_metrics_without_style_checker(self):
+        """Metrics should still work when style_checker is disabled."""
+        mock_provider = Mock()
+        mock_provider.generate.return_value = Mock(text="Hello world")
+
+        translator = MultiModelTranslator(providers=[mock_provider])
+        mock_judge = TranslationJudge(enabled=False)
+
+        workflow = TranslationWorkflow(
+            translator=translator,
+            judge=mock_judge,
+            flagger=FlaggingEngine(random_sample_rate=0.0),
+        )
+
+        job = workflow.create_job(
+            source_file="in.txt",
+            target_file="out.txt",
+            segments=[{"source": "テスト"}],
+        )
+        workflow.process_job(job)
+
+        m = workflow.last_metrics
+        assert m is not None
+        assert m.style_guide_enabled is False
+        assert m.style_violation_count == 0
+
+    def test_style_issues_in_csv_export(self):
+        """Style issues should appear in CSV export."""
+        from audit.style_checker import StyleChecker
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_provider = Mock()
+            mock_provider.generate.return_value = Mock(
+                text="The colour is nice."
+            )
+
+            translator = MultiModelTranslator(providers=[mock_provider])
+            checker = StyleChecker(gengo_rules_enabled=True)
+            mock_judge = TranslationJudge(enabled=False)
+
+            workflow = TranslationWorkflow(
+                translator=translator,
+                judge=mock_judge,
+                style_checker=checker,
+                exporter=BilingualCSVExporter(output_dir=tmpdir),
+                flagger=FlaggingEngine(random_sample_rate=0.0),
+            )
+
+            job = workflow.create_job(
+                source_file="in.txt",
+                target_file="out.txt",
+                segments=[{"source": "テスト"}],
+            )
+            processed = workflow.process_job(job)
+
+            # Verify style issues are on the segment
+            assert len(processed.segments[0].style_issues) > 0
+
+            csv_path = workflow.export_job(processed)
+
+            assert csv_path is not None
+            content = Path(csv_path).read_text(encoding="utf-8-sig")
+            # style_issues column should be in header and contain issue data
+            assert "style_issues" in content
+            assert "uk_spelling" in content

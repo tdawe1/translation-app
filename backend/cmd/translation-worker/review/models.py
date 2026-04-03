@@ -87,12 +87,15 @@ class TranslationSegment:
     model_a_output: Optional[str] = None
     model_b_output: Optional[str] = None
     glossary_terms: List[str] = field(default_factory=list)
+    style_issues: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_csv_row(self) -> Dict[str, str]:
         """Convert to CSV-compatible dictionary.
 
         Returns a dict with flattened string values for CSV export.
         """
+        import json as _json
+
         return {
             "segment_id": self.id,
             "source": self.source,
@@ -106,6 +109,7 @@ class TranslationSegment:
             "model_b_output": self.model_b_output or "",
             "glossary_terms": ",".join(self.glossary_terms),
             "context": str(self.context),
+            "style_issues": _json.dumps([i for i in self.style_issues]) if self.style_issues else "",
         }
 
 
