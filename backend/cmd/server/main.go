@@ -286,7 +286,7 @@ func main() {
 	billingGroup := api.Group("/billing")
 	billingGroup.Get("/plans", billingHandler.GetPlans)
 	billingGroup.Post("/checkout", billingHandler.CreateCheckout)
-	billingGroup.Get("/status/:session_id", billingHandler.GetStatus)
+	billingGroup.Get("/status/:session_id", middleware.JWTValidator(jwtConfig), billingHandler.GetStatus)
 
 	// WebSocket route (auth via short-lived ticket from /api/v1/auth/ws-ticket)
 	app.Get("/ws", wsHandler.HandleWebSocket())

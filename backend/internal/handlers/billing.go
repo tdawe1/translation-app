@@ -110,8 +110,9 @@ type billingGateway interface {
 
 // BillingHandler serves pricing plans plus checkout and status polling.
 type BillingHandler struct {
-	db      database.Database
-	gateway billingGateway
+	db             database.Database
+	gateway        billingGateway
+	allowedOrigins []string
 }
 
 var defaultBillingPlans = []billingPlan{
@@ -148,8 +149,9 @@ var defaultBillingPlans = []billingPlan{
 // NewBillingHandler builds the checkout handler using Stripe when configured.
 func NewBillingHandler(db database.Database, cfg *config.Config) *BillingHandler {
 	return &BillingHandler{
-		db:      db,
-		gateway: newBillingGateway(cfg),
+		db:             db,
+		gateway:        newBillingGateway(cfg),
+		allowedOrigins: cfg.AllowedOriginList(),
 	}
 }
 
@@ -160,6 +162,9 @@ func newBillingGateway(cfg *config.Config) billingGateway {
 		}
 		return newMockBillingGateway()
 	}
+
+	// Set the Stripe API key globally once at initialization
+	stripe.Key = cfg.StripeAPIKey
 
 	return stripeBillingGateway{
 		apiKey:        cfg.StripeAPIKey,
@@ -189,7 +194,7 @@ func (h *BillingHandler) CreateCheckout(c *fiber.Ctx) error {
 		return RespondWithError(c, fiber.StatusBadRequest, apperrors.ErrInvalidRequest, "Invalid plan selected")
 	}
 
-	origin := normalizeOrigin(request.OriginURL, c)
+	origin := normalizeOrigin(request.OriginURL, c, h.allowedOrigins)
 	successURL := fmt.Sprintf("%s/pricing?session_id={CHECKOUT_SESSION_ID}", origin)
 	cancelURL := fmt.Sprintf("%s/pricing", origin)
 	userEmail := stringValue(request.UserEmail)
@@ -428,11 +433,28 @@ func (p billingPlan) response() billingPlanResponse {
 	}
 }
 
-func normalizeOrigin(originURL string, c *fiber.Ctx) string {
+func normalizeOrigin(originURL string, c *fiber.Ctx, allowedOrigins []string) string {
 	parsed, err := url.Parse(originURL)
-	if err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" {
-		return strings.TrimRight(parsed.String(), "/")
+	if err != nil || parsed.Host == "" {
+		return strings.TrimRight(c.BaseURL(), "/")
 	}
+
+	// Only allow http/https schemes
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return strings.TrimRight(c.BaseURL(), "/")
+	}
+
+	// Build the full origin (scheme + host)
+	requestOrigin := parsed.Scheme + "://" + parsed.Host
+
+	// Check if the origin is in the allowlist
+	for _, allowed := range allowedOrigins {
+		if requestOrigin == strings.TrimRight(allowed, "/") {
+			return strings.TrimRight(parsed.String(), "/")
+		}
+	}
+
+	// Origin not in allowlist, return safe default
 	return strings.TrimRight(c.BaseURL(), "/")
 }
 
@@ -506,12 +528,14 @@ func statusResponseFromGateway(transaction *models.PaymentTransaction, session *
 	paymentStatus := ""
 	amountTotal := int64(0)
 	currency := ""
+	sessionID := ""
 
 	if session != nil {
 		status = session.Status
 		paymentStatus = session.PaymentStatus
 		amountTotal = session.AmountTotal
 		currency = session.Currency
+		sessionID = session.ID
 	}
 	if transaction != nil {
 		if status == "" {
@@ -526,15 +550,23 @@ func statusResponseFromGateway(transaction *models.PaymentTransaction, session *
 		if currency == "" {
 			currency = transaction.Currency
 		}
+		if sessionID == "" {
+			sessionID = transaction.SessionID
+		}
+	}
+
+	var transactionMap map[string]interface{}
+	if transaction != nil {
+		transactionMap = transactionToMap(transaction)
 	}
 
 	return billingStatusResponse{
-		SessionID:     transaction.SessionID,
+		SessionID:     sessionID,
 		Status:        status,
 		PaymentStatus: paymentStatus,
 		AmountTotal:   amountTotal,
 		Currency:      currency,
-		Transaction:   transactionToMap(transaction),
+		Transaction:   transactionMap,
 		Detail:        detail,
 	}
 }
@@ -635,8 +667,6 @@ type stripeBillingGateway struct {
 }
 
 func (g stripeBillingGateway) CreateCheckoutSession(_ context.Context, request billingGatewayRequest) (*billingGatewaySession, error) {
-	stripe.Key = g.apiKey
-
 	params := &stripe.CheckoutSessionParams{
 		SuccessURL: stripe.String(request.SuccessURL),
 		CancelURL:  stripe.String(request.CancelURL),
@@ -678,8 +708,6 @@ func (g stripeBillingGateway) CreateCheckoutSession(_ context.Context, request b
 }
 
 func (g stripeBillingGateway) GetCheckoutStatus(_ context.Context, sessionID string) (*billingGatewaySession, error) {
-	stripe.Key = g.apiKey
-
 	session, err := stripeSession.Get(sessionID, nil)
 	if err != nil {
 		return nil, err
