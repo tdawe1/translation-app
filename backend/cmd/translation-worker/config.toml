@@ -33,6 +33,10 @@ supported_extensions = [".pptx", ".docx", ".xlsx", ".pdf"]
 enabled = false
 # path = "./path/to/gengo-style-guide.md"
 
+[metrics]
+enabled = true
+port = 9090
+
 [translation]
 # Default LLM provider
 default_provider = "anthropic"

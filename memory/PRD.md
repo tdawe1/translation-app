@@ -7,73 +7,70 @@ Make the translation worker apply the Gengo style guide during real queued job e
 - Python translation worker in `backend/cmd/translation-worker/`
 - Uses LLM providers (OpenAI, Anthropic, Gemini) for translation + judging
 - Redis job queue for horizontal scaling
-- Style guide parsed from markdown → system prompt → injected into LLM provider
-- Style checker validates translations post-hoc (regex-based rules)
-- Structured JSON metrics emitted per-job for observability
-
-## Core Requirements (Static)
-1. Worker builds a real TranslationWorkflow at startup from config + env
-2. Style guide prompt injected via provider's system_prompt
-3. Style checker flags violations in queued job output
-4. Structured metrics (violations, latency, flag rate) emitted per job
-5. Config/docs are portable (no hardcoded paths)
-6. Tests cover the worker path, not just isolated modules
-
-## User Personas
-- Translation team running the worker against Gengo-sourced content
-- DevOps deploying/configuring the worker via config.toml + env vars
-- Quality team monitoring translation quality via metrics dashboard
+- Style guide: markdown → parser → system prompt → provider injection
+- Style checker: regex-based post-translation validation → segment flagging
+- Metrics: JobMetrics dataclass → JSON stdout + Prometheus counters/histograms/gauges
+- Prometheus: HTTP `/metrics` endpoint on configurable port (default 9090)
 
 ## What's Been Implemented
 
-### Phase 1 — Worker Startup Runtime Construction (Jan 2026)
-- Added `load_style_guide_prompt()`, `_resolve_api_key()`, `build_translation_provider()`, `build_judge_provider()`, `build_style_checker()`, `build_workflow()` to `main.py`
-- `QueueConsumer` now receives a real workflow (no more stub path in normal operation)
-- Missing API keys produce clear startup error
-- Fixed `config.example.toml` and `config.toml` (removed hardcoded path)
-- 19 new tests in `test_main.py`, 5 pre-existing failures fixed in `test_workflow.py`
+### Phase 1 — Worker Startup Runtime Construction
+- `load_style_guide_prompt()`, `_resolve_api_key()`, `build_translation_provider()`, `build_judge_provider()`, `build_style_checker()`, `build_workflow()` in `main.py`
+- `QueueConsumer` receives real workflow; missing API keys fail startup clearly
+- Fixed `config.example.toml` and `config.toml` (removed hardcoded path, style_guide disabled by default)
 
-### Phase 2 — Style Checker in Workflow (Jan 2026)
-- `TranslationWorkflow` accepts optional `style_checker` parameter
-- After winner selection, runs `StyleChecker.check()` on `segment.target`
-- Style violations flag segments for review with reason `"Style: {category} - {message}"`
-- Added `style_issues` field to `TranslationSegment` (list of dicts with severity/category/message)
-- `ReviewWorkflowBuilder.with_style_checker()` for builder pattern support
-- CSV exporter includes `style_issues` column
+### Phase 2 — Style Checker in Workflow
+- `TranslationWorkflow` accepts optional `style_checker`
+- Runs `StyleChecker.check()` on `segment.target` after winner selection
+- Violations flag segments for review with `"Style: {category} - {message}"`
+- `style_issues` field on `TranslationSegment`, included in CSV export
 
-### Phase 2b — Structured Metrics (Jan 2026)
-- New `review/metrics.py` with `JobMetrics` dataclass
-- Tracks: violation count, violations by category, flag rate, processing duration
-- JSON-serializable via `.to_dict()` / `.to_json()`
-- Emitted to stdout as `[METRICS] {...}` after each job
-- `QueueConsumer` also emits metrics in progress messages
-- `workflow.last_metrics` available for programmatic access
+### Phase 2b — Structured Metrics
+- `review/metrics.py`: `JobMetrics` dataclass (violations by category, flag rate, duration)
+- JSON emitted to stdout as `[METRICS] {...}` after each job
+- `workflow.last_metrics` for programmatic access
 
-### Phase 3 — Queue-Worker Integration Tests (Jan 2026)
-- New `tests/test_queue/test_consumer_gengo.py` (7 tests)
-- Tests: workflow vs stub path, style violations flagging, no-workflow fallback, empty segments, build_workflow wiring
-- Updated `tests/test_integration/test_gengo_integration.py` (3 new tests)
-- Tests: workflow flags violations, clean text passes, system_prompt reaches provider
-- 6 new style checker workflow tests in `test_review/test_workflow.py`
-- 12 new metrics tests in `test_review/test_metrics.py`
+### Phase 3 — Integration Tests
+- `tests/test_queue/test_consumer_gengo.py`: 7 queue consumer tests
+- `tests/test_integration/test_gengo_integration.py`: 3 workflow-level tests
+- `tests/test_review/test_workflow.py`: 6 style checker + 5 metrics tests
+- `tests/test_review/test_metrics.py`: 12 JobMetrics unit tests
 
-### Phase 4 — Docs/Config Cleanup (Jan 2026)
-- `config.example.toml`: style_guide disabled by default, placeholder path
-- `GENGO_STYLE_GUIDE.md`: rewritten with execution paths table, startup sequence, metrics docs, file manifest, dependency install instructions
+### Phase 4 — Docs/Config Cleanup
+- `GENGO_STYLE_GUIDE.md`: rewritten with execution paths, startup sequence, metrics format
+- `config.example.toml`: portable, style guide disabled by default
 
-### Phase 5 — Verification (Jan 2026)
-- **187 tests passing, 0 failures** across full verification suite
-- Pre-existing failures in unrelated test files (test_cli.py, test_review.py) not introduced by this work
+### Phase 5 — Verification
+- 197 tests passing, 0 failures
+
+### Prometheus Metrics
+- `review/prometheus.py`: Counters (jobs, segments, violations by category), Histograms (duration, quality score), Gauges (flag rate, violation rate, active jobs, style_guide enabled), Info (worker metadata)
+- HTTP server on configurable port via `[metrics]` config section
+- Wired into workflow (auto-update after each job) and consumer (active jobs, failures)
+- 10 Prometheus-specific tests
+
+### Code Review
+- Formal review conducted, documented in `docs/CODE_REVIEW.md`
+- Fixed: unused imports, return type mismatch, ACTIVE_JOBS gauge wiring
+- All design decisions documented with rationale
+
+### Test Deployment
+- `scripts/test_deploy.sh`: automated verification (deps → tests → metrics endpoint)
+- Verified: 197 tests pass, `/metrics` endpoint responds with all expected metrics
+
+## Test Suite Summary
+- **197 tests, 0 failures**
+- Coverage: parser, prompt builder, style checker, providers, workflow, metrics, prometheus, integration, main helpers, queue consumer
 
 ## Prioritized Backlog
 
-### P1 — Future Enhancements
-- Separate judge provider/model config in config.toml
-- Metrics output to file/Redis instead of just stdout
-- Dashboard integration for quality trends
-- Multiple style guide support (per language pair)
+### P1 — Production Readiness
+- Grafana dashboard template for Prometheus metrics
+- `prometheus_client.multiprocess` mode for multi-worker scaling
+- Histogram bucket tuning after production observation
 
-### P2 — Pre-existing Issues (Not introduced by this work)
-- 11 failures in `test_cli.py` (CLI tool integration tests)
-- 5 failures in `test_review.py` (factory function / no-provider tests)
-- 1 failure in `test_manager.py` (constants test)
+### P2 — Feature Enhancement
+- Separate judge provider/model config in config.toml
+- Multiple style guide support (per language pair)
+- Metrics output to Redis pub/sub for real-time dashboards
+- Webhook sink for alerting on high violation rates

@@ -224,6 +224,13 @@ class TranslationWorkflow:
         metrics.flagged_count = job.flagged_count
         self.last_metrics = metrics
 
+        # Update Prometheus
+        try:
+            from .prometheus import record_job_metrics
+            record_job_metrics(metrics)
+        except Exception:
+            pass  # Prometheus is optional; don't fail jobs over it
+
         logger.info(
             f"[WORKFLOW] Job {job.id} complete: "
             f"score={job.overall_score:.2f}, flagged={job.flagged_count}/{total}, "

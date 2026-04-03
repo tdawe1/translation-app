@@ -16,6 +16,11 @@ enabled = false
 # Path to Gengo style guide markdown file (must exist when enabled=true)
 # path = "./path/to/gengo-style-guide.md"
 
+[metrics]
+# Prometheus metrics endpoint
+enabled = true
+port = 9090
+
 [cache.redis]
 host = "localhost"
 port = 6379

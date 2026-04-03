@@ -602,6 +602,12 @@ class QueueConsumer:
         self.active_job_order.append(job_id)
 
         try:
+            from review.prometheus import ACTIVE_JOBS
+            ACTIVE_JOBS.inc()
+        except Exception:
+            pass
+
+        try:
             if not self.workflow:
                 print(
                     f"Warning: No workflow configured, completing job {job_id} as stub"
@@ -673,7 +679,19 @@ class QueueConsumer:
             traceback.print_exc()
             self.job_manager.set_state(job_id, JobState.FAILED, self.worker_id)
             self.job_manager.publish_progress(job_id, 0.0, f"Error: {str(e)}")
+
+            try:
+                from review.prometheus import record_job_failed
+                provider = self.config.get("translation", {}).get("default_provider", "unknown")
+                record_job_failed(provider=provider)
+            except Exception:
+                pass
         finally:
+            try:
+                from review.prometheus import ACTIVE_JOBS
+                ACTIVE_JOBS.dec()
+            except Exception:
+                pass
             if job_id in self.active_jobs:
                 del self.active_jobs[job_id]
             if job_id in self.active_job_order:
@@ -744,6 +762,22 @@ def main():
         except RuntimeError as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
+
+        # Start Prometheus metrics server
+        metrics_cfg = config.get("metrics", {})
+        metrics_enabled = metrics_cfg.get("enabled", True)
+        if metrics_enabled:
+            from review.prometheus import start_metrics_server, set_worker_info
+            metrics_port = metrics_cfg.get("port", 9090)
+            start_metrics_server(port=metrics_port)
+            set_worker_info(
+                worker_id=worker_id or "unspecified",
+                provider=provider or "none",
+                model=model or "none",
+                style_guide=style_guide_enabled,
+            )
+        else:
+            print(f"  Metrics: disabled")
 
         # Initialize JobManager if job queue enabled
         job_queue_config = config.get("job_queue", {})
