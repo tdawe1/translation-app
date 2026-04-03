@@ -30,8 +30,8 @@ failed_directory = "/watch/failed"
 supported_extensions = [".pptx", ".docx", ".xlsx", ".pdf"]
 
 [style_guide]
-enabled = true
-path = "/home/thomas/kyros-wiki/Japanese-to-English Translation Quick Reference (Gengo Style Guide Alignment).md"
+enabled = false
+# path = "./path/to/gengo-style-guide.md"
 
 [translation]
 # Default LLM provider

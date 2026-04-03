@@ -24,6 +24,7 @@ from review.workflow import TranslationWorkflow, ReviewWorkflowBuilder
 from review.multimodel import MultiModelTranslator
 from review.judge import TranslationJudge
 from review.llm import get_provider, AnthropicProvider, OpenAIProvider
+from audit.style_checker import StyleChecker
 
 
 def load_config(config_path: str = "config.toml") -> dict:
@@ -141,6 +142,193 @@ def get_redis_config(config: dict) -> tuple[str, int, int, Optional[str]]:
         cache_redis.get("db", 0),
         cache_redis.get("password"),
     )
+
+
+def load_style_guide_prompt(config: dict) -> Optional[str]:
+    """Load the Gengo style guide and build a system prompt if enabled.
+
+    Args:
+        config: Parsed configuration dict
+
+    Returns:
+        System prompt string, or None if style guide is disabled or unavailable
+    """
+    style_guide_cfg = config.get("style_guide", {})
+    if not style_guide_cfg.get("enabled", False):
+        return None
+
+    from style_guide.parser import parse_gengo_style_guide
+    from style_guide.prompt_builder import build_system_prompt
+
+    guide_path = Path(style_guide_cfg["path"])
+    if not guide_path.exists():
+        print(f"Warning: Style guide not found: {guide_path}", file=sys.stderr)
+        return None
+
+    try:
+        guide = parse_gengo_style_guide(guide_path)
+        prompt = build_system_prompt(guide)
+        print(f"  Style Guide: loaded ({len(guide.sections)} sections)")
+        return prompt
+    except Exception as e:
+        print(f"Warning: Failed to load style guide: {e}", file=sys.stderr)
+        return None
+
+
+def _resolve_api_key(config: dict, provider_name: str) -> Optional[str]:
+    """Resolve the API key for a provider from config and environment.
+
+    Checks the provider-specific config for an api_key_env setting,
+    then falls back to standard env var names.
+
+    Args:
+        config: Parsed configuration dict
+        provider_name: Provider name ("anthropic", "openai", "gemini")
+
+    Returns:
+        API key string, or None if not found
+    """
+    # Check provider-specific config for env var name
+    provider_cfg = (
+        config.get("translation", {}).get("providers", {}).get(provider_name, {})
+    )
+    env_var = provider_cfg.get("api_key_env")
+    if env_var:
+        key = os.environ.get(env_var)
+        if key:
+            return key
+
+    # Fallback: standard env var names
+    standard_vars = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+    }
+    fallback_var = standard_vars.get(provider_name)
+    if fallback_var:
+        return os.environ.get(fallback_var)
+
+    return None
+
+
+def build_translation_provider(config: dict, system_prompt: Optional[str] = None):
+    """Build the primary translation LLM provider from config and env.
+
+    Args:
+        config: Parsed configuration dict
+        system_prompt: Optional system prompt (e.g., from style guide)
+
+    Returns:
+        Configured BaseProvider instance
+
+    Raises:
+        RuntimeError: If required API key is missing
+    """
+    trans_cfg = config.get("translation", {})
+    provider_name = trans_cfg.get("default_provider", "openai")
+    model = trans_cfg.get("default_model")
+
+    api_key = _resolve_api_key(config, provider_name)
+    if not api_key:
+        raise RuntimeError(
+            f"Missing API key for provider '{provider_name}'. "
+            f"Set the environment variable (e.g., {provider_name.upper()}_API_KEY)."
+        )
+
+    return get_provider(
+        provider_name=provider_name,
+        api_key=api_key,
+        model=model,
+        system_prompt=system_prompt,
+    )
+
+
+def build_judge_provider(config: dict):
+    """Build the judge LLM provider from config and env.
+
+    Minimal first pass: uses the same provider family as translation.
+    A separate judge provider/model can be added to config later.
+
+    Args:
+        config: Parsed configuration dict
+
+    Returns:
+        Configured BaseProvider instance, or None if key unavailable
+    """
+    trans_cfg = config.get("translation", {})
+    provider_name = trans_cfg.get("default_provider", "openai")
+    model = trans_cfg.get("default_model")
+
+    api_key = _resolve_api_key(config, provider_name)
+    if not api_key:
+        return None
+
+    # Judge does NOT get the style guide system_prompt — it evaluates objectively
+    return get_provider(
+        provider_name=provider_name,
+        api_key=api_key,
+        model=model,
+    )
+
+
+def build_style_checker(config: dict) -> Optional[StyleChecker]:
+    """Build a StyleChecker if Gengo rules are enabled in config.
+
+    Args:
+        config: Parsed configuration dict
+
+    Returns:
+        Configured StyleChecker, or None if style guide is disabled
+    """
+    style_guide_cfg = config.get("style_guide", {})
+    if not style_guide_cfg.get("enabled", False):
+        return None
+
+    return StyleChecker(gengo_rules_enabled=True)
+
+
+def build_workflow(config: dict) -> TranslationWorkflow:
+    """Build a complete TranslationWorkflow from config and env.
+
+    Wires together the translation provider, judge, flagger, and
+    optional style checker into a working workflow.
+
+    Args:
+        config: Parsed configuration dict
+
+    Returns:
+        Fully configured TranslationWorkflow
+
+    Raises:
+        RuntimeError: If required provider credentials are missing
+    """
+    # Load style guide prompt
+    system_prompt = load_style_guide_prompt(config)
+
+    # Build providers
+    translation_provider = build_translation_provider(config, system_prompt)
+    judge_provider = build_judge_provider(config)
+
+    # Build translator with the provider
+    translator = MultiModelTranslator(
+        providers=[translation_provider],
+        parallel=False,
+    )
+
+    # Build judge
+    judge = TranslationJudge(
+        provider=judge_provider,
+        enabled=judge_provider is not None,
+    )
+
+    # Build workflow
+    workflow = TranslationWorkflow(
+        translator=translator,
+        judge=judge,
+    )
+
+    print("  Workflow: initialized with real provider")
+    return workflow
 
 
 class SegmentExtractor:
@@ -526,33 +714,21 @@ def main():
         provider = config.get("translation", {}).get("default_provider")
         model = config.get("translation", {}).get("default_model")
 
-        # Load Gengo style guide if enabled
-        system_prompt = None
-        style_guide_enabled = config.get("style_guide", {}).get("enabled", False)
-        if style_guide_enabled:
-            from style_guide.parser import parse_gengo_style_guide
-            from style_guide.prompt_builder import build_system_prompt
-
-            style_guide_path = Path(config["style_guide"]["path"])
-            if style_guide_path.exists():
-                try:
-                    guide = parse_gengo_style_guide(style_guide_path)
-                    system_prompt = build_system_prompt(guide)
-                    print(f"  Style Guide: loaded ({len(guide.sections)} sections)")
-                except Exception as e:
-                    print(f"Warning: Failed to load style guide: {e}", file=sys.stderr)
-            else:
-                print(
-                    f"Warning: Style guide not found: {style_guide_path}",
-                    file=sys.stderr,
-                )
-        else:
-            print(f"  Style Guide: disabled")
-
         print(f"Translation Worker v1.0.0 starting...")
         print(f"  Worker ID: {worker_id}")
         print(f"  Translation Backend: {provider}/{model}")
         print(f"  Mode: hybrid (folder watch + Redis job queue)")
+
+        # Build real workflow from config + env
+        style_guide_enabled = config.get("style_guide", {}).get("enabled", False)
+        if not style_guide_enabled:
+            print(f"  Style Guide: disabled")
+
+        try:
+            workflow = build_workflow(config)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
         # Initialize JobManager if job queue enabled
         job_queue_config = config.get("job_queue", {})
@@ -579,11 +755,13 @@ def main():
             # Get max concurrent jobs
             max_concurrent = job_queue_config.get("max_concurrent", 3)
 
-            # Initialize queue consumer
+            # Initialize queue consumer with real workflow
             queue_consumer = QueueConsumer(
                 job_manager=job_manager,
                 worker_id=worker_id,
                 max_concurrent=max_concurrent,
+                workflow=workflow,
+                config=config,
             )
 
             # Setup signal handlers for graceful shutdown

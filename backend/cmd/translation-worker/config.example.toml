@@ -12,9 +12,9 @@ default_model = "claude-sonnet-4-5-20250929"
 
 [style_guide]
 # Enable Gengo style guide injection
-enabled = true
-# Path to Gengo style guide markdown file
-path = "/home/thomas/kyros-wiki/Japanese-to-English Translation Quick Reference (Gengo Style Guide Alignment).md"
+enabled = false
+# Path to Gengo style guide markdown file (must exist when enabled=true)
+# path = "./path/to/gengo-style-guide.md"
 
 [cache.redis]
 host = "localhost"

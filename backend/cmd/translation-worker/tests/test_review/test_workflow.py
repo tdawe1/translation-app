@@ -56,7 +56,7 @@ class TestTranslationWorkflow:
     def test_initialization_custom(self):
         """Should accept custom components."""
         custom_translator = MultiModelTranslator(parallel=False)
-        custom_judge = TranslationJudge(model="gpt-4")
+        custom_judge = TranslationJudge(enabled=True)
         custom_flagger = FlaggingEngine(block_threshold=0.8)
         custom_config = ReviewConfig(auto_approve_threshold=0.9)
 
@@ -122,8 +122,15 @@ class TestTranslationWorkflow:
         assert job.approval_mode == "blocking"
 
     def test_process_job_translates_segments(self):
-        """Should translate all segments in job."""
-        workflow = TranslationWorkflow()
+        """Should translate all segments in job using mock providers."""
+        from review.models import TranslationCandidate
+
+        # Provide a mock provider so translations actually happen
+        mock_provider = Mock()
+        mock_provider.generate.return_value = Mock(text="Hello translated")
+
+        translator = MultiModelTranslator(providers=[mock_provider])
+        workflow = TranslationWorkflow(translator=translator)
 
         job = workflow.create_job(
             source_file="in.txt",
@@ -137,7 +144,6 @@ class TestTranslationWorkflow:
         processed = workflow.process_job(job)
 
         assert len(processed.segments) == 2
-        # Stub translations should contain source text
         assert processed.segments[0].target  # Should have translation
         assert processed.segments[1].target  # Should have translation
         assert processed.status == "pending_approval"
@@ -350,7 +356,12 @@ class TestTranslationWorkflow:
     def test_process_and_export(self):
         """Should process job and export in one call."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            workflow = TranslationWorkflow()
+            # Provide mock provider so translations happen
+            mock_provider = Mock()
+            mock_provider.generate.return_value = Mock(text="Translated text")
+
+            translator = MultiModelTranslator(providers=[mock_provider])
+            workflow = TranslationWorkflow(translator=translator)
             workflow.exporter = BilingualCSVExporter(output_dir=tmpdir)
 
             result = workflow.process_and_export(
@@ -430,7 +441,7 @@ class TestReviewWorkflowBuilder:
 
     def test_builder_with_judge(self):
         """Should set custom judge."""
-        custom_judge = TranslationJudge(model="gpt-4")
+        custom_judge = TranslationJudge(enabled=True)
         builder = ReviewWorkflowBuilder()
         workflow = builder.with_judge(custom_judge).build()
 
@@ -525,9 +536,15 @@ class TestWorkflowIntegration:
     def test_full_workflow_end_to_end(self):
         """Should process complete workflow from creation to export."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            workflow = create_workflow(
-                project_type="routine",
-                csv_output_dir=tmpdir,
+            # Provide mock provider for real translations
+            mock_provider = Mock()
+            mock_provider.generate.return_value = Mock(text="Translated text")
+
+            translator = MultiModelTranslator(providers=[mock_provider])
+            workflow = TranslationWorkflow(
+                translator=translator,
+                config=ReviewConfig.for_project_type("routine"),
+                exporter=BilingualCSVExporter(output_dir=tmpdir),
             )
 
             # Create job

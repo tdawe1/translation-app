@@ -1,50 +1,58 @@
-# PRD
+# Gengo Style Guide Integration — PRD
 
-## Original problem statement
-I want to finish this application and prepare it for launch
+## Original Problem Statement
+Make the translation worker apply the Gengo style guide during real queued job execution, not just in isolated modules and CLI flows.
 
-## User choices
-- Make the current app fully working end-to-end, then improve UI/UX, then fix bugs/stability, then prepare dashboard/admin flows if they exist
-- Launch should support both public pages and user accounts
-- Add payments
-- Keep structure ready because final content will be provided later
-- Priority: a bug-free and reliable app
+## Architecture
+- Python translation worker in `backend/cmd/translation-worker/`
+- Uses LLM providers (OpenAI, Anthropic, Gemini) for translation + judging
+- Redis job queue for horizontal scaling
+- Style guide parsed from markdown → system prompt → injected into LLM provider
+- Style checker validates translations post-hoc (regex-based rules)
 
-## Architecture decisions
-- Kept the existing Next.js frontend and Go backend rather than rewriting the product
-- Kept the backend as a single Go Fiber service instead of introducing a second Python server layer
-- Added Stripe billing directly to the Go backend using the environment Stripe key and a `payment_transactions` PostgreSQL table
-- Switched the frontend API client to same-origin by default and exposed billing/status flows on `/api/v1/billing/*`
-- Added Go-native aliases for `/api/health` and `/api/ws` so preview and same-origin frontend traffic keep working without a proxy bridge
+## Core Requirements (Static)
+1. Worker builds a real TranslationWorkflow at startup from config + env
+2. Style guide prompt injected via provider's system_prompt
+3. Style checker flags violations in queued job output
+4. Config/docs are portable (no hardcoded paths)
+5. Tests cover the worker path, not just isolated modules
 
-## What has been implemented
-- Frontend startup fixed: dependencies installed with modern Yarn, production build passing, app served successfully in preview
-- Backend startup fixed: Go service now owns the required HTTP, websocket, and billing routes directly
-- Public launch pages polished: upgraded landing page, added pricing page, improved navigation, and linked billing paths
-- Reliable auth flow: email/password registration and login working from the live preview, dashboard redirect verified
-- Dashboard navigation improved with Dashboard / Translations / Billing / Settings links
-- Settings page extended with a billing section and pricing access
-- Stripe checkout session creation implemented in Go with server-side fixed plan pricing and status polling endpoint
-- Billing status endpoint fixed to return structured JSON, including stored transaction fallback and serialized timestamps
-- Health endpoint exposed at `/api/health`
-- Realtime websocket URL fixed for preview by serving `/api/ws` from the Go backend; dashboard shows connected status in preview
+## User Personas
+- Translation team running the worker against Gengo-sourced content
+- DevOps deploying/configuring the worker via config.toml + env vars
 
-## Prioritized backlog
-### P0
-- Replace the deprecated `middleware.ts` convention with the newer Next.js proxy convention when file deletion/rename is convenient
-- Add a true account/subscription sync step after successful Stripe payment (for example setting a subscription tier on the user model)
+## What's Been Implemented
 
-### P1
-- Re-enable social login and magic link only after provider/email credentials are configured for launch
-- Add richer billing management (current plan summary, past transactions, billing portal)
-- Add a public success/cancel confirmation state on pricing after completing Stripe checkout
+### Phase 1 — Worker Startup Runtime Construction (Jan 2026)
+- Added `load_style_guide_prompt()`, `_resolve_api_key()`, `build_translation_provider()`, `build_judge_provider()`, `build_style_checker()`, `build_workflow()` to `main.py`
+- `QueueConsumer` now receives a real workflow (no more stub path in normal operation)
+- Missing API keys produce clear startup error
+- Fixed `config.example.toml` and `config.toml` (removed hardcoded path)
+- 19 new tests in `test_main.py`, 5 pre-existing failures fixed in `test_workflow.py`
+- **Result: 148 tests passing, 0 failures**
 
-### P2
-- Add admin-facing management UI if launch scope expands to operations/admin workflows
-- Improve dashboard realtime event richness beyond connection state
-- Add content polish once final copy/images are supplied
+## Prioritized Backlog
 
-## Next tasks
-- Connect successful Stripe payments to a user subscription state in the product data model
-- Add a billing history/plan management area in settings
-- Bring back OAuth and magic link behind real provider/email configuration
+### P0 — Phase 2: Style Checker in Workflow
+- Add optional `style_checker` to `TranslationWorkflow`
+- Run checker on `segment.target` after winner selection
+- Convert findings to review flags
+- Add `style_issues` field to `TranslationSegment`
+
+### P0 — Phase 3: Queue-Worker Integration Tests
+- Test `_process_job()` with mock provider
+- Verify `system_prompt` reaches the provider
+- Test style-violating translation gets flagged
+
+### P1 — Phase 4: Documentation Cleanup
+- Update README, GENGO_STYLE_GUIDE.md
+- Document which execution paths are covered
+
+### P1 — Phase 5: Full Verification
+- Run complete test suite
+- Manual startup verification
+
+### P2 — Future
+- Separate judge provider/model config
+- Structured JSON metrics for quality dashboards
+- Multiple style guide support
