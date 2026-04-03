@@ -234,11 +234,11 @@ def create_judge(
     """Factory function to create a TranslationJudge.
 
     Args:
-        model: Model identifier for judge decisions
+        model: Model identifier (reserved for future provider selection)
         timeout: Timeout for judge decisions in seconds
         enabled: Whether judge model is active
 
     Returns:
         Configured TranslationJudge instance
     """
-    return TranslationJudge(model=model, timeout=timeout, enabled=enabled)
+    return TranslationJudge(timeout=timeout, enabled=enabled)

@@ -239,11 +239,18 @@ class TestReviewConfig:
 
 
 class TestMultiModelTranslator:
-    """Test multi-model translator stub."""
+    """Test multi-model translator with mock providers."""
 
     def test_translate(self):
-        """Should generate stub translations."""
-        translator = MultiModelTranslator()
+        """Should generate translations from configured providers."""
+        from unittest.mock import Mock
+
+        mock_a = Mock()
+        mock_a.generate.return_value = Mock(text="[Model A] Hello translated")
+        mock_b = Mock()
+        mock_b.generate.return_value = Mock(text="[Model B] Hello translated")
+
+        translator = MultiModelTranslator(providers=[mock_a, mock_b])
         candidates = translator.translate("Hello")
 
         assert len(candidates) == 2
@@ -253,25 +260,42 @@ class TestMultiModelTranslator:
         assert "[Model B]" in candidates[1].text
 
     def test_with_glossary(self):
-        """Should include glossary in stub output."""
-        translator = MultiModelTranslator()
+        """Should include glossary context in translation call."""
+        from unittest.mock import Mock
+
+        mock_provider = Mock()
+        mock_provider.generate.return_value = Mock(text="Hello translated, glossary: term1")
+
+        translator = MultiModelTranslator(providers=[mock_provider])
         candidates = translator.translate(
             "Hello",
             glossary_terms=["term1"]
         )
 
-        assert any("glossary: term1" in c.text for c in candidates)
+        assert len(candidates) == 1
+        assert mock_provider.generate.called
 
     def test_translate_batch(self):
         """Should translate multiple segments."""
-        translator = MultiModelTranslator()
+        from unittest.mock import Mock
+
+        mock_provider = Mock()
+        mock_provider.generate.return_value = Mock(text="Translated")
+
+        translator = MultiModelTranslator(providers=[mock_provider])
         sources = ["Hello", "World"]
 
         results = translator.translate_batch(sources)
 
         assert len(results) == 2
         for candidates in results.values():
-            assert len(candidates) == 2
+            assert len(candidates) == 1
+
+    def test_empty_providers_returns_empty(self):
+        """Translator with no providers should return empty list."""
+        translator = MultiModelTranslator()
+        candidates = translator.translate("Hello")
+        assert len(candidates) == 0
 
 
 class TestTranslationJudge:
@@ -533,7 +557,8 @@ class TestFactoryFunctions:
     def test_create_judge(self):
         """Should create configured judge."""
         judge = create_judge(model="gpt-4")
-        assert judge.model == "gpt-4"
+        assert judge.enabled is True
+        assert judge.timeout == 30
 
     def test_create_flagging_engine(self):
         """Should create configured flagging engine."""

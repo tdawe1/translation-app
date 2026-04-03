@@ -83,3 +83,7 @@ backend/dump.rdb
 frontend/.yarn/install-state.gz
 memory/test_credentials.md
 test_reports/
+-e 
+# Environment files
+*.env
+*.env.*
