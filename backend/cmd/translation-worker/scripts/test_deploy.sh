@@ -59,9 +59,9 @@ python -m pytest \
   tests/test_main.py \
   tests/test_queue/test_consumer_gengo.py \
   --override-ini="addopts=" \
-  -q --tb=line 2>&1
+  -q --tb=line 2>&1 || TEST_EXIT=$?
 
-TEST_EXIT=$?
+TEST_EXIT=${TEST_EXIT:-0}
 if [ $TEST_EXIT -eq 0 ]; then
   pass "All tests passed"
 else
