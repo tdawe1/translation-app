@@ -11,6 +11,7 @@ Exports translation jobs with full metadata including:
 """
 
 import csv
+import json
 import logging
 import os
 import tempfile
@@ -44,7 +45,8 @@ class BilingualCSVExporter:
         "model_a_output",
         "model_b_output",
         "glossary_terms",
-        "context"
+        "context",
+        "style_issues"
     ]
 
     def __init__(
@@ -122,7 +124,8 @@ class BilingualCSVExporter:
             "model_a_output": segment.model_a_output if self.include_alternatives else "",
             "model_b_output": segment.model_b_output if self.include_alternatives else "",
             "glossary_terms": ",".join(segment.glossary_terms),
-            "context": str(segment.context) if segment.context else ""
+            "context": str(segment.context) if segment.context else "",
+            "style_issues": json.dumps(segment.style_issues) if segment.style_issues else "",
         }
 
     def export_batch(

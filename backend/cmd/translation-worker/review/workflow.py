@@ -6,8 +6,10 @@ Coordinates the complete bilingual translation review workflow:
 1. Multi-model translation generates candidates
 2. Judge model evaluates and selects winner
 3. Flagging engine identifies segments needing review
-4. CSV exporter creates audit trail
-5. Job status tracking and approval logic
+4. Optional style checker validates against Gengo rules
+5. CSV exporter creates audit trail
+6. Job status tracking and approval logic
+7. Structured metrics for observability
 
 MVP: Stub components coordinated with real orchestration logic.
 Full: Real LLM integration for translation and judge.
@@ -30,6 +32,7 @@ from .multimodel import MultiModelTranslator
 from .judge import TranslationJudge
 from .flagging import FlaggingEngine
 from .exporter import BilingualCSVExporter
+from .metrics import JobMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +55,7 @@ class TranslationWorkflow:
         flagger: Optional[FlaggingEngine] = None,
         exporter: Optional[BilingualCSVExporter] = None,
         config: Optional[ReviewConfig] = None,
+        style_checker: Optional[Any] = None,
     ):
         """Initialize the workflow orchestrator.
 
@@ -61,12 +65,15 @@ class TranslationWorkflow:
             flagger: Flagging engine instance
             exporter: CSV exporter instance
             config: Review configuration
+            style_checker: Optional StyleChecker for Gengo rule validation
         """
         self.translator = translator or MultiModelTranslator()
         self.judge = judge or TranslationJudge()
         self.flagger = flagger or FlaggingEngine()
         self.exporter = exporter or BilingualCSVExporter()
         self.config = config or ReviewConfig()
+        self.style_checker = style_checker
+        self.last_metrics: Optional[JobMetrics] = None
 
     def create_job(
         self,
@@ -132,6 +139,14 @@ class TranslationWorkflow:
         total = len(job.segments)
         logger.info(f"[WORKFLOW] Processing job {job.id} with {total} segments")
 
+        # Initialize metrics
+        metrics = JobMetrics(
+            job_id=job.id,
+            segment_count=total,
+            style_guide_enabled=self.style_checker is not None,
+        )
+        metrics.start_timer()
+
         for idx, segment in enumerate(job.segments):
             if progress_callback:
                 progress_callback(f"Translating segment {idx + 1}", idx + 1, total)
@@ -168,6 +183,31 @@ class TranslationWorkflow:
             # Step 4: Flag for review if needed
             self.flagger.flag_segment(segment, judge_result, self.config)
 
+            # Step 5: Style check (if enabled)
+            if self.style_checker and segment.target:
+                style_issues = self.style_checker.check(segment.target, segment.source)
+                if style_issues:
+                    segment.style_issues = [issue.to_dict() for issue in style_issues]
+                    metrics.record_style_issues(segment.style_issues)
+
+                    # Flag for review if not already flagged
+                    if not segment.is_flagged:
+                        # Summarize: pick the highest-severity issue
+                        top_issue = max(
+                            style_issues,
+                            key=lambda i: {"error": 2, "warning": 1, "info": 0}.get(
+                                i.severity, 0
+                            ),
+                        )
+                        segment.is_flagged = True
+                        segment.flag_reason = (
+                            f"Style: {top_issue.category} - {top_issue.message}"
+                        )
+
+            # Track flag in metrics
+            if segment.is_flagged:
+                metrics.record_flag(segment.flag_reason or "unknown")
+
             logger.debug(
                 f"[WORKFLOW] {segment.id}: winner={judge_result.winner}, "
                 f"conf={judge_result.confidence:.2f}, flagged={segment.is_flagged}"
@@ -178,10 +218,25 @@ class TranslationWorkflow:
         job.status = "pending_approval"
         job.completed_at = datetime.now()
 
+        # Finalize metrics
+        metrics.stop_timer()
+        metrics.overall_score = job.overall_score
+        metrics.flagged_count = job.flagged_count
+        self.last_metrics = metrics
+
+        # Update Prometheus
+        try:
+            from .prometheus import record_job_metrics
+            record_job_metrics(metrics)
+        except Exception:
+            pass  # Prometheus is optional; don't fail jobs over it
+
         logger.info(
             f"[WORKFLOW] Job {job.id} complete: "
-            f"score={job.overall_score:.2f}, flagged={job.flagged_count}/{total}"
+            f"score={job.overall_score:.2f}, flagged={job.flagged_count}/{total}, "
+            f"style_violations={metrics.style_violation_count}"
         )
+        logger.info(f"[METRICS] {metrics.to_json()}")
 
         return job
 
@@ -351,6 +406,7 @@ class ReviewWorkflowBuilder:
         self._flagger = None
         self._exporter = None
         self._config = None
+        self._style_checker = None
 
     def with_translator(self, translator: MultiModelTranslator) -> "ReviewWorkflowBuilder":
         """Set custom translator."""
@@ -377,6 +433,11 @@ class ReviewWorkflowBuilder:
         self._config = config
         return self
 
+    def with_style_checker(self, style_checker) -> "ReviewWorkflowBuilder":
+        """Set style checker for Gengo rule validation."""
+        self._style_checker = style_checker
+        return self
+
     def for_project(self, project_type: str) -> "ReviewWorkflowBuilder":
         """Configure for specific project type."""
         self._config = ReviewConfig.for_project_type(project_type)
@@ -390,6 +451,7 @@ class ReviewWorkflowBuilder:
             flagger=self._flagger,
             exporter=self._exporter,
             config=self._config,
+            style_checker=self._style_checker,
         )
 
 

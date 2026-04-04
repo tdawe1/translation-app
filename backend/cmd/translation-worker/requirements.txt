@@ -62,3 +62,7 @@ tqdm>=4.65.0
 
 # Date parsing
 python-dateutil>=2.8.0
+
+# === Observability ===
+# Prometheus metrics
+prometheus_client>=0.20.0

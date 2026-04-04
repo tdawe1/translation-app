@@ -223,7 +223,7 @@ def create_multimodel_translator(
     """Factory function to create a MultiModelTranslator.
 
     Args:
-        models: Optional model configuration dict
+        models: Optional model configuration dict (reserved for future use)
         parallel: Whether to use parallel execution
 
     Returns:

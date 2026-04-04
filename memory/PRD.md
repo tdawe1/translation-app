@@ -1,50 +1,76 @@
-# PRD
+# Gengo Style Guide Integration — PRD
 
-## Original problem statement
-I want to finish this application and prepare it for launch
+## Original Problem Statement
+Make the translation worker apply the Gengo style guide during real queued job execution, not just in isolated modules and CLI flows.
 
-## User choices
-- Make the current app fully working end-to-end, then improve UI/UX, then fix bugs/stability, then prepare dashboard/admin flows if they exist
-- Launch should support both public pages and user accounts
-- Add payments
-- Keep structure ready because final content will be provided later
-- Priority: a bug-free and reliable app
+## Architecture
+- Python translation worker in `backend/cmd/translation-worker/`
+- Uses LLM providers (OpenAI, Anthropic, Gemini) for translation + judging
+- Redis job queue for horizontal scaling
+- Style guide: markdown → parser → system prompt → provider injection
+- Style checker: regex-based post-translation validation → segment flagging
+- Metrics: JobMetrics dataclass → JSON stdout + Prometheus counters/histograms/gauges
+- Prometheus: HTTP `/metrics` endpoint on configurable port (default 9090)
 
-## Architecture decisions
-- Kept the existing Next.js frontend and Go backend rather than rewriting the product
-- Kept the backend as a single Go Fiber service instead of introducing a second Python server layer
-- Added Stripe billing directly to the Go backend using the environment Stripe key and a `payment_transactions` PostgreSQL table
-- Switched the frontend API client to same-origin by default and exposed billing/status flows on `/api/v1/billing/*`
-- Added Go-native aliases for `/api/health` and `/api/ws` so preview and same-origin frontend traffic keep working without a proxy bridge
+## What's Been Implemented
 
-## What has been implemented
-- Frontend startup fixed: dependencies installed with modern Yarn, production build passing, app served successfully in preview
-- Backend startup fixed: Go service now owns the required HTTP, websocket, and billing routes directly
-- Public launch pages polished: upgraded landing page, added pricing page, improved navigation, and linked billing paths
-- Reliable auth flow: email/password registration and login working from the live preview, dashboard redirect verified
-- Dashboard navigation improved with Dashboard / Translations / Billing / Settings links
-- Settings page extended with a billing section and pricing access
-- Stripe checkout session creation implemented in Go with server-side fixed plan pricing and status polling endpoint
-- Billing status endpoint fixed to return structured JSON, including stored transaction fallback and serialized timestamps
-- Health endpoint exposed at `/api/health`
-- Realtime websocket URL fixed for preview by serving `/api/ws` from the Go backend; dashboard shows connected status in preview
+### Phase 1 — Worker Startup Runtime Construction
+- `load_style_guide_prompt()`, `_resolve_api_key()`, `build_translation_provider()`, `build_judge_provider()`, `build_style_checker()`, `build_workflow()` in `main.py`
+- `QueueConsumer` receives real workflow; missing API keys fail startup clearly
+- Fixed `config.example.toml` and `config.toml` (removed hardcoded path, style_guide disabled by default)
 
-## Prioritized backlog
-### P0
-- Replace the deprecated `middleware.ts` convention with the newer Next.js proxy convention when file deletion/rename is convenient
-- Add a true account/subscription sync step after successful Stripe payment (for example setting a subscription tier on the user model)
+### Phase 2 — Style Checker in Workflow
+- `TranslationWorkflow` accepts optional `style_checker`
+- Runs `StyleChecker.check()` on `segment.target` after winner selection
+- Violations flag segments for review with `"Style: {category} - {message}"`
+- `style_issues` field on `TranslationSegment`, included in CSV export
 
-### P1
-- Re-enable social login and magic link only after provider/email credentials are configured for launch
-- Add richer billing management (current plan summary, past transactions, billing portal)
-- Add a public success/cancel confirmation state on pricing after completing Stripe checkout
+### Phase 2b — Structured Metrics
+- `review/metrics.py`: `JobMetrics` dataclass (violations by category, flag rate, duration)
+- JSON emitted to stdout as `[METRICS] {...}` after each job
+- `workflow.last_metrics` for programmatic access
 
-### P2
-- Add admin-facing management UI if launch scope expands to operations/admin workflows
-- Improve dashboard realtime event richness beyond connection state
-- Add content polish once final copy/images are supplied
+### Phase 3 — Integration Tests
+- `tests/test_queue/test_consumer_gengo.py`: 7 queue consumer tests
+- `tests/test_integration/test_gengo_integration.py`: 3 workflow-level tests
+- `tests/test_review/test_workflow.py`: 6 style checker + 5 metrics tests
+- `tests/test_review/test_metrics.py`: 12 JobMetrics unit tests
 
-## Next tasks
-- Connect successful Stripe payments to a user subscription state in the product data model
-- Add a billing history/plan management area in settings
-- Bring back OAuth and magic link behind real provider/email configuration
+### Phase 4 — Docs/Config Cleanup
+- `GENGO_STYLE_GUIDE.md`: rewritten with execution paths, startup sequence, metrics format
+- `config.example.toml`: portable, style guide disabled by default
+
+### Phase 5 — Verification
+- 197 tests passing, 0 failures
+
+### Prometheus Metrics
+- `review/prometheus.py`: Counters (jobs, segments, violations by category), Histograms (duration, quality score), Gauges (flag rate, violation rate, active jobs, style_guide enabled), Info (worker metadata)
+- HTTP server on configurable port via `[metrics]` config section
+- Wired into workflow (auto-update after each job) and consumer (active jobs, failures)
+- 10 Prometheus-specific tests
+
+### Code Review
+- Formal review conducted, documented in `docs/CODE_REVIEW.md`
+- Fixed: unused imports, return type mismatch, ACTIVE_JOBS gauge wiring
+- All design decisions documented with rationale
+
+### Test Deployment
+- `scripts/test_deploy.sh`: automated verification (deps → tests → metrics endpoint)
+- Verified: 197 tests pass, `/metrics` endpoint responds with all expected metrics
+
+## Test Suite Summary
+- **197 tests, 0 failures**
+- Coverage: parser, prompt builder, style checker, providers, workflow, metrics, prometheus, integration, main helpers, queue consumer
+
+## Prioritized Backlog
+
+### P1 — Production Readiness
+- Grafana dashboard template for Prometheus metrics
+- `prometheus_client.multiprocess` mode for multi-worker scaling
+- Histogram bucket tuning after production observation
+
+### P2 — Feature Enhancement
+- Separate judge provider/model config in config.toml
+- Multiple style guide support (per language pair)
+- Metrics output to Redis pub/sub for real-time dashboards
+- Webhook sink for alerting on high violation rates
