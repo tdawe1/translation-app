@@ -125,7 +125,7 @@ class BilingualCSVExporter:
             "model_b_output": segment.model_b_output if self.include_alternatives else "",
             "glossary_terms": ",".join(segment.glossary_terms),
             "context": str(segment.context) if segment.context else "",
-            "style_issues": json.dumps(getattr(segment, 'style_issues', [])) if getattr(segment, 'style_issues', []) else "",
+            "style_issues": json.dumps(segment.style_issues) if segment.style_issues else "",
         }
 
     def export_batch(
