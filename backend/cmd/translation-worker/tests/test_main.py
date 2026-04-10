@@ -12,13 +12,94 @@ import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
+from types import ModuleType
 
 import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from main import QueueConsumer, load_config, validate_config
+def _install_main_import_stubs():
+    job_queue_module = ModuleType("job_queue")
+    job_queue_module.JobManager = type("JobManager", (), {})
+    job_queue_module.JobState = type("JobState", (), {})
+    sys.modules.setdefault("job_queue", job_queue_module)
+
+    workflow_module = ModuleType("review.workflow")
+    workflow_module.TranslationWorkflow = type("TranslationWorkflow", (), {})
+
+    class _FakeReviewWorkflowBuilder:
+        def __init__(self):
+            self.translator = None
+            self.judge = None
+
+        def with_translator(self, translator):
+            self.translator = translator
+            return self
+
+        def with_judge(self, judge):
+            self.judge = judge
+            return self
+
+        def build(self):
+            return {
+                "translator": self.translator,
+                "judge": self.judge,
+            }
+
+    workflow_module.ReviewWorkflowBuilder = _FakeReviewWorkflowBuilder
+    sys.modules.setdefault("review.workflow", workflow_module)
+
+    multimodel_module = ModuleType("review.multimodel")
+
+    class _FakeMultiModelTranslator:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    multimodel_module.MultiModelTranslator = _FakeMultiModelTranslator
+    sys.modules.setdefault("review.multimodel", multimodel_module)
+
+    judge_module = ModuleType("review.judge")
+
+    class _FakeTranslationJudge:
+        def __init__(self, provider, enabled=True):
+            self.provider = provider
+            self.enabled = enabled
+
+    judge_module.TranslationJudge = _FakeTranslationJudge
+    sys.modules.setdefault("review.judge", judge_module)
+
+    exporter_module = ModuleType("review.exporter")
+    exporter_module.BilingualCSVExporter = type("BilingualCSVExporter", (), {})
+    sys.modules.setdefault("review.exporter", exporter_module)
+
+    llm_module = ModuleType("review.llm")
+
+    class _FakeAnthropicProvider:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.config = SimpleNamespace(max_tokens=None)
+
+    def _fake_get_provider(name, **kwargs):
+        return SimpleNamespace(name=name, kwargs=kwargs, config=SimpleNamespace(max_tokens=None))
+
+    llm_module.AnthropicProvider = _FakeAnthropicProvider
+    llm_module.get_provider = _fake_get_provider
+    sys.modules.setdefault("review.llm", llm_module)
+
+    models_module = ModuleType("review.models")
+    models_module.ReviewConfig = type("ReviewConfig", (), {})
+    sys.modules.setdefault("review.models", models_module)
+
+
+_install_main_import_stubs()
+
+from main import (
+    QueueConsumer,
+    build_translation_workflow,
+    load_config,
+    validate_config,
+)
 from plugins import ParsedDocument, Segment
 
 
@@ -481,6 +562,54 @@ class TestQueueConsumerCompatibility:
 
         errors = validate_config(config)
         assert errors == []
+
+
+class TestBuildTranslationWorkflow:
+    def test_default_provider_missing_api_key_fails_fast(self, monkeypatch):
+        config = {
+            "worker": {"max_concurrent": 1},
+            "translation": {
+                "default_provider": "anthropic",
+                "default_model": "claude-test",
+                "providers": {
+                    "anthropic": {
+                        "enabled": True,
+                        "api_key_env": "ANTHROPIC_API_KEY",
+                    }
+                },
+            },
+        }
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        with pytest.raises(ValueError, match="requires ANTHROPIC_API_KEY to be set"):
+            build_translation_workflow(config)
+
+    def test_invalid_provider_max_tokens_raises_error(self, monkeypatch):
+        config = {
+            "worker": {"max_concurrent": 1},
+            "translation": {
+                "default_provider": "anthropic",
+                "default_model": "claude-test",
+                "providers": {
+                    "anthropic": {
+                        "enabled": True,
+                        "api_key_env": "ANTHROPIC_API_KEY",
+                        "max_tokens": "not-a-number",
+                    }
+                },
+            },
+        }
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+        class FakeProvider:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.config = SimpleNamespace(max_tokens=None)
+
+        monkeypatch.setattr("main.AnthropicProvider", FakeProvider)
+
+        with pytest.raises(ValueError, match="Invalid max_tokens for provider anthropic"):
+            build_translation_workflow(config)
 
 
 class TestMainIntegration:

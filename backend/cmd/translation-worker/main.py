@@ -172,14 +172,25 @@ def build_translation_workflow(
         if providers_cfg and not provider_cfg.get("enabled", name == default_provider):
             continue
 
-        api_key_env = provider_cfg.get("api_key_env")
-        api_key = os.getenv(api_key_env, "").strip() if api_key_env else ""
-        if not api_key:
+        api_key_env = str(provider_cfg.get("api_key_env", "")).strip()
+        if not api_key_env:
+            if name == default_provider:
+                raise ValueError(
+                    f"Default provider {name} is missing translation.providers.{name}.api_key_env"
+                )
             logger.info(
-                "Skipping provider %s because %s is not set",
+                "Skipping provider %s because api_key_env is not configured",
                 name,
-                api_key_env or "<missing api_key_env>",
             )
+            continue
+
+        api_key = os.getenv(api_key_env, "").strip()
+        if not api_key:
+            if name == default_provider:
+                raise ValueError(
+                    f"Default provider {name} requires {api_key_env} to be set"
+                )
+            logger.info("Skipping provider %s because %s is not set", name, api_key_env)
             continue
 
         model = provider_cfg.get("model") or (
@@ -202,13 +213,18 @@ def build_translation_workflow(
             )
 
         max_tokens = provider_cfg.get("max_tokens")
-        if max_tokens:
+        if max_tokens is not None:
             try:
-                provider.config.max_tokens = int(max_tokens)
+                parsed_max_tokens = int(max_tokens)
             except (TypeError, ValueError):
-                logger.warning(
-                    "Invalid max_tokens for provider %s: %r", name, max_tokens
+                raise ValueError(
+                    f"Invalid max_tokens for provider {name}: {max_tokens!r}"
                 )
+            if parsed_max_tokens <= 0:
+                raise ValueError(
+                    f"Invalid max_tokens for provider {name}: {max_tokens!r}"
+                )
+            provider.config.max_tokens = parsed_max_tokens
 
         providers.append(provider)
 

@@ -35,22 +35,21 @@ func (h *WatcherHandler) GetConfig(c *fiber.Ctx) error {
 
 // getConfigLogic contains the actual GetConfig logic after auth is verified
 func (h *WatcherHandler) getConfigLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
+	if err := watcher.EnsureUserResources(h.db, userUUID); err != nil {
+		log.Printf("Failed to prepare watcher config for %s: %v", userUUID, err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to prepare watcher configuration",
+			"code":  "CONFIG_CREATE_FAILED",
+		})
+	}
+
 	var config models.WatcherConfig
 	if err := h.db.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
-		// #017 fix - Lazy initialization of watcher config
-		// Explicitly generate ID for composite primary key tables
-		config = models.WatcherConfig{
-			Base:                  models.Base{ID: uuid.New()},
-			UserID:                userUUID,
-			IncludedLanguagePairs: "[]", // Valid JSON array for jsonb column
-		}
-		if createErr := h.db.Create(&config).Error; createErr != nil {
-			log.Printf("Failed to create watcher config: %v", createErr)
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to create watcher configuration",
-				"code":  "CONFIG_CREATE_FAILED",
-			})
-		}
+		log.Printf("Failed to load watcher config: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to load watcher configuration",
+			"code":  "CONFIG_LOAD_FAILED",
+		})
 	}
 
 	return c.JSON(configToResponse(&config))
@@ -166,35 +165,6 @@ func (h *WatcherHandler) updateConfigLogic(c *fiber.Ctx, userUUID uuid.UUID) err
 	return c.JSON(configToResponse(&config))
 }
 
-func (h *WatcherHandler) ensureWatcherResources(userUUID uuid.UUID) error {
-	var config models.WatcherConfig
-	if err := h.db.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
-		config = models.WatcherConfig{
-			Base:                  models.Base{ID: uuid.New()},
-			UserID:                userUUID,
-			IncludedLanguagePairs: "[]",
-		}
-		if createErr := h.db.Create(&config).Error; createErr != nil {
-			return createErr
-		}
-	}
-
-	var state models.WatcherState
-	if err := h.db.Where("user_id = ?", userUUID).First(&state).Error; err != nil {
-		state = models.WatcherState{
-			UserID:           userUUID,
-			WatcherStatus:    "stopped",
-			LastSeenJobIDs:   "[]",
-			RecentJobHistory: "[]",
-		}
-		if createErr := h.db.Create(&state).Error; createErr != nil {
-			return createErr
-		}
-	}
-
-	return nil
-}
-
 func (h *WatcherHandler) ingestJobLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	if h.manager == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
@@ -215,14 +185,6 @@ func (h *WatcherHandler) ingestJobLogic(c *fiber.Ctx, userUUID uuid.UUID) error 
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": msg,
 			"code":  "INVALID_REQUEST",
-		})
-	}
-
-	if err := h.ensureWatcherResources(userUUID); err != nil {
-		log.Printf("Failed to initialize watcher resources: %v", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to initialize watcher resources",
-			"code":  "WATCHER_INIT_FAILED",
 		})
 	}
 
@@ -259,21 +221,21 @@ func (h *WatcherHandler) GetState(c *fiber.Ctx) error {
 
 // getStateLogic contains the actual GetState logic after auth is verified
 func (h *WatcherHandler) getStateLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
+	if err := watcher.EnsureUserResources(h.db, userUUID); err != nil {
+		log.Printf("Failed to prepare watcher state for %s: %v", userUUID, err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to prepare watcher state",
+			"code":  "STATE_CREATE_FAILED",
+		})
+	}
+
 	var state models.WatcherState
 	if err := h.db.Where("user_id = ?", userUUID).First(&state).Error; err != nil {
-		// #017 fix - Lazy initialization of watcher state
-		state = models.WatcherState{
-			UserID:           userUUID,
-			WatcherStatus:    "stopped",
-			LastSeenJobIDs:   "[]", // Valid JSON array for jsonb column
-			RecentJobHistory: "[]", // Valid JSON array for jsonb column
-		}
-		if createErr := h.db.Create(&state).Error; createErr != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to create watcher state",
-				"code":  "STATE_CREATE_FAILED",
-			})
-		}
+		log.Printf("Failed to load watcher state: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to load watcher state",
+			"code":  "STATE_LOAD_FAILED",
+		})
 	}
 
 	// Get live status from manager if available

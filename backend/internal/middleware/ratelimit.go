@@ -61,6 +61,28 @@ func isTrustedProxy(ip string, trustedProxies []string) bool {
 	return false
 }
 
+func newIPRateLimiter(
+	trustedProxies []string,
+	max int,
+	expiration time.Duration,
+	keyPrefix string,
+	errorMessage string,
+) fiber.Handler {
+	return limiter.New(limiter.Config{
+		Max:        max,
+		Expiration: expiration,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return keyPrefix + getClientIP(c, trustedProxies)
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": errorMessage,
+				"code":  "RATE_LIMITED",
+			})
+		},
+	})
+}
+
 // AuthLimiters returns rate limiters for auth endpoints
 func AuthLimiters(trustedProxies []string) struct {
 	Login    fiber.Handler
@@ -170,47 +192,28 @@ func VerificationLimiters(trustedProxies []string) struct {
 	VerifyMagicLink     fiber.Handler
 	VerifyPasswordReset fiber.Handler
 } {
-	verifyEmailLimiter := limiter.New(limiter.Config{
-		Max:        5,
-		Expiration: 15 * time.Minute,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			return "verify_token:" + getClientIP(c, trustedProxies)
-		},
-		LimitReached: func(c *fiber.Ctx) error {
-			return c.Status(429).JSON(fiber.Map{
-				"error": "Too many verification attempts. Please try again later.",
-				"code":  "RATE_LIMITED",
-			})
-		},
-	})
-
-	verifyMagicLinkLimiter := limiter.New(limiter.Config{
-		Max:        5,
-		Expiration: 15 * time.Minute,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			return "magic_verify:" + getClientIP(c, trustedProxies)
-		},
-		LimitReached: func(c *fiber.Ctx) error {
-			return c.Status(429).JSON(fiber.Map{
-				"error": "Too many verification attempts. Please try again later.",
-				"code":  "RATE_LIMITED",
-			})
-		},
-	})
-
-	verifyPasswordResetLimiter := limiter.New(limiter.Config{
-		Max:        5,
-		Expiration: 15 * time.Minute,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			return "reset_verify:" + getClientIP(c, trustedProxies)
-		},
-		LimitReached: func(c *fiber.Ctx) error {
-			return c.Status(429).JSON(fiber.Map{
-				"error": "Too many verification attempts. Please try again later.",
-				"code":  "RATE_LIMITED",
-			})
-		},
-	})
+	const verificationMessage = "Too many verification attempts. Please try again later."
+	verifyEmailLimiter := newIPRateLimiter(
+		trustedProxies,
+		5,
+		15*time.Minute,
+		"verify_token:",
+		verificationMessage,
+	)
+	verifyMagicLinkLimiter := newIPRateLimiter(
+		trustedProxies,
+		5,
+		15*time.Minute,
+		"magic_verify:",
+		verificationMessage,
+	)
+	verifyPasswordResetLimiter := newIPRateLimiter(
+		trustedProxies,
+		5,
+		15*time.Minute,
+		"reset_verify:",
+		verificationMessage,
+	)
 
 	return struct {
 		VerifyEmail         fiber.Handler

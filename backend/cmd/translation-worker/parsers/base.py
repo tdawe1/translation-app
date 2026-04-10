@@ -23,6 +23,10 @@ from plugins import ParsedDocument, Segment
 logger = logging.getLogger(__name__)
 
 
+class FilePathValidationError(ValueError):
+    """Raised when a file path is outside the configured parser allowlist."""
+
+
 @dataclass
 class FormattingInfo:
     """Text formatting information shared across parsers.
@@ -168,7 +172,10 @@ class BaseParser(ABC):
                     return resolved
                 except ValueError:
                     continue
-            raise ValueError("File path is outside allowed directories")
+            allowed_dirs = ", ".join(str(base) for base in allowed_bases)
+            raise FilePathValidationError(
+                f"File path '{resolved}' is outside allowed directories: {allowed_dirs}"
+            )
 
         return resolved
 

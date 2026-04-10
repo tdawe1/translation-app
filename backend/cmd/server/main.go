@@ -123,6 +123,11 @@ func main() {
 	watcherManager := watcher.NewUserWatcherManager(db, redisClient)
 	watcherHandler := handlers.NewWatcherHandler(watcherManager, db)
 	wsHandler := handlers.NewWebSocketHandler(redisClient, cfg.AllowedOriginList())
+	go func() {
+		if err := watcher.BackfillUserResources(db); err != nil {
+			logger.Log.Warn("watcher_resource_backfill_failed", zap.Error(err))
+		}
+	}()
 
 	// Initialize translation handler
 	translationHandler := handlers.NewTranslationHandler(db, redisClient)

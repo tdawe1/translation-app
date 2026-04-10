@@ -10,40 +10,40 @@ import (
 
 func TestGetClientIP(t *testing.T) {
 	tests := []struct {
-		name          string
-		xForwardedFor string
+		name           string
+		xForwardedFor  string
 		trustedProxies []string
-		expectXFF     bool // Whether we expect XFF to be used (requires c.IP() in trusted range)
+		expectXFF      bool // Whether we expect XFF to be used (requires c.IP() in trusted range)
 	}{
 		{
-			name:          "no X-Forwarded-For",
-			xForwardedFor: "",
+			name:           "no X-Forwarded-For",
+			xForwardedFor:  "",
 			trustedProxies: nil,
-			expectXFF:     false,
+			expectXFF:      false,
 		},
 		{
-			name:          "X-Forwarded-For present but not trusted",
-			xForwardedFor: "192.168.1.100",
+			name:           "X-Forwarded-For present but not trusted",
+			xForwardedFor:  "192.168.1.100",
 			trustedProxies: nil,
-			expectXFF:     false, // XFF ignored because no trusted proxies
+			expectXFF:      false, // XFF ignored because no trusted proxies
 		},
 		{
-			name:          "X-Forwarded-For with trusted proxy (but test IP not in range)",
-			xForwardedFor: "192.168.1.100",
+			name:           "X-Forwarded-For with trusted proxy (but test IP not in range)",
+			xForwardedFor:  "192.168.1.100",
 			trustedProxies: []string{"10.0.0.0/8"},
-			expectXFF:     false, // XFF ignored because c.IP()="0.0.0.0" not in 10.0.0.0/8
+			expectXFF:      false, // XFF ignored because c.IP()="0.0.0.0" not in 10.0.0.0/8
 		},
 		{
-			name:          "multiple IPs in X-Forwarded-For",
-			xForwardedFor: "192.168.1.100, 10.0.0.1, 172.16.0.1",
+			name:           "multiple IPs in X-Forwarded-For",
+			xForwardedFor:  "192.168.1.100, 10.0.0.1, 172.16.0.1",
 			trustedProxies: []string{"10.0.0.0/8"},
-			expectXFF:     false, // XFF ignored because c.IP()="0.0.0.0" not in trusted range
+			expectXFF:      false, // XFF ignored because c.IP()="0.0.0.0" not in trusted range
 		},
 		{
-			name:          "X-Forwarded-For with spaces",
-			xForwardedFor: "  192.168.1.100  ,  10.0.0.1  ",
+			name:           "X-Forwarded-For with spaces",
+			xForwardedFor:  "  192.168.1.100  ,  10.0.0.1  ",
 			trustedProxies: []string{"10.0.0.0/8"},
-			expectXFF:     false, // XFF ignored because c.IP()="0.0.0.0" not in trusted range
+			expectXFF:      false, // XFF ignored because c.IP()="0.0.0.0" not in trusted range
 		},
 	}
 
@@ -77,64 +77,64 @@ func TestGetClientIP(t *testing.T) {
 
 func TestIsTrustedProxy(t *testing.T) {
 	tests := []struct {
-		name          string
-		ip            string
+		name           string
+		ip             string
 		trustedProxies []string
-		expected      bool
+		expected       bool
 	}{
 		{
-			name:          "no trusted proxies configured",
-			ip:            "192.168.1.100",
+			name:           "no trusted proxies configured",
+			ip:             "192.168.1.100",
 			trustedProxies: nil,
-			expected:      false,
+			expected:       false,
 		},
 		{
-			name:          "empty trusted proxy list",
-			ip:            "192.168.1.100",
+			name:           "empty trusted proxy list",
+			ip:             "192.168.1.100",
 			trustedProxies: []string{},
-			expected:      false,
+			expected:       false,
 		},
 		{
-			name:          "IP in trusted CIDR range",
-			ip:            "10.0.0.5",
+			name:           "IP in trusted CIDR range",
+			ip:             "10.0.0.5",
 			trustedProxies: []string{"10.0.0.0/8"},
-			expected:      true,
+			expected:       true,
 		},
 		{
-			name:          "IP not in trusted CIDR range",
-			ip:            "192.168.1.100",
+			name:           "IP not in trusted CIDR range",
+			ip:             "192.168.1.100",
 			trustedProxies: []string{"10.0.0.0/8"},
-			expected:      false,
+			expected:       false,
 		},
 		{
-			name:          "multiple CIDR ranges, IP in second",
-			ip:            "172.16.0.5",
+			name:           "multiple CIDR ranges, IP in second",
+			ip:             "172.16.0.5",
 			trustedProxies: []string{"10.0.0.0/8", "172.16.0.0/12"},
-			expected:      true,
+			expected:       true,
 		},
 		{
-			name:          "localhost is trusted",
-			ip:            "127.0.0.1",
+			name:           "localhost is trusted",
+			ip:             "127.0.0.1",
 			trustedProxies: []string{"127.0.0.0/8"},
-			expected:      true,
+			expected:       true,
 		},
 		{
-			name:          "IPv6 loopback",
-			ip:            "::1",
+			name:           "IPv6 loopback",
+			ip:             "::1",
 			trustedProxies: []string{"::1/128"},
-			expected:      true,
+			expected:       true,
 		},
 		{
-			name:          "invalid IP returns false",
-			ip:            "invalid-ip",
+			name:           "invalid IP returns false",
+			ip:             "invalid-ip",
 			trustedProxies: []string{"10.0.0.0/8"},
-			expected:      false,
+			expected:       false,
 		},
 		{
-			name:          "invalid CIDR is skipped",
-			ip:            "10.0.0.5",
+			name:           "invalid CIDR is skipped",
+			ip:             "10.0.0.5",
 			trustedProxies: []string{"invalid-cidr", "10.0.0.0/8"},
-			expected:      true,
+			expected:       true,
 		},
 	}
 
@@ -205,6 +205,15 @@ func TestEmailLimiters(t *testing.T) {
 	assert.NotNil(t, limiters.SendPasswordReset, "SendPasswordReset limiter should not be nil")
 }
 
+func TestVerificationLimiters(t *testing.T) {
+	trustedProxies := []string{"10.0.0.0/8"}
+	limiters := VerificationLimiters(trustedProxies)
+
+	assert.NotNil(t, limiters.VerifyEmail, "VerifyEmail limiter should not be nil")
+	assert.NotNil(t, limiters.VerifyMagicLink, "VerifyMagicLink limiter should not be nil")
+	assert.NotNil(t, limiters.VerifyPasswordReset, "VerifyPasswordReset limiter should not be nil")
+}
+
 func TestRateLimiting_Login(t *testing.T) {
 	app := fiber.New()
 	trustedProxies := []string{"10.0.0.0/8"}
@@ -267,6 +276,26 @@ func TestRateLimiting_Email(t *testing.T) {
 
 	// 4th request should be rate limited
 	req := httptest.NewRequest("POST", "/send-email", nil)
+	resp, _ := app.Test(req)
+	assert.Equal(t, 429, resp.StatusCode, "Request should be rate limited")
+}
+
+func TestRateLimiting_VerifyEmail(t *testing.T) {
+	app := fiber.New()
+	trustedProxies := []string{"10.0.0.0/8"}
+	limiters := VerificationLimiters(trustedProxies)
+
+	app.Post("/verify-email", limiters.VerifyEmail, func(c *fiber.Ctx) error {
+		return c.SendStatus(200)
+	})
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("POST", "/verify-email", nil)
+		resp, _ := app.Test(req)
+		assert.Equal(t, 200, resp.StatusCode, "Request %d should succeed", i+1)
+	}
+
+	req := httptest.NewRequest("POST", "/verify-email", nil)
 	resp, _ := app.Test(req)
 	assert.Equal(t, 429, resp.StatusCode, "Request should be rate limited")
 }
