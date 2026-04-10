@@ -251,6 +251,7 @@ func main() {
 	watcherGroup.Get("/config", watcherHandler.GetConfig)
 	watcherGroup.Put("/config", watcherHandler.UpdateConfig)
 	watcherGroup.Get("/state", watcherHandler.GetState)
+	watcherGroup.Post("/jobs", watcherHandler.IngestJob)
 	watcherGroup.Post("/start", watcherHandler.StartWatcher)
 	watcherGroup.Post("/stop", watcherHandler.StopWatcher)
 

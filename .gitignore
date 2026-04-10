@@ -60,6 +60,14 @@ logs/
 *.plans/
 # Claude state (not committed)
 .claude/state.md
+AGENTS.md
+coverage.html
+*.test
+CLAUDE.md
+docker-compose.override.yml
+pytest.ini
+pyproject.toml
+
 
 # Build
 dist/

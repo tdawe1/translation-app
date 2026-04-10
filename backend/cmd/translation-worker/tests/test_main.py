@@ -11,13 +11,15 @@ Following TDD principles:
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from main import load_config, validate_config
+from main import QueueConsumer, load_config, validate_config
+from plugins import ParsedDocument, Segment
 
 
 class TestLoadConfig:
@@ -270,6 +272,145 @@ class TestValidateConfig:
 
         errors = validate_config(config)
         assert "Missing translation.default_model" in errors
+
+
+class FakeRedis:
+    def __init__(self):
+        self.lists = {}
+        self.hashes = {}
+        self.published = []
+
+    def scan_iter(self, match=None):
+        for key in self.lists:
+            yield key.encode("utf-8")
+
+    def rpop(self, key):
+        decoded = key.decode("utf-8") if isinstance(key, bytes) else key
+        values = self.lists.get(decoded, [])
+        if not values:
+            return None
+        return values.pop().encode("utf-8")
+
+    def hgetall(self, key):
+        decoded = key.decode("utf-8") if isinstance(key, bytes) else key
+        return {
+            k.encode("utf-8"): v.encode("utf-8")
+            for k, v in self.hashes.get(decoded, {}).items()
+        }
+
+    def hset(self, key, mapping):
+        self.hashes.setdefault(key, {})
+        self.hashes[key].update({k: str(v) for k, v in mapping.items()})
+
+    def delete(self, key):
+        self.hashes.pop(key, None)
+
+    def rpush(self, key, *values):
+        decoded_values = [v.decode("utf-8") if isinstance(v, bytes) else str(v) for v in values]
+        self.lists.setdefault(key, []).extend(decoded_values)
+
+    def expire(self, key, seconds):
+        return True
+
+    def publish(self, channel, payload):
+        self.published.append((channel, payload))
+
+
+class FakeJobManager:
+    def __init__(self, redis_client):
+        self.redis_client = redis_client
+
+    def dequeue(self, worker_id, timeout=0, priorities=None):
+        return None
+
+    def set_state(self, job_id, state, worker_id=None):
+        return True
+
+    def fail_job(self, job_id, error):
+        return True
+
+    def publish_progress(self, job_id, progress, message=""):
+        return True
+
+    def get_state(self, job_id):
+        return None
+
+
+class TestQueueConsumerCompatibility:
+    def test_dequeue_legacy_job_reads_backend_queue_contract(self):
+        redis_client = FakeRedis()
+        queue_key = "user:user-1:trans:queue"
+        redis_job_key = "user:user-1:trans:job-123"
+        redis_client.lists[queue_key] = [redis_job_key]
+        redis_client.hashes[redis_job_key] = {
+            "job_id": "job-123",
+            "user_id": "user-1",
+            "status": "pending",
+            "data": '{"source_file":"sample.docx","project_type":"routine"}',
+        }
+
+        consumer = QueueConsumer(FakeJobManager(redis_client), worker_id="worker-1")
+        job = consumer._dequeue_legacy_job()
+
+        assert job is not None
+        assert job["id"] == "job-123"
+        assert job["user_id"] == "user-1"
+        assert job["source_file"] == "sample.docx"
+        assert job["_queue_backend"] == "legacy"
+
+    def test_resolve_source_file_uses_uploads_dir_for_relative_backend_paths(
+        self, monkeypatch, tmp_path
+    ):
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+        source = uploads_dir / "sample.docx"
+        source.write_text("placeholder", encoding="utf-8")
+
+        monkeypatch.setenv("TRANSLATION_UPLOADS_DIR", str(uploads_dir))
+        consumer = QueueConsumer(FakeJobManager(FakeRedis()), worker_id="worker-1")
+
+        resolved = consumer._resolve_source_file("sample.docx")
+        assert resolved == str(source.resolve())
+
+    def test_render_translated_output_projects_targets_back_through_parser(
+        self, monkeypatch, tmp_path
+    ):
+        class FakeParser:
+            def __init__(self):
+                self.render_calls = []
+
+            def parse(self, file_path):
+                return ParsedDocument(
+                    segments=[Segment(id="seg-1", text="JP", context={})],
+                    metadata={},
+                    format="docx",
+                    source_path=file_path,
+                )
+
+            def render(self, doc, output_path, template_path=None):
+                self.render_calls.append((doc, output_path, template_path))
+                Path(output_path).write_text("rendered", encoding="utf-8")
+
+        parser = FakeParser()
+        consumer = QueueConsumer(FakeJobManager(FakeRedis()), worker_id="worker-1")
+        monkeypatch.setattr(consumer, "_select_parser", lambda _: parser)
+
+        input_path = tmp_path / "sample.docx"
+        input_path.write_text("placeholder", encoding="utf-8")
+        output_path = tmp_path / "sample_translated.docx"
+        processed_job = SimpleNamespace(
+            segments=[SimpleNamespace(id="seg-1", target="Hello world")]
+        )
+
+        consumer._render_translated_output(
+            str(input_path), str(output_path), processed_job
+        )
+
+        assert output_path.exists()
+        rendered_doc, rendered_output, rendered_template = parser.render_calls[0]
+        assert rendered_doc.segments[0].text == "Hello world"
+        assert rendered_output == str(output_path)
+        assert rendered_template == str(input_path)
 
     def test_validate_config_multiple_errors_returns_all(self):
         """Should return all validation errors, not just the first one."""

@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"log"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -72,9 +73,50 @@ type UpdateConfigRequest struct {
 	AutoAcceptMaxReward   *float64 `json:"auto_accept_max_reward,omitempty"`
 }
 
+type IngestJobRequest struct {
+	ID        string  `json:"id"`
+	Title     string  `json:"title"`
+	Reward    float64 `json:"reward"`
+	URL       string  `json:"url"`
+	Source    string  `json:"source,omitempty"`
+	Currency  string  `json:"currency,omitempty"`
+	Timestamp float64 `json:"timestamp,omitempty"`
+	LangPair  string  `json:"lang_pair,omitempty"`
+	WordCount int     `json:"word_count,omitempty"`
+}
+
+func normalizeIngestJobRequest(req *IngestJobRequest) string {
+	if req == nil {
+		return "Invalid request body"
+	}
+	if strings.TrimSpace(req.ID) == "" {
+		return "id is required"
+	}
+	if strings.TrimSpace(req.Title) == "" {
+		return "title is required"
+	}
+	if strings.TrimSpace(req.URL) == "" {
+		return "url is required"
+	}
+	if req.Reward < 0 {
+		return "reward must be >= 0"
+	}
+	if strings.TrimSpace(req.Source) == "" {
+		req.Source = "external"
+	}
+	if strings.TrimSpace(req.Currency) == "" {
+		req.Currency = "USD"
+	}
+	return ""
+}
+
 // UpdateConfig updates the user's watcher configuration
 func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
 	return middleware.RequireAuth(h.updateConfigLogic)(c)
+}
+
+func (h *WatcherHandler) IngestJob(c *fiber.Ctx) error {
+	return middleware.RequireAuth(h.ingestJobLogic)(c)
 }
 
 // updateConfigLogic contains the actual UpdateConfig logic after auth is verified
@@ -122,6 +164,92 @@ func (h *WatcherHandler) updateConfigLogic(c *fiber.Ctx, userUUID uuid.UUID) err
 	}
 
 	return c.JSON(configToResponse(&config))
+}
+
+func (h *WatcherHandler) ensureWatcherResources(userUUID uuid.UUID) error {
+	var config models.WatcherConfig
+	if err := h.db.Where("user_id = ?", userUUID).First(&config).Error; err != nil {
+		config = models.WatcherConfig{
+			Base:                  models.Base{ID: uuid.New()},
+			UserID:                userUUID,
+			IncludedLanguagePairs: "[]",
+		}
+		if createErr := h.db.Create(&config).Error; createErr != nil {
+			return createErr
+		}
+	}
+
+	var state models.WatcherState
+	if err := h.db.Where("user_id = ?", userUUID).First(&state).Error; err != nil {
+		state = models.WatcherState{
+			UserID:           userUUID,
+			WatcherStatus:    "stopped",
+			LastSeenJobIDs:   "[]",
+			RecentJobHistory: "[]",
+		}
+		if createErr := h.db.Create(&state).Error; createErr != nil {
+			return createErr
+		}
+	}
+
+	return nil
+}
+
+func (h *WatcherHandler) ingestJobLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
+	if h.manager == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Watcher manager unavailable",
+			"code":  "WATCHER_UNAVAILABLE",
+		})
+	}
+
+	var req IngestJobRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+			"code":  "INVALID_REQUEST",
+		})
+	}
+
+	if msg := normalizeIngestJobRequest(&req); msg != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": msg,
+			"code":  "INVALID_REQUEST",
+		})
+	}
+
+	if err := h.ensureWatcherResources(userUUID); err != nil {
+		log.Printf("Failed to initialize watcher resources: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to initialize watcher resources",
+			"code":  "WATCHER_INIT_FAILED",
+		})
+	}
+
+	job := watcher.Job{
+		ID:        req.ID,
+		Title:     req.Title,
+		Reward:    req.Reward,
+		URL:       req.URL,
+		Source:    req.Source,
+		Currency:  req.Currency,
+		Timestamp: req.Timestamp,
+		LangPair:  req.LangPair,
+		WordCount: req.WordCount,
+	}
+
+	if err := h.manager.ProcessExternalJob(c.Context(), userUUID, job); err != nil {
+		log.Printf("Failed to process external watcher job: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process watcher job",
+			"code":  "INGEST_FAILED",
+		})
+	}
+
+	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+		"status": "accepted",
+		"job_id": req.ID,
+	})
 }
 
 // GetState returns the user's watcher state

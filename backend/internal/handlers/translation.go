@@ -595,12 +595,43 @@ func (h *TranslationHandler) syncJobStatusFromRedis(ctx context.Context, job *mo
 		}
 	}
 
+	updates := map[string]interface{}{
+		"status":   job.Status,
+		"progress": job.Progress,
+	}
+
+	if targetFile, ok := data["target_file"]; ok && targetFile != "" {
+		job.TargetFile = targetFile
+		updates["target_file"] = targetFile
+	}
+
+	if overallScoreStr, ok := data["overall_score"]; ok {
+		if overallScore, err := strconv.ParseFloat(overallScoreStr, 64); err == nil {
+			job.OverallScore = overallScore
+			updates["overall_score"] = overallScore
+		}
+	}
+
+	if workerID, ok := data["worker_id"]; ok && workerID != "" {
+		job.WorkerID = workerID
+		updates["worker_id"] = workerID
+	}
+
+	if errorMsg, ok := data["error"]; ok && errorMsg != "" {
+		job.Error = errorMsg
+		updates["error"] = errorMsg
+	}
+
+	if completedAtStr, ok := data["completed_at"]; ok && completedAtStr != "" {
+		if completedAt, err := time.Parse(time.RFC3339, completedAtStr); err == nil {
+			job.CompletedAt = &completedAt
+			updates["completed_at"] = &completedAt
+		}
+	}
+
 	h.db.Model(&models.TranslationJob{}).
 		Where("id = ? AND user_id = ?", job.ID, job.UserID).
-		Updates(map[string]interface{}{
-			"status":   job.Status,
-			"progress": job.Progress,
-		})
+		Updates(updates)
 }
 
 func (h *TranslationHandler) syncSegmentsFromRedis(ctx context.Context, job *models.TranslationJob) {

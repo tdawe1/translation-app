@@ -45,30 +45,34 @@ func NewTestManager(db database.Database) *UserWatcherManager {
 // minimalTestDB is a minimal database.Database implementation for testing
 type minimalTestDB struct{}
 
-func (m *minimalTestDB) Create(value interface{}) *gorm.DB                        { return nil }
-func (m *minimalTestDB) First(dest interface{}, conds ...interface{}) *gorm.DB  { return nil }
-func (m *minimalTestDB) Where(query interface{}, args ...interface{}) *gorm.DB  { return nil }
-func (m *minimalTestDB) Model(value interface{}) *gorm.DB                       { return nil }
-func (m *minimalTestDB) Begin(opts ...*sql.TxOptions) *gorm.DB                  { return nil }
-func (m *minimalTestDB) Exec(sql string, values ...interface{}) *gorm.DB        { return nil }
-func (m *minimalTestDB) Save(value interface{}) *gorm.DB                        { return nil }
-func (m *minimalTestDB) Updates(values interface{}) *gorm.DB                    { return nil }
-func (m *minimalTestDB) UpdateColumn(column string, value interface{}) *gorm.DB { return nil }
-func (m *minimalTestDB) Update(column string, value interface{}) *gorm.DB       { return nil }
+func (m *minimalTestDB) Create(value interface{}) *gorm.DB                       { return nil }
+func (m *minimalTestDB) First(dest interface{}, conds ...interface{}) *gorm.DB   { return nil }
+func (m *minimalTestDB) Where(query interface{}, args ...interface{}) *gorm.DB   { return nil }
+func (m *minimalTestDB) Model(value interface{}) *gorm.DB                        { return nil }
+func (m *minimalTestDB) Begin(opts ...*sql.TxOptions) *gorm.DB                   { return nil }
+func (m *minimalTestDB) Exec(sql string, values ...interface{}) *gorm.DB         { return nil }
+func (m *minimalTestDB) Save(value interface{}) *gorm.DB                         { return nil }
+func (m *minimalTestDB) Updates(values interface{}) *gorm.DB                     { return nil }
+func (m *minimalTestDB) UpdateColumn(column string, value interface{}) *gorm.DB  { return nil }
+func (m *minimalTestDB) Update(column string, value interface{}) *gorm.DB        { return nil }
 func (m *minimalTestDB) Delete(value interface{}, conds ...interface{}) *gorm.DB { return nil }
-func (m *minimalTestDB) Offset(offset int) *gorm.DB                             { return nil }
-func (m *minimalTestDB) Limit(limit int) *gorm.DB                               { return nil }
-func (m *minimalTestDB) Order(value interface{}) *gorm.DB                       { return nil }
+func (m *minimalTestDB) Offset(offset int) *gorm.DB                              { return nil }
+func (m *minimalTestDB) Limit(limit int) *gorm.DB                                { return nil }
+func (m *minimalTestDB) Order(value interface{}) *gorm.DB                        { return nil }
 func (m *minimalTestDB) Count(count *int64) *gorm.DB                             { return nil }
 
 // Job represents a detected job from RSS or WebSocket
 type Job struct {
-	ID     string    `json:"id"`
-	Title  string    `json:"title"`
-	Reward float64   `json:"reward"`
-	URL    string    `json:"url"`
-	Source string    `json:"source"` // "rss" or "websocket"
-	UserID uuid.UUID `json:"user_id"`
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Reward    float64   `json:"reward"`
+	URL       string    `json:"url"`
+	Source    string    `json:"source"` // "rss", "websocket", or external bridge source
+	Currency  string    `json:"currency,omitempty"`
+	Timestamp float64   `json:"timestamp,omitempty"`
+	LangPair  string    `json:"lang_pair,omitempty"`
+	WordCount int       `json:"word_count,omitempty"`
+	UserID    uuid.UUID `json:"user_id"`
 }
 
 // WatcherInstance represents an active watcher for a user
@@ -103,6 +107,22 @@ func NewUserWatcherManager(db database.Database, redisClient *redis.Client) *Use
 		stateManager: NewStateManager(db),
 		jobProcessor: NewJobProcessor(db, redisClient),
 	}
+}
+
+// ProcessExternalJob runs an externally discovered watcher job through the normal pipeline.
+func (m *UserWatcherManager) ProcessExternalJob(
+	ctx context.Context,
+	userID uuid.UUID,
+	job Job,
+) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	job.UserID = userID
+	if job.Source == "" {
+		job.Source = "external"
+	}
+	return m.jobProcessor.ProcessJob(ctx, job)
 }
 
 // StartWatcher starts a watcher for a user

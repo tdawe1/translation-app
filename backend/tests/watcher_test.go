@@ -2,9 +2,11 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
@@ -73,8 +75,8 @@ func TestWatcher_CompleteFlow(t *testing.T) {
 
 	t.Run("UpdateConfig modifies config values", func(t *testing.T) {
 		updateReq := handlers.UpdateConfigRequest{
-			MinReward:         float64Ptr(5.0),
-			MaxReward:         float64Ptr(25.0),
+			MinReward:        float64Ptr(5.0),
+			MaxReward:        float64Ptr(25.0),
 			WebSocketEnabled: boolPtr(false),
 		}
 		body, _ := json.Marshal(updateReq)
@@ -165,6 +167,90 @@ func TestWatcher_CompleteFlow(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "stopped", state["watcher_status"])
 	})
+}
+
+func TestWatcher_IngestJobPublishesExternalJob(t *testing.T) {
+	db := RequireDB(t)
+	redisClient := RequireRedis(t)
+	wrappedDB := database.Wrap(db)
+	manager := watcher.NewUserWatcherManager(wrappedDB, redisClient)
+
+	app := fiber.New(fiber.Config{
+		AppName:               "GengoWatcher Test",
+		DisableStartupMessage: true,
+	})
+
+	watcherHandler := handlers.NewWatcherHandler(manager, wrappedDB)
+	jwtCfg := middleware.NewJWTConfig()
+
+	app.Post(
+		"/api/v1/watcher/jobs",
+		middleware.JWTValidator(jwtCfg),
+		watcherHandler.IngestJob,
+	)
+	app.Get(
+		"/api/v1/watcher/state",
+		middleware.JWTValidator(jwtCfg),
+		watcherHandler.GetState,
+	)
+
+	user := CreateTestUser(t, db, "watcher-ingest@example.com")
+	authHeader := "Bearer " + GenerateTestToken(t, user.ID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	channel := watcher.GetJobsChannel(user.ID.String())
+	pubsub := redisClient.Subscribe(ctx, channel)
+	defer pubsub.Close()
+	_, err := pubsub.Receive(ctx)
+	require.NoError(t, err)
+
+	payload := map[string]interface{}{
+		"id":         "job-123",
+		"title":      "JA > EN | Test Job",
+		"reward":     42.5,
+		"url":        "https://gengo.com/t/jobs/details/123",
+		"source":     "GengoWatcher",
+		"currency":   "USD",
+		"timestamp":  1712736000.0,
+		"lang_pair":  "JA→EN",
+		"word_count": 320,
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("POST", "/api/v1/watcher/jobs", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusAccepted, resp.StatusCode)
+
+	var result map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "accepted", result["status"])
+	assert.Equal(t, "job-123", result["job_id"])
+
+	msg, err := pubsub.ReceiveMessage(ctx)
+	require.NoError(t, err)
+
+	var published map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(msg.Payload), &published))
+	assert.Equal(t, "job-123", published["id"])
+	assert.Equal(t, "JA→EN", published["lang_pair"])
+	assert.Equal(t, 320.0, published["word_count"])
+	assert.Equal(t, user.ID.String(), published["user_id"])
+
+	stateReq := httptest.NewRequest("GET", "/api/v1/watcher/state", nil)
+	stateReq.Header.Set("Authorization", authHeader)
+	stateResp, err := app.Test(stateReq)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, stateResp.StatusCode)
+
+	var state map[string]interface{}
+	require.NoError(t, json.NewDecoder(stateResp.Body).Decode(&state))
+	assert.Equal(t, 1, int(state["total_jobs_found"].(float64)))
 }
 
 // TestWatcher_UnauthorizedAccess rejects requests without auth

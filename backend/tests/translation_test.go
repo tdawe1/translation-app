@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
@@ -148,6 +149,42 @@ func TestTranslation_GetJob(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
 	segments := result["segments"].([]interface{})
 	assert.Len(t, segments, 1)
+}
+
+func TestTranslation_GetJob_SyncsOutputMetadataFromRedis(t *testing.T) {
+	env := setupTranslationTestEnv(t)
+	job := createTranslationJob(t, env, models.TranslationJobStatusPending)
+	job.RedisJobID = "user:" + env.user.ID.String() + ":trans:" + job.ID.String()
+	require.NoError(
+		t,
+		env.db.Model(job).Update("redis_job_id", job.RedisJobID).Error,
+	)
+
+	ctx := context.Background()
+	require.NoError(
+		t,
+		env.redis.HSet(ctx, job.RedisJobID, map[string]interface{}{
+			"job_id":        job.ID.String(),
+			"user_id":       env.user.ID.String(),
+			"status":        "completed",
+			"progress":      "1.0",
+			"target_file":   "/watch/translated/sample_translated.docx",
+			"overall_score": "0.93",
+		}).Err(),
+	)
+
+	req := httptest.NewRequest("GET", "/api/v1/translation/jobs/"+job.ID.String(), nil)
+	req.Header.Set("Authorization", "Bearer "+env.token)
+
+	resp, err := env.app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var result map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "completed", result["status"])
+	assert.Equal(t, "/watch/translated/sample_translated.docx", result["target_file"])
+	assert.Equal(t, 0.93, result["overall_score"])
 }
 
 func TestTranslation_ApproveJob(t *testing.T) {
