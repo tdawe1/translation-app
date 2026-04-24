@@ -1,4 +1,22 @@
-# Environment - NEVER commit secrets
+# Environment - NEVER commit secret   "Ctid":  "11269957"
+#
+roadmap/
+docs/
+tmp_pdf_pipeline/
+
+    "Account":  "46729058",
+    "Broker":  "pepperstoneuk",
+    "Symbol":  "XAUUSD",
+    "Period":  "h4",
+    "DataMode":  "ticks",
+    "Start":  "2024-01-01",
+    "End":  "2026-04-22",
+    "Balance":  "",
+    "Commission":  "",
+    "Spread":  "",
+    "DataFile":  null,
+    "EnvironmentVariables":  false,
+    "Profiles":  [s
 .env
 .env.local
 .env.*.local
