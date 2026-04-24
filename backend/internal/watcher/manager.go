@@ -163,6 +163,19 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 	// Create monitors
 	rss := NewRSSMonitor(config.RSSFeedURL, userID, config.MinReward)
 	ws := NewWebSocketMonitor(userID, config.GengoSessionToken, config.GengoUserKey, config.GengoUserID, user.IsAdmin())
+	runtimeUpdater := func(updates map[string]interface{}) error {
+		if err := m.stateManager.UpdateRuntime(userID, updates); err != nil {
+			return err
+		}
+		if isHealthUpdate(updates) {
+			if err := m.jobProcessor.PublishEvent(context.Background(), userID, EventTypeWatcherHealth, updates); err != nil {
+				log.Printf("[WATCHER] Failed to publish health update for user %s: %v", userID, err)
+			}
+		}
+		return nil
+	}
+	rss.RuntimeUpdate = runtimeUpdater
+	ws.RuntimeUpdate = runtimeUpdater
 
 	instance := &WatcherInstance{
 		UserID:    userID,
@@ -182,15 +195,79 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 	// Start monitoring in background
 	go m.runWatcher(instance)
 
-	// Update state
-	if err := m.stateManager.UpdateStatus(userID, StatusRunning); err != nil {
+	profileStatus := ProfileStatusUnseeded
+	overallStatus := OverallStatusDegraded
+	alertStatus := AlertStatusWarning
+	browserStatus := BrowserStatusUnconfigured
+	browserEventType := EventTypeBrowserUnconfigured
+	runtimeMode := "Gengo credentials are required for WebSocket monitoring"
+	actionStep := "Monitoring RSS; WebSocket requires Gengo credentials"
+	lastError := "missing Gengo session token or user ID"
+	if config.GengoSessionToken != "" && config.GengoUserID != "" {
+		profileStatus = ProfileStatusSeeded
+		overallStatus = OverallStatusRunning
+		alertStatus = AlertStatusNone
+		browserStatus = BrowserStatusDashboard
+		browserEventType = EventTypeBrowserDashboard
+		runtimeMode = "First-stage mode: job alerts open from the web dashboard"
+		actionStep = "Monitoring RSS and realtime WebSocket"
+		lastError = ""
+	}
+
+	if err := m.stateManager.UpdateRuntime(userID, map[string]interface{}{
+		"watcher_status":      StatusRunning,
+		"overall_status":      overallStatus,
+		"feed_status":         FeedStatusMonitoring,
+		"browser_status":      browserStatus,
+		"action_status":       ActionStatusIdle,
+		"alert_status":        alertStatus,
+		"profile_status":      profileStatus,
+		"logged_in_state":     "unknown",
+		"current_action_step": actionStep,
+		"current_job_id":      "",
+		"last_error":          lastError,
+		"last_activity":       time.Now().UTC(),
+	}); err != nil {
 		log.Printf("[WATCHER] Failed to update state for user %s: %v", userID, err)
+	}
+
+	if _, err := m.stateManager.AppendEvent(userID, WatcherEventInput{
+		Level:   "info",
+		Source:  "system",
+		Type:    EventTypeWorkerStarted,
+		Message: "Watcher worker started",
+		Data: map[string]interface{}{
+			"watcher_status": StatusRunning,
+			"overall_status": overallStatus,
+		},
+	}); err != nil {
+		log.Printf("[WATCHER] Failed to persist start event for user %s: %v", userID, err)
+	}
+	if _, err := m.stateManager.AppendEvent(userID, WatcherEventInput{
+		Level:   "info",
+		Source:  "browser",
+		Type:    browserEventType,
+		Message: runtimeMode,
+		Data: map[string]interface{}{
+			"profile_status": profileStatus,
+		},
+	}); err != nil {
+		log.Printf("[WATCHER] Failed to persist browser event for user %s: %v", userID, err)
 	}
 
 	// Notify user
 	ctx = context.Background()
-	if err := m.jobProcessor.PublishEvent(ctx, userID, EventTypeWatcherStarted); err != nil {
+	if err := m.jobProcessor.PublishEvent(ctx, userID, EventTypeWorkerStarted, map[string]interface{}{
+		"watcher_status": StatusRunning,
+		"overall_status": overallStatus,
+	}); err != nil {
 		log.Printf("[WATCHER] Failed to publish start event for user %s: %v", userID, err)
+	}
+	if err := m.jobProcessor.PublishEvent(ctx, userID, browserEventType, map[string]interface{}{
+		"profile_status": profileStatus,
+		"message":        runtimeMode,
+	}); err != nil {
+		log.Printf("[WATCHER] Failed to publish browser event for user %s: %v", userID, err)
 	}
 
 	log.Printf("[WATCHER] Watcher started successfully for user %s at %s", userID, time.Now().Format(time.RFC3339))
@@ -213,13 +290,35 @@ func (m *UserWatcherManager) StopWatcher(userID uuid.UUID) error {
 	instance.Running = false
 
 	// Update state
-	if err := m.stateManager.UpdateStatus(userID, StatusStopped); err != nil {
+	if err := m.stateManager.UpdateRuntime(userID, map[string]interface{}{
+		"watcher_status":      StatusStopped,
+		"overall_status":      OverallStatusStopped,
+		"feed_status":         FeedStatusStopped,
+		"action_status":       ActionStatusIdle,
+		"alert_status":        AlertStatusNone,
+		"current_action_step": "",
+		"current_job_id":      "",
+		"last_error":          "",
+		"last_activity":       time.Now().UTC(),
+	}); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
+	}
+
+	if _, err := m.stateManager.AppendEvent(userID, WatcherEventInput{
+		Level:   "info",
+		Source:  "system",
+		Type:    EventTypeWorkerStopped,
+		Message: "Watcher worker stopped",
+	}); err != nil {
+		log.Printf("[WATCHER] Failed to persist stop event for user %s: %v", userID, err)
 	}
 
 	// Notify user
 	ctx := context.Background()
-	if err := m.jobProcessor.PublishEvent(ctx, userID, EventTypeWatcherStopped); err != nil {
+	if err := m.jobProcessor.PublishEvent(ctx, userID, EventTypeWorkerStopped, map[string]interface{}{
+		"watcher_status": StatusStopped,
+		"overall_status": OverallStatusStopped,
+	}); err != nil {
 		return fmt.Errorf("failed to publish event: %w", err)
 	}
 
@@ -275,7 +374,7 @@ func (m *UserWatcherManager) runWatcher(instance *WatcherInstance) {
 				m.jobProcessor.PublishError(instance.Context, instance.UserID, fmt.Sprintf("WebSocket monitor panic: %v", r))
 			}
 		}()
-		wsEnabled := instance.Config.GengoSessionToken != "" && instance.Config.GengoUserKey != ""
+		wsEnabled := instance.Config.GengoSessionToken != "" && instance.Config.GengoUserID != ""
 		log.Printf("[WATCHER] WebSocket monitor starting for user %s (enabled: %v)", instance.UserID, wsEnabled)
 		instance.WebSocket.Start(instance.Context, jobChan)
 		log.Printf("[WATCHER] WebSocket monitor stopped for user %s", instance.UserID)
@@ -325,8 +424,18 @@ func (m *UserWatcherManager) StopAll() {
 		if instance.Running {
 			instance.Cancel()
 			instance.Running = false
-			m.stateManager.UpdateStatus(userID, StatusStopped)
-			m.jobProcessor.PublishEvent(ctx, userID, EventTypeWatcherStopped)
+			m.stateManager.UpdateRuntime(userID, map[string]interface{}{
+				"watcher_status": StatusStopped,
+				"overall_status": OverallStatusStopped,
+				"feed_status":    FeedStatusStopped,
+				"action_status":  ActionStatusIdle,
+				"alert_status":   AlertStatusNone,
+				"last_activity":  time.Now().UTC(),
+			})
+			m.jobProcessor.PublishEvent(ctx, userID, EventTypeWorkerStopped, map[string]interface{}{
+				"watcher_status": StatusStopped,
+				"overall_status": OverallStatusStopped,
+			})
 		}
 	}
 }
@@ -344,4 +453,25 @@ func (m *UserWatcherManager) GetConfig(userID uuid.UUID) (*models.WatcherConfig,
 // GetState retrieves the watcher state for a user
 func (m *UserWatcherManager) GetState(userID uuid.UUID) (*models.WatcherState, error) {
 	return m.stateManager.LoadState(userID)
+}
+
+// GetEvents retrieves recent watcher events for a user.
+func (m *UserWatcherManager) GetEvents(userID uuid.UUID, limit int) ([]models.WatcherEvent, error) {
+	return m.stateManager.ListEvents(userID, limit)
+}
+
+func isHealthUpdate(updates map[string]interface{}) bool {
+	if _, ok := updates["last_ws_pong_at"]; ok {
+		return true
+	}
+	if _, ok := updates["last_ws_connect_at"]; ok {
+		return true
+	}
+	if _, ok := updates["last_ws_message_at"]; ok {
+		return true
+	}
+	if _, ok := updates["last_rss_poll_ok_at"]; ok {
+		return true
+	}
+	return false
 }

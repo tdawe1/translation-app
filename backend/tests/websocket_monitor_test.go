@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -40,10 +41,30 @@ func TestWebSocketMonitor_StatusTracking(t *testing.T) {
 	assert.Equal(t, "stopped", monitor.GetStatus())
 }
 
+func TestWebSocketMonitor_StartReportsUnconfiguredWhenCredentialsMissing(t *testing.T) {
+	userID := uuid.New()
+	monitor := watcher.NewWebSocketMonitor(userID, "", "", "", false)
+	jobChan := make(chan watcher.Job, 1)
+
+	var runtimeUpdate map[string]interface{}
+	monitor.RuntimeUpdate = func(updates map[string]interface{}) error {
+		runtimeUpdate = updates
+		return nil
+	}
+
+	monitor.Start(context.Background(), jobChan)
+
+	require.NotNil(t, runtimeUpdate)
+	assert.Equal(t, watcher.OverallStatusDegraded, runtimeUpdate["overall_status"])
+	assert.Equal(t, watcher.AlertStatusWarning, runtimeUpdate["alert_status"])
+	assert.Equal(t, watcher.BrowserStatusUnconfigured, runtimeUpdate["browser_status"])
+	assert.Equal(t, watcher.ProfileStatusUnseeded, runtimeUpdate["profile_status"])
+	assert.Equal(t, "missing Gengo session token or user ID", runtimeUpdate["last_error"])
+}
+
 // TestWebSocketMonitor_AuthPayloadFormat tests the auth payload format
 func TestWebSocketMonitor_AuthPayloadFormat(t *testing.T) {
 	userSession := "test-session-abc"
-	userKey := "test-key-xyz"
 	gengoUserID := "gengo-12345"
 
 	// Create a test WebSocket server that validates auth payload
@@ -64,11 +85,11 @@ func TestWebSocketMonitor_AuthPayloadFormat(t *testing.T) {
 		err = json.Unmarshal(data, &authPayload)
 		require.NoError(t, err)
 
-		// Verify required fields
-		assert.Equal(t, "authenticate", authPayload["action"])
+		// Verify browser-aligned Gengo auth fields
 		assert.Equal(t, userSession, authPayload["user_session"])
-		assert.Equal(t, userKey, authPayload["user_key"])
 		assert.Equal(t, gengoUserID, authPayload["user_id"])
+		assert.NotContains(t, authPayload, "action")
+		assert.NotContains(t, authPayload, "user_key")
 
 		// Send success response
 		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"authenticated"}`))
@@ -166,9 +187,7 @@ func TestWebSocketMonitor_Deduplication(t *testing.T) {
 
 	// Send auth message
 	authMsg := map[string]interface{}{
-		"action":       "authenticate",
 		"user_session": "test-session",
-		"user_key":     "test-key",
 		"user_id":      "test-user",
 	}
 	authData, _ := json.Marshal(authMsg)
@@ -216,7 +235,7 @@ func TestWebSocketMonitor_UnsupportedMessageType(t *testing.T) {
 
 	// Verify the message can be unmarshaled (using the wsMessage type)
 	var wsMsg struct {
-		Type string                 `json:"type"`
+		Type  string                 `json:"type"`
 		Other map[string]interface{} `json:"-"`
 	}
 	err = json.Unmarshal(data, &wsMsg)
@@ -263,7 +282,7 @@ func TestWebSocketMonitor_MessageParsing(t *testing.T) {
 				Type  string
 				JobID string
 			}{
-				Type:  "authenticated",
+				Type: "authenticated",
 			},
 		},
 	}
@@ -345,9 +364,9 @@ func TestWebSocketMonitor_AdminHeartbeatInterval(t *testing.T) {
 	adminMonitor := watcher.NewWebSocketMonitor(userID, userSession, userKey, gengoUserID, true)
 
 	assert.NotNil(t, adminMonitor)
-	// Admin users should have 1s heartbeat for fastest detection
-	assert.Equal(t, 1*time.Second, adminMonitor.HeartbeatInterval)
-	assert.Equal(t, 2*time.Second, adminMonitor.PongWait)
+	// Admin users still get faster health checks, but job delivery is server-pushed.
+	assert.Equal(t, 15*time.Second, adminMonitor.HeartbeatInterval)
+	assert.Equal(t, 30*time.Second, adminMonitor.PongWait)
 }
 
 // TestWebSocketMonitor_HeartbeatIntervalComparison compares admin vs regular user intervals
@@ -357,13 +376,13 @@ func TestWebSocketMonitor_HeartbeatIntervalComparison(t *testing.T) {
 	regularMonitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", false)
 	adminMonitor := watcher.NewWebSocketMonitor(userID, "session", "key", "gengo-id", true)
 
-	// Admin heartbeat should be 10x faster
-	assert.Equal(t, regularMonitor.HeartbeatInterval/time.Duration(10), adminMonitor.HeartbeatInterval)
-	assert.Equal(t, regularMonitor.PongWait/time.Duration(10), adminMonitor.PongWait)
+	// Admin health checks should be faster than regular users without pinging every second.
+	assert.True(t, adminMonitor.HeartbeatInterval < regularMonitor.HeartbeatInterval)
+	assert.True(t, adminMonitor.PongWait < regularMonitor.PongWait)
 
 	// Verify exact values
-	assert.Equal(t, 10*time.Second, regularMonitor.HeartbeatInterval, "Regular user heartbeat should be 10s")
-	assert.Equal(t, 1*time.Second, adminMonitor.HeartbeatInterval, "Admin heartbeat should be 1s")
+	assert.Equal(t, 30*time.Second, regularMonitor.HeartbeatInterval, "Regular user heartbeat should be 30s")
+	assert.Equal(t, 15*time.Second, adminMonitor.HeartbeatInterval, "Admin heartbeat should be 15s")
 }
 
 // TestWebSocketMonitor_EmptyUserKey tests that empty userKey is handled gracefully
@@ -394,6 +413,6 @@ func TestWebSocketMonitor_SignatureMismatchPrevention(t *testing.T) {
 	regularUser := watcher.NewWebSocketMonitor(uuid.New(), "session123", "key456", "gengo789", false)
 	adminUser := watcher.NewWebSocketMonitor(uuid.New(), "session123", "key456", "gengo789", true)
 
-	assert.Equal(t, 10*time.Second, regularUser.HeartbeatInterval)
-	assert.Equal(t, 1*time.Second, adminUser.HeartbeatInterval)
+	assert.Equal(t, 30*time.Second, regularUser.HeartbeatInterval)
+	assert.Equal(t, 15*time.Second, adminUser.HeartbeatInterval)
 }

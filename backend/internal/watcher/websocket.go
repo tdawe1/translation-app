@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -14,19 +15,24 @@ import (
 
 const (
 	// Gengo WebSocket URL
-	gengoWebSocketURL = "wss://live-dashboard.gengo.com"
+	gengoWebSocketURL = "wss://live-dashboard.gengo.com/"
+
+	defaultGengoOrigin         = "https://gengo.com"
+	defaultGengoAcceptLanguage = "en-GB,en-US;q=0.9,en;q=0.8"
+	defaultGengoUserAgent      = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 
 	// Default heartbeat interval for regular users
-	defaultUserHeartbeatInterval = 10 * time.Second
+	defaultUserHeartbeatInterval = 30 * time.Second
 
-	// Default heartbeat interval for admin users (fastest detection)
-	defaultAdminHeartbeatInterval = 1 * time.Second
+	// Default heartbeat interval for admin users. Job detection comes from
+	// server-pushed messages, so this is only connection health.
+	defaultAdminHeartbeatInterval = 15 * time.Second
 
 	// Default pong timeout for regular users (2x heartbeat)
-	defaultUserPongWait = 20 * time.Second
+	defaultUserPongWait = 60 * time.Second
 
 	// Default pong timeout for admin users (2x heartbeat)
-	defaultAdminPongWait = 2 * time.Second
+	defaultAdminPongWait = 30 * time.Second
 
 	// Initial reconnection delay on failure
 	initialReconnectDelay = 1 * time.Second
@@ -52,14 +58,18 @@ type WebSocketMonitor struct {
 	statusMu sync.RWMutex
 
 	// Metrics
-	lastPongTime time.Time
-	lastPingTime time.Time
-	pingLatency  time.Duration
-	pingCount    int64
+	lastPongTime   time.Time
+	lastPingTime   time.Time
+	pingLatency    time.Duration
+	pingCount      int64
+	reconnectCount int64
+
+	// RuntimeUpdate reports health fields to the owning watcher manager.
+	RuntimeUpdate func(map[string]interface{}) error
 }
 
-// NewWebSocketMonitor creates a new WebSocket monitor
-// isAdmin determines heartbeat interval (1s for admin, 10s for regular users)
+// NewWebSocketMonitor creates a new WebSocket monitor.
+// isAdmin determines the health-check cadence, not job delivery speed.
 func NewWebSocketMonitor(userID uuid.UUID, userSession, userKey, gengoUserID string, isAdmin bool) *WebSocketMonitor {
 	heartbeatInterval := defaultUserHeartbeatInterval
 	pongWait := defaultUserPongWait
@@ -70,10 +80,10 @@ func NewWebSocketMonitor(userID uuid.UUID, userSession, userKey, gengoUserID str
 	}
 
 	return &WebSocketMonitor{
-		UserID:            userID,
-		UserSession:       userSession,
-		UserKey:           userKey,
-		GengoUserID:       gengoUserID,
+		UserID:      userID,
+		UserSession: userSession,
+		UserKey:     userKey,
+		GengoUserID: gengoUserID,
 		// P0-2 FIX: Use LRU cache with 1000 item limit to prevent unbounded memory growth
 		seenIDs:           NewLRUCache(1000),
 		status:            "disconnected",
@@ -84,9 +94,7 @@ func NewWebSocketMonitor(userID uuid.UUID, userSession, userKey, gengoUserID str
 
 // wsAuthPayload represents the authentication payload sent to Gengo
 type wsAuthPayload struct {
-	Action      string `json:"action"`
 	UserSession string `json:"user_session"`
-	UserKey     string `json:"user_key"`
 	UserID      string `json:"user_id"`
 }
 
@@ -126,9 +134,18 @@ func (m *wsMessage) UnmarshalJSON(data []byte) error {
 // Start begins monitoring the WebSocket connection
 func (m *WebSocketMonitor) Start(ctx context.Context, jobChan chan<- Job) {
 	// Check if WebSocket is properly configured
-	if m.UserSession == "" || m.UserKey == "" {
-		log.Printf("[WS] User %s: WebSocket not configured (missing session token or user key)", m.UserID)
+	if m.UserSession == "" || m.GengoUserID == "" {
+		log.Printf("[WS] User %s: WebSocket not configured (missing session token or Gengo user ID)", m.UserID)
 		log.Printf("[WS] User %s: WebSocket monitor disabled (requires Gengo credentials)", m.UserID)
+		m.reportRuntime(map[string]interface{}{
+			"overall_status":       OverallStatusDegraded,
+			"alert_status":         AlertStatusWarning,
+			"browser_status":       BrowserStatusUnconfigured,
+			"profile_status":       ProfileStatusUnseeded,
+			"last_error":           "missing Gengo session token or user ID",
+			"last_activity":        time.Now().UTC(),
+			"last_ws_close_reason": "missing Gengo session token or user ID",
+		})
 		return
 	}
 
@@ -147,6 +164,17 @@ func (m *WebSocketMonitor) Start(ctx context.Context, jobChan chan<- Job) {
 				}
 				log.Printf("[WS] Connection error for user %s: %v (reconnecting in %v)", m.UserID, err, initialReconnectDelay)
 				m.setStatus("reconnecting")
+				m.mu.Lock()
+				m.reconnectCount++
+				reconnectCount := m.reconnectCount
+				m.mu.Unlock()
+				m.reportRuntime(map[string]interface{}{
+					"overall_status":       OverallStatusDegraded,
+					"alert_status":         AlertStatusWarning,
+					"last_ws_close_reason": err.Error(),
+					"ws_reconnect_count":   reconnectCount,
+					"last_activity":        time.Now().UTC(),
+				})
 			}
 		}
 
@@ -167,7 +195,7 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 		HandshakeTimeout: 15 * time.Second,
 	}
 
-	conn, _, err := dialer.DialContext(ctx, gengoWebSocketURL, nil)
+	conn, _, err := dialer.DialContext(ctx, gengoWebSocketURL, m.browserAlignedHeaders())
 	if err != nil {
 		return fmt.Errorf("dial failed: %w", err)
 	}
@@ -175,11 +203,15 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 
 	m.conn = conn
 	log.Printf("[WS] Connection established for user %s", m.UserID)
+	m.reportRuntime(map[string]interface{}{
+		"last_ws_connect_at": time.Now().UTC(),
+		"last_activity":      time.Now().UTC(),
+	})
 
 	conn.SetPongHandler(func(appData string) error {
-		m.mu.Lock()
-		defer m.mu.Unlock()
 		now := time.Now()
+
+		m.mu.Lock()
 		// Calculate round-trip time from last ping
 		if !m.lastPingTime.IsZero() {
 			rtt := now.Sub(m.lastPingTime)
@@ -188,6 +220,24 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 			log.Printf("[WS] Pong received for user %s (RTT: %v)", m.UserID, rtt)
 		}
 		m.lastPongTime = now
+		m.mu.Unlock()
+
+		_ = conn.SetReadDeadline(now.Add(m.PongWait))
+		m.reportRuntime(map[string]interface{}{
+			"overall_status":       OverallStatusRunning,
+			"alert_status":         AlertStatusNone,
+			"last_error":           "",
+			"last_ws_pong_at":      now.UTC(),
+			"last_activity":        now.UTC(),
+			"browser_status":       BrowserStatusDashboard,
+			"logged_in_state":      "unknown",
+			"watcher_status":       StatusRunning,
+			"current_job_id":       "",
+			"feed_status":          FeedStatusMonitoring,
+			"profile_status":       ProfileStatusSeeded,
+			"action_status":        ActionStatusIdle,
+			"last_ws_close_reason": "",
+		})
 		return nil
 	})
 
@@ -197,25 +247,27 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 
 	m.setStatus("live")
 	log.Printf("[WS] Connected and authenticated for user %s", m.UserID)
-
-	heartbeatTicker := time.NewTicker(m.HeartbeatInterval)
-	defer heartbeatTicker.Stop()
+	m.reportRuntime(map[string]interface{}{
+		"overall_status":       OverallStatusRunning,
+		"alert_status":         AlertStatusNone,
+		"last_error":           "",
+		"last_activity":        time.Now().UTC(),
+		"browser_status":       BrowserStatusDashboard,
+		"watcher_status":       StatusRunning,
+		"last_ws_close_reason": "",
+	})
 
 	conn.SetReadDeadline(time.Now().Add(m.PongWait))
+
+	heartbeatCtx, stopHeartbeat := context.WithCancel(ctx)
+	defer stopHeartbeat()
+	go m.runHeartbeat(heartbeatCtx)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-
-		case <-heartbeatTicker.C:
-			if err := m.sendPing(); err != nil {
-				return fmt.Errorf("ping failed: %w", err)
-			}
-			conn.SetReadDeadline(time.Now().Add(m.PongWait))
-
 		default:
-			conn.SetReadDeadline(time.Now().Add(m.HeartbeatInterval + 5*time.Second))
 			_, message, err := conn.ReadMessage()
 			if err != nil {
 				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
@@ -223,7 +275,7 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 				}
 				// Check for timeout (net.Error with Timeout() == true)
 				if netErr, ok := err.(interface{ Timeout() bool }); ok && netErr.Timeout() {
-					continue
+					return fmt.Errorf("read timeout: %w", err)
 				}
 				return fmt.Errorf("read failed: %w", err)
 			}
@@ -235,14 +287,38 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 	}
 }
 
+func (m *WebSocketMonitor) runHeartbeat(ctx context.Context) {
+	ticker := time.NewTicker(m.HeartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := m.sendPing(); err != nil {
+				log.Printf("[WS] Ping failed for user %s: %v", m.UserID, err)
+				return
+			}
+		}
+	}
+}
+
+func (m *WebSocketMonitor) reportRuntime(updates map[string]interface{}) {
+	if m.RuntimeUpdate == nil || len(updates) == 0 {
+		return
+	}
+	if err := m.RuntimeUpdate(updates); err != nil {
+		log.Printf("[WS] User %s: Failed to update runtime state: %v", m.UserID, err)
+	}
+}
+
 // authenticate sends the authentication payload
 func (m *WebSocketMonitor) authenticate(ctx context.Context) error {
 	m.setStatus("authenticating")
 
 	authPayload := wsAuthPayload{
-		Action:      "authenticate",
 		UserSession: m.UserSession,
-		UserKey:     m.UserKey,
 		UserID:      m.GengoUserID,
 	}
 
@@ -259,10 +335,22 @@ func (m *WebSocketMonitor) authenticate(ctx context.Context) error {
 	return nil
 }
 
+func (m *WebSocketMonitor) browserAlignedHeaders() http.Header {
+	headers := http.Header{}
+	headers.Set("Origin", defaultGengoOrigin)
+	headers.Set("Cookie", fmt.Sprintf("myG_myGSession_=%s; myG_rdsessID=%s", m.UserSession, m.UserSession))
+	headers.Set("Pragma", "no-cache")
+	headers.Set("Cache-Control", "no-cache")
+	headers.Set("User-Agent", defaultGengoUserAgent)
+	headers.Set("Accept-Language", defaultGengoAcceptLanguage)
+	headers.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+	return headers
+}
+
 // sendPing sends a heartbeat ping
 func (m *WebSocketMonitor) sendPing() error {
 	start := time.Now()
-	if err := m.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+	if err := m.conn.WriteControl(websocket.PingMessage, nil, start.Add(5*time.Second)); err != nil {
 		return err
 	}
 
@@ -287,6 +375,13 @@ func (m *WebSocketMonitor) processMessage(data []byte, jobChan chan<- Job) error
 	}
 
 	log.Printf("[WS] Received message for user %s: type=%s", m.UserID, msg.Type)
+	m.reportRuntime(map[string]interface{}{
+		"last_ws_message_at": time.Now().UTC(),
+		"last_activity":      time.Now().UTC(),
+		"overall_status":     OverallStatusRunning,
+		"alert_status":       AlertStatusNone,
+		"last_error":         "",
+	})
 
 	switch msg.Type {
 	case "available_collection":
