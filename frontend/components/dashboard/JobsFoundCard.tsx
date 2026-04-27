@@ -12,20 +12,20 @@ export function JobsFoundCard({ state }: JobsFoundCardProps) {
       accentColor="orange"
       staggerIndex={1}
       testId="jobs-found-card"
-      className="p-6"
+      className="p-3"
     >
-      <h3 className="font-mono text-xs uppercase tracking-widest text-orange-600 mb-2">
+      <h3 className="mb-1 font-mono text-[10px] uppercase tracking-widest text-orange-600">
         Jobs Found
       </h3>
       <p
         role="status"
         aria-live="polite"
-        className="text-3xl font-light"
+        className="text-xl font-light"
       >
         {state?.total_jobs_found ?? 0}
       </p>
       {state?.total_jobs_accepted !== undefined && (
-        <p className="text-xs text-neutral-500 mt-1">
+        <p className="mt-0.5 text-xs text-neutral-500">
           {state.total_jobs_accepted} accepted
         </p>
       )}

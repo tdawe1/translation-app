@@ -73,12 +73,48 @@ func ensureWatcherState(db database.Database, userID uuid.UUID) error {
 
 		state = models.WatcherState{
 			UserID:           userID,
-			WatcherStatus:    "stopped",
+			WatcherStatus:    StatusStopped,
+			OverallStatus:    OverallStatusStopped,
+			FeedStatus:       FeedStatusStopped,
+			BrowserStatus:    BrowserStatusUnconfigured,
+			ActionStatus:     ActionStatusIdle,
+			AlertStatus:      AlertStatusNone,
+			ProfileStatus:    ProfileStatusUnseeded,
+			LoggedInState:    "unknown",
 			LastSeenJobIDs:   "[]",
 			RecentJobHistory: "[]",
 		}
 		if createErr := db.Create(&state).Error; createErr != nil {
 			return createErr
+		}
+		return nil
+	}
+
+	updates := map[string]interface{}{}
+	if state.OverallStatus == "" {
+		updates["overall_status"] = OverallStatusStopped
+	}
+	if state.FeedStatus == "" {
+		updates["feed_status"] = FeedStatusStopped
+	}
+	if state.BrowserStatus == "" {
+		updates["browser_status"] = BrowserStatusUnconfigured
+	}
+	if state.ActionStatus == "" {
+		updates["action_status"] = ActionStatusIdle
+	}
+	if state.AlertStatus == "" {
+		updates["alert_status"] = AlertStatusNone
+	}
+	if state.ProfileStatus == "" {
+		updates["profile_status"] = ProfileStatusUnseeded
+	}
+	if state.LoggedInState == "" {
+		updates["logged_in_state"] = "unknown"
+	}
+	if len(updates) > 0 {
+		if err := db.Model(&models.WatcherState{}).Where("user_id = ?", userID).Updates(updates).Error; err != nil {
+			return err
 		}
 	}
 

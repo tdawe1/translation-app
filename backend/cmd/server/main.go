@@ -31,14 +31,14 @@ import (
 )
 
 func main() {
-	// Validate JWT secret before any auth setup
-	middleware.ValidateJWTSecretOnStartup()
-
 	// Load configuration
 	cfg := config.Load()
 
 	logger.Init(cfg.Env)
 	defer logger.Sync()
+
+	// Validate JWT secret before any auth setup that can issue or parse tokens.
+	middleware.ValidateJWTSecretOnStartup()
 
 	if err := appi18n.Init(); err != nil {
 		logger.Log.Fatal("failed_to_initialize_i18n", zap.Error(err))
@@ -64,6 +64,7 @@ func main() {
 		&models.RefreshToken{},
 		&models.WatcherConfig{},
 		&models.WatcherState{},
+		&models.WatcherEvent{},
 		&models.SubscriptionPlan{},
 		&models.Subscription{},
 		&models.BillingEvent{},
@@ -109,8 +110,6 @@ func main() {
 
 	authHandler := handlers.NewAuthHandler(userSvc, tokenSvc, emailSvc, redisClient, sessionConfig, blocklist)
 	oauthHandler := handlers.NewOAuthHandler(db, tokenSvc, cfg, redisClient) // H-2 fix: Redis-backed OAuth state storage
-	lemonHandler := handlers.NewLemonSqueezyHandler(cfg.LemonSqueezyWebhookSecret, db)
-
 	// New dedicated handlers for email verification, magic link, and password reset
 	emailVerificationHandler := handlers.NewEmailVerificationHandler(db, tokenSvc, emailSvc, tokenHandlerSvc)
 	magicLinkHandler := handlers.NewMagicLinkHandler(db, tokenSvc, emailSvc, tokenHandlerSvc, sessionConfig, cfg.FrontendURL)
@@ -126,6 +125,10 @@ func main() {
 	go func() {
 		if err := watcher.BackfillUserResources(db); err != nil {
 			logger.Log.Warn("watcher_resource_backfill_failed", zap.Error(err))
+			return
+		}
+		if err := watcherManager.RestoreRunningWatchers(context.Background()); err != nil {
+			logger.Log.Warn("watcher_restore_failed", zap.Error(err))
 		}
 	}()
 
@@ -220,6 +223,7 @@ func main() {
 	authLimiter := middleware.AuthLimiters(trustedProxies)
 	authGroup.Post("/register", authLimiter.Register, authHandler.Register)
 	authGroup.Post("/login", authLimiter.Login, authHandler.Login)
+	authGroup.Post("/refresh", authHandler.Refresh)
 	authGroup.Post("/logout", authHandler.Logout)
 
 	// Email verification routes (public) with rate limiting (#009 fix, P2 fix)
@@ -256,7 +260,12 @@ func main() {
 	watcherGroup.Get("/config", watcherHandler.GetConfig)
 	watcherGroup.Put("/config", watcherHandler.UpdateConfig)
 	watcherGroup.Get("/state", watcherHandler.GetState)
+	watcherGroup.Get("/events", watcherHandler.GetEvents)
+	watcherGroup.Get("/artifacts/:artifactID", watcherHandler.GetArtifact)
 	watcherGroup.Post("/jobs", watcherHandler.IngestJob)
+	watcherGroup.Post("/browser-state", watcherHandler.SyncBrowserState)
+	watcherGroup.Post("/browser/restart", watcherHandler.RestartBrowser)
+	watcherGroup.Post("/browser/screenshot", watcherHandler.CaptureBrowserScreenshot)
 	watcherGroup.Post("/start", watcherHandler.StartWatcher)
 	watcherGroup.Post("/stop", watcherHandler.StopWatcher)
 
@@ -282,17 +291,17 @@ func main() {
 	adminGroup.Patch("/users/:id/role", adminLimiter.Destructive, adminHandler.UpdateUserRole)
 	adminGroup.Delete("/users/:id", adminLimiter.Destructive, adminHandler.DeleteUser)
 
-	// Webhook routes (public, verified via signature)
-	webhooks := api.Group("/webhooks")
-	webhooks.Post("/lemonsqueezy", lemonHandler.HandleWebhook)
-
 	// WebSocket route (auth via short-lived ticket from /api/v1/auth/ws-ticket)
 	app.Get("/ws", wsHandler.HandleWebSocket())
 
 	// Start server
-	logger.Log.Info("server_starting", zap.String("port", cfg.Port), zap.String("env", cfg.Env))
+	listenAddr := ":" + cfg.Port
+	if cfg.Host != "" {
+		listenAddr = net.JoinHostPort(cfg.Host, cfg.Port)
+	}
+	logger.Log.Info("server_starting", zap.String("listen_addr", listenAddr), zap.String("env", cfg.Env))
 	go func() {
-		if err := app.Listen(":" + cfg.Port); err != nil {
+		if err := app.Listen(listenAddr); err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				logger.Log.Info("server_closed")
 				return
@@ -305,6 +314,7 @@ func main() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
 	logger.Log.Info("gracefully_shutting_down")
+	watcherManager.ShutdownRunningWatchers()
 	_ = app.Shutdown()
 }
 

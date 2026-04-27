@@ -3,7 +3,10 @@ package handlers
 import (
 	"encoding/json"
 	"log"
+	"net"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -84,6 +87,18 @@ type IngestJobRequest struct {
 	WordCount int     `json:"word_count,omitempty"`
 }
 
+type SyncBrowserStateRequest struct {
+	CurrentURL          *string `json:"current_url,omitempty"`
+	CurrentTitle        *string `json:"current_title,omitempty"`
+	CurrentActionStep   *string `json:"current_action_step,omitempty"`
+	CurrentJobID        *string `json:"current_job_id,omitempty"`
+	FrontendURL         *string `json:"frontend_url,omitempty"`
+	FrontendTitle       *string `json:"frontend_title,omitempty"`
+	LoggedInState       *string `json:"logged_in_state,omitempty"`
+	BrowserProcessAlive *bool   `json:"browser_process_alive,omitempty"`
+	DevToolsConnected   *bool   `json:"devtools_connected,omitempty"`
+}
+
 func normalizeIngestJobRequest(req *IngestJobRequest) string {
 	if req == nil {
 		return "Invalid request body"
@@ -109,6 +124,135 @@ func normalizeIngestJobRequest(req *IngestJobRequest) string {
 	return ""
 }
 
+func trimMax(value string, max int) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) <= max {
+		return value
+	}
+	return string(runes[:max])
+}
+
+func validatePublicBrowserURL(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return false
+	}
+
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return false
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" ||
+		host == "localhost" ||
+		host == "::1" ||
+		strings.HasSuffix(host, ".localhost") ||
+		strings.HasSuffix(host, ".local") {
+		return false
+	}
+
+	if ip := net.ParseIP(host); ip != nil {
+		return !(ip.IsLoopback() ||
+			ip.IsPrivate() ||
+			ip.IsLinkLocalUnicast() ||
+			ip.IsLinkLocalMulticast() ||
+			ip.IsUnspecified())
+	}
+
+	return true
+}
+
+func validateFrontendURL(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return false
+	}
+	if parsed.User != nil {
+		return false
+	}
+	return parsed.Scheme == "https" || parsed.Scheme == "http"
+}
+
+func buildBrowserStateUpdates(req SyncBrowserStateRequest, now time.Time) (map[string]interface{}, string) {
+	updates := map[string]interface{}{
+		"last_activity": now.UTC(),
+	}
+
+	hasBrowserState := req.CurrentURL != nil ||
+		req.CurrentTitle != nil ||
+		req.CurrentActionStep != nil ||
+		req.CurrentJobID != nil ||
+		req.LoggedInState != nil ||
+		req.BrowserProcessAlive != nil ||
+		req.DevToolsConnected != nil
+	if hasBrowserState {
+		updates["browser_status"] = watcher.BrowserStatusDashboard
+		updates["action_status"] = watcher.ActionStatusIdle
+		updates["last_browser_heartbeat_at"] = now.UTC()
+	}
+
+	if req.CurrentURL != nil {
+		currentURL := strings.TrimSpace(*req.CurrentURL)
+		if currentURL == "" {
+			updates["current_url"] = ""
+		} else {
+			if !validatePublicBrowserURL(currentURL) {
+				return nil, "current_url must be a safe public HTTP(S) URL"
+			}
+			updates["current_url"] = currentURL
+		}
+	}
+
+	if req.CurrentTitle != nil {
+		updates["current_title"] = trimMax(*req.CurrentTitle, 512)
+	}
+	if req.CurrentActionStep != nil {
+		updates["current_action_step"] = trimMax(*req.CurrentActionStep, 120)
+	}
+	if req.CurrentJobID != nil {
+		updates["current_job_id"] = trimMax(*req.CurrentJobID, 120)
+	}
+	if req.FrontendURL != nil {
+		frontendURL := strings.TrimSpace(*req.FrontendURL)
+		if frontendURL == "" {
+			updates["frontend_url"] = ""
+		} else {
+			if !validateFrontendURL(frontendURL) {
+				return nil, "frontend_url must be an HTTP(S) URL without credentials"
+			}
+			updates["frontend_url"] = frontendURL
+		}
+		updates["frontend_last_seen_at"] = now.UTC()
+	}
+	if req.FrontendTitle != nil {
+		updates["frontend_title"] = trimMax(*req.FrontendTitle, 512)
+		if _, ok := updates["frontend_last_seen_at"]; !ok {
+			updates["frontend_last_seen_at"] = now.UTC()
+		}
+	}
+	if req.LoggedInState != nil {
+		loggedInState := trimMax(*req.LoggedInState, 32)
+		switch loggedInState {
+		case "", "unknown", "logged_in", "logged_out":
+			if loggedInState == "" {
+				loggedInState = "unknown"
+			}
+			updates["logged_in_state"] = loggedInState
+		default:
+			return nil, "logged_in_state must be unknown, logged_in, or logged_out"
+		}
+	}
+	if req.BrowserProcessAlive != nil {
+		updates["browser_process_alive"] = *req.BrowserProcessAlive
+	}
+	if req.DevToolsConnected != nil {
+		updates["dev_tools_connected"] = *req.DevToolsConnected
+	}
+
+	return updates, ""
+}
+
 // UpdateConfig updates the user's watcher configuration
 func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
 	return middleware.RequireAuth(h.updateConfigLogic)(c)
@@ -116,6 +260,22 @@ func (h *WatcherHandler) UpdateConfig(c *fiber.Ctx) error {
 
 func (h *WatcherHandler) IngestJob(c *fiber.Ctx) error {
 	return middleware.RequireAuth(h.ingestJobLogic)(c)
+}
+
+func (h *WatcherHandler) SyncBrowserState(c *fiber.Ctx) error {
+	return middleware.RequireAuth(h.syncBrowserStateLogic)(c)
+}
+
+func (h *WatcherHandler) RestartBrowser(c *fiber.Ctx) error {
+	return middleware.RequireAuth(h.restartBrowserLogic)(c)
+}
+
+func (h *WatcherHandler) CaptureBrowserScreenshot(c *fiber.Ctx) error {
+	return middleware.RequireAuth(h.captureBrowserScreenshotLogic)(c)
+}
+
+func (h *WatcherHandler) GetArtifact(c *fiber.Ctx) error {
+	return middleware.RequireAuth(h.getArtifactLogic)(c)
 }
 
 // updateConfigLogic contains the actual UpdateConfig logic after auth is verified
@@ -214,6 +374,91 @@ func (h *WatcherHandler) ingestJobLogic(c *fiber.Ctx, userUUID uuid.UUID) error 
 	})
 }
 
+func (h *WatcherHandler) syncBrowserStateLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
+	if h.manager == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Watcher manager unavailable",
+			"code":  "WATCHER_UNAVAILABLE",
+		})
+	}
+
+	var req SyncBrowserStateRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+			"code":  "INVALID_REQUEST",
+		})
+	}
+
+	updates, msg := buildBrowserStateUpdates(req, time.Now())
+	if msg != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": msg,
+			"code":  "INVALID_REQUEST",
+		})
+	}
+
+	if err := h.manager.UpdateBrowserState(c.Context(), userUUID, updates); err != nil {
+		log.Printf("Failed to sync browser state: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to sync browser state",
+			"code":  "BROWSER_STATE_SYNC_FAILED",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "synced",
+	})
+}
+
+func (h *WatcherHandler) restartBrowserLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
+	if h.manager == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Watcher manager unavailable",
+			"code":  "WATCHER_UNAVAILABLE",
+		})
+	}
+	if err := h.manager.RestartBrowser(c.Context(), userUUID); err != nil {
+		log.Printf("Failed to restart worker browser: %v", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Failed to restart worker browser",
+			"code":  "BROWSER_RESTART_FAILED",
+		})
+	}
+	return c.JSON(fiber.Map{
+		"status": "restarted",
+	})
+}
+
+func (h *WatcherHandler) captureBrowserScreenshotLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
+	if h.manager == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Watcher manager unavailable",
+			"code":  "WATCHER_UNAVAILABLE",
+		})
+	}
+	result, err := h.manager.CaptureBrowserScreenshot(c.Context(), userUUID)
+	if err != nil {
+		log.Printf("Failed to capture worker browser screenshot: %v", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Failed to capture worker browser screenshot",
+			"code":  "BROWSER_SCREENSHOT_FAILED",
+		})
+	}
+	response := fiber.Map{
+		"status": "captured",
+	}
+	if result != nil {
+		response["url"] = result.URL
+		response["title"] = result.Title
+		response["screenshot_artifact_id"] = result.ScreenshotArtifactID
+		if result.ScreenshotArtifactID != "" {
+			response["screenshot_url"] = "/api/v1/watcher/artifacts/" + result.ScreenshotArtifactID
+		}
+	}
+	return c.JSON(response)
+}
+
 // GetState returns the user's watcher state
 func (h *WatcherHandler) GetState(c *fiber.Ctx) error {
 	return middleware.RequireAuth(h.getStateLogic)(c)
@@ -243,6 +488,46 @@ func (h *WatcherHandler) getStateLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
 	state.WatcherStatus = status
 
 	return c.JSON(stateToResponse(&state))
+}
+
+// GetEvents returns the user's recent watcher runtime events.
+func (h *WatcherHandler) GetEvents(c *fiber.Ctx) error {
+	return middleware.RequireAuth(h.getEventsLogic)(c)
+}
+
+func (h *WatcherHandler) getEventsLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
+	limit := c.QueryInt("limit", 50)
+
+	events, err := h.manager.GetEvents(userUUID, limit)
+	if err != nil {
+		log.Printf("Failed to load watcher events: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to load watcher events",
+			"code":  "EVENTS_LOAD_FAILED",
+		})
+	}
+
+	response := make([]map[string]interface{}, 0, len(events))
+	for _, event := range events {
+		response = append(response, eventToResponse(&event))
+	}
+
+	return c.JSON(fiber.Map{
+		"events": response,
+	})
+}
+
+func (h *WatcherHandler) getArtifactLogic(c *fiber.Ctx, userUUID uuid.UUID) error {
+	artifactID := strings.TrimSpace(c.Params("artifactID"))
+	path, err := watcher.ArtifactPathForUser(userUUID, artifactID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid artifact id",
+			"code":  "INVALID_ARTIFACT",
+		})
+	}
+	c.Type("png")
+	return c.SendFile(path, false)
 }
 
 // StartWatcher starts the user's watcher
@@ -319,13 +604,66 @@ func configToResponse(config *models.WatcherConfig) map[string]interface{} {
 
 // stateToResponse converts WatcherState model to API response
 func stateToResponse(state *models.WatcherState) map[string]interface{} {
+	response := map[string]interface{}{
+		"worker_id":                     state.UserID.String(),
+		"user_id":                       state.UserID.String(),
+		"watcher_status":                state.WatcherStatus,
+		"overall_status":                state.OverallStatus,
+		"feed_status":                   state.FeedStatus,
+		"browser_status":                state.BrowserStatus,
+		"action_status":                 state.ActionStatus,
+		"alert_status":                  state.AlertStatus,
+		"profile_status":                state.ProfileStatus,
+		"current_job_id":                state.CurrentJobID,
+		"current_action_step":           state.CurrentActionStep,
+		"current_url":                   state.CurrentURL,
+		"current_title":                 state.CurrentTitle,
+		"frontend_url":                  state.FrontendURL,
+		"frontend_title":                state.FrontendTitle,
+		"frontend_last_seen_at":         state.FrontendLastSeenAt,
+		"logged_in_state":               state.LoggedInState,
+		"browser_process_alive":         state.BrowserProcessAlive,
+		"devtools_connected":            state.DevToolsConnected,
+		"last_rss_poll_started_at":      state.LastRSSPollStartedAt,
+		"last_rss_poll_ok_at":           state.LastRSSPollOKAt,
+		"rss_consecutive_failures":      state.RSSConsecutiveFailures,
+		"last_ws_connect_at":            state.LastWSConnectAt,
+		"last_ws_message_at":            state.LastWSMessageAt,
+		"last_ws_pong_at":               state.LastWSPongAt,
+		"last_ws_close_code":            state.LastWSCloseCode,
+		"last_ws_close_reason":          state.LastWSCloseReason,
+		"ws_reconnect_count":            state.WSReconnectCount,
+		"last_browser_heartbeat_at":     state.LastBrowserHeartbeatAt,
+		"last_error":                    state.LastError,
+		"last_critical_alert":           state.LastCriticalAlert,
+		"latest_screenshot_artifact_id": state.LatestScreenshotArtifactID,
+		"total_jobs_found":              state.TotalJobsFound,
+		"total_jobs_accepted":           state.TotalJobsAccepted,
+		"total_earnings":                state.TotalEarnings,
+		"last_activity":                 state.LastActivity,
+		"updated_at":                    state.UpdatedAt,
+	}
+	if state.LatestScreenshotArtifactID != "" {
+		response["latest_screenshot_url"] = "/api/v1/watcher/artifacts/" + state.LatestScreenshotArtifactID
+	}
+	return response
+}
+
+func eventToResponse(event *models.WatcherEvent) map[string]interface{} {
+	data := map[string]interface{}{}
+	if strings.TrimSpace(event.Data) != "" {
+		_ = json.Unmarshal([]byte(event.Data), &data)
+	}
 	return map[string]interface{}{
-		"user_id":             state.UserID.String(),
-		"watcher_status":      state.WatcherStatus,
-		"total_jobs_found":    state.TotalJobsFound,
-		"total_jobs_accepted": state.TotalJobsAccepted,
-		"total_earnings":      state.TotalEarnings,
-		"last_activity":       state.LastActivity,
-		"updated_at":          state.UpdatedAt,
+		"id":          event.ID.String(),
+		"worker_id":   event.WorkerID.String(),
+		"user_id":     event.UserID.String(),
+		"level":       event.Level,
+		"source":      event.Source,
+		"type":        event.Type,
+		"job_id":      event.JobID,
+		"message":     event.Message,
+		"data":        data,
+		"occurred_at": event.OccurredAt,
 	}
 }

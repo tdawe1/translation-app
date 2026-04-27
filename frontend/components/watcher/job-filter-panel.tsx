@@ -93,6 +93,7 @@ export function JobFilterPanel({
     if (filters.timeFilter === "today") return "new-today";
     if (filters.source === "rss") return "rss-only";
     if (filters.source === "websocket") return "websocket-only";
+    if (filters.source === "external") return "external-only";
     return null;
   };
 
@@ -219,4 +220,3 @@ export function JobFilterPanel({
     </BentoCard>
   );
 }
-

@@ -115,7 +115,7 @@ export const EventLog = React.memo<EventLogProps>(
       {!collapsed && (
         <div
           ref={scrollRef}
-          className="bg-neutral-900 text-neutral-100 font-mono text-xs p-4 max-h-[300px] overflow-y-auto terminal-scroll"
+          className="border-t border-neutral-200 bg-neutral-100 text-neutral-800 font-mono text-xs p-4 max-h-[300px] overflow-y-auto terminal-scroll"
           aria-live="polite"
           aria-atomic="false"
         >
@@ -133,7 +133,7 @@ export const EventLog = React.memo<EventLogProps>(
 
           {/* Truncated indicator */}
           {events.length > maxVisible && (
-            <div className="mt-2 pt-2 border-t border-neutral-700 text-center">
+            <div className="mt-2 pt-2 border-t border-neutral-300 text-center">
               <span className="text-neutral-500 text-xs">
                 Showing {maxVisible} of {events.length} events
               </span>

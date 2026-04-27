@@ -140,8 +140,6 @@ func (m *WebSocketMonitor) Start(ctx context.Context, jobChan chan<- Job) {
 		m.reportRuntime(map[string]interface{}{
 			"overall_status":       OverallStatusDegraded,
 			"alert_status":         AlertStatusWarning,
-			"browser_status":       BrowserStatusUnconfigured,
-			"profile_status":       ProfileStatusUnseeded,
 			"last_error":           "missing Gengo session token or user ID",
 			"last_activity":        time.Now().UTC(),
 			"last_ws_close_reason": "missing Gengo session token or user ID",
@@ -229,13 +227,8 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 			"last_error":           "",
 			"last_ws_pong_at":      now.UTC(),
 			"last_activity":        now.UTC(),
-			"browser_status":       BrowserStatusDashboard,
-			"logged_in_state":      "unknown",
 			"watcher_status":       StatusRunning,
-			"current_job_id":       "",
 			"feed_status":          FeedStatusMonitoring,
-			"profile_status":       ProfileStatusSeeded,
-			"action_status":        ActionStatusIdle,
 			"last_ws_close_reason": "",
 		})
 		return nil
@@ -252,7 +245,6 @@ func (m *WebSocketMonitor) connectAndMonitor(ctx context.Context, jobChan chan<-
 		"alert_status":         AlertStatusNone,
 		"last_error":           "",
 		"last_activity":        time.Now().UTC(),
-		"browser_status":       BrowserStatusDashboard,
 		"watcher_status":       StatusRunning,
 		"last_ws_close_reason": "",
 	})

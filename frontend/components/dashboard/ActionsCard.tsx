@@ -28,17 +28,17 @@ export function ActionsCard({
       accentColor="cyan"
       staggerIndex={4}
       testId="actions-card"
-      className="p-6"
+      className="p-3"
     >
-      <h3 className="font-mono text-xs uppercase tracking-widest text-cyan-600 mb-4">
+      <h3 className="mb-3 font-mono text-[10px] uppercase tracking-widest text-cyan-600">
         Actions
       </h3>
-      <div className="space-y-3">
+      <div className="grid gap-2">
         <button
           data-testid="start-watcher-button"
           onClick={onStartWatcher}
           disabled={isRunning || stateLoading}
-          className="w-full py-3 bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
+          className="w-full bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {stateLoading ? "Starting..." : "Start Watcher"}
         </button>
@@ -46,14 +46,14 @@ export function ActionsCard({
           data-testid="stop-watcher-button"
           onClick={onStopWatcher}
           disabled={!isRunning || stateLoading}
-          className="w-full py-3 bg-neutral-100 text-neutral-900 text-sm font-medium hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
+          className="w-full bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-900 transition-colors duration-150 hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {stateLoading ? "Stopping..." : "Stop Watcher"}
         </button>
         <button
           data-testid="configure-button"
           onClick={onConfigure}
-          className="w-full py-3 border border-neutral-300 text-sm transition-colors duration-150 hover:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex w-full items-center justify-center gap-2 border border-neutral-300 px-3 py-2 text-sm transition-colors duration-150 hover:border-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
           title="Keyboard shortcut: Ctrl+K"
         >
           Configure

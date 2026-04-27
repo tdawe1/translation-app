@@ -19,6 +19,9 @@
    ============================================================================ */
 
 :root {
+  --font-display: "IBM Plex Sans", "Aptos", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", monospace;
+
   /* Background colors */
   --color-bg-primary: #fafafa;
   --color-bg-secondary: #ffffff;

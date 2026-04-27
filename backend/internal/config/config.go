@@ -11,6 +11,7 @@ import (
 // Config holds all application configuration
 type Config struct {
 	// Server
+	Host string
 	Port string
 	Env  string // "development" or "production"
 
@@ -62,7 +63,8 @@ type Config struct {
 // It will panic if required values are missing in production
 func Load() *Config {
 	cfg := &Config{
-		Port:       getEnv("PORT", "8000"),
+		Host:       getEnv("HOST", ""),
+		Port:       getEnv("PORT", "37181"),
 		Env:        getEnv("ENV", "development"),
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnv("DB_PORT", "5432"),
@@ -77,7 +79,7 @@ func Load() *Config {
 		DBConnMaxIdleTime:         getEnvDuration("DB_CONN_MAX_IDLE_TIME", 10*time.Minute),
 		JWTSecret:                 getEnv("JWT_SECRET", ""),
 		RedisURL:                  getEnv("REDIS_URL", ""),
-		LemonSqueezyWebhookSecret: getEnv("LEMONSQUEE_WEBHOOK_SECRET", ""),
+		LemonSqueezyWebhookSecret: getEnv("LEMONSQUEEZY_WEBHOOK_SECRET", getEnv("LEMONSQUEE_WEBHOOK_SECRET", "")),
 		ResendAPIKey:              getEnv("RESEND_API_KEY", ""),
 		FromEmail:                 getEnv("FROM_EMAIL", "noreply@gengowatcher.example"),
 		FromName:                  getEnv("FROM_NAME", "GengoWatcher"),
@@ -85,9 +87,9 @@ func Load() *Config {
 		GoogleOAuthClientSecret:   getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
 		GitHubOAuthClientID:       getEnv("GITHUB_OAUTH_CLIENT_ID", ""),
 		GitHubOAuthClientSecret:   getEnv("GITHUB_OAUTH_CLIENT_SECRET", ""),
-		OAuthRedirectURL:          getEnv("OAUTH_REDIRECT_URL", "http://localhost:8000"),
-		FrontendURL:               getEnv("FRONTEND_URL", "http://localhost:3001"),
-		AllowedOrigins:            getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001"),
+		OAuthRedirectURL:          getEnv("OAUTH_REDIRECT_URL", "http://localhost:37181"),
+		FrontendURL:               getEnv("FRONTEND_URL", "http://localhost:37180"),
+		AllowedOrigins:            getEnv("ALLOWED_ORIGINS", "http://localhost:37180"),
 		TrustedProxies:            getEnv("TRUSTED_PROXIES", ""), // Empty = don't trust any proxy
 		CookieSecure:              getEnv("ENV", "development") == "production",
 		CookieDomain:              getEnv("COOKIE_DOMAIN", ""), // Empty = current host only

@@ -52,6 +52,7 @@ func TestDB(t *testing.T) *gorm.DB {
 		&models.RefreshToken{},
 		&models.WatcherConfig{},
 		&models.WatcherState{},
+		&models.WatcherEvent{},
 		&models.SubscriptionPlan{},
 		&models.Subscription{},
 		&models.BillingEvent{},
@@ -71,6 +72,7 @@ func TestDB(t *testing.T) *gorm.DB {
 	db.Exec("DELETE FROM api_keys WHERE 1=1")
 	db.Exec("DELETE FROM oauth_accounts WHERE 1=1")
 	db.Exec("DELETE FROM watcher_states WHERE 1=1")
+	db.Exec("DELETE FROM watcher_events WHERE 1=1")
 	db.Exec("DELETE FROM watcher_configs WHERE 1=1")
 	db.Exec("DELETE FROM translation_segments WHERE 1=1")
 	db.Exec("DELETE FROM translation_jobs WHERE 1=1")
@@ -85,6 +87,7 @@ func TestDB(t *testing.T) *gorm.DB {
 		db.Exec("DELETE FROM api_keys WHERE 1=1")
 		db.Exec("DELETE FROM oauth_accounts WHERE 1=1")
 		db.Exec("DELETE FROM watcher_states WHERE 1=1")
+		db.Exec("DELETE FROM watcher_events WHERE 1=1")
 		db.Exec("DELETE FROM watcher_configs WHERE 1=1")
 		db.Exec("DELETE FROM subscriptions WHERE 1=1")
 		db.Exec("DELETE FROM users WHERE 1=1")
@@ -153,6 +156,13 @@ func CreateTestUser(t *testing.T, db *gorm.DB, email string) *models.User {
 	state := &models.WatcherState{
 		UserID:           user.ID,
 		WatcherStatus:    "stopped",
+		OverallStatus:    "stopped",
+		FeedStatus:       "stopped",
+		BrowserStatus:    "unconfigured",
+		ActionStatus:     "idle",
+		AlertStatus:      "none",
+		ProfileStatus:    "unseeded",
+		LoggedInState:    "unknown",
 		TotalJobsFound:   0,
 		LastSeenJobIDs:   "[]", // JSON array required for jsonb column
 		RecentJobHistory: "[]", // JSON array required for jsonb column
@@ -242,6 +252,7 @@ func RequireDB(t *testing.T) *gorm.DB {
 		&models.RefreshToken{},
 		&models.WatcherConfig{},
 		&models.WatcherState{},
+		&models.WatcherEvent{},
 		&models.SubscriptionPlan{},
 		&models.Subscription{},
 		&models.BillingEvent{},
@@ -263,6 +274,7 @@ func RequireDB(t *testing.T) *gorm.DB {
 	db.Exec("DELETE FROM api_keys WHERE 1=1")
 	db.Exec("DELETE FROM oauth_accounts WHERE 1=1")
 	db.Exec("DELETE FROM watcher_states WHERE 1=1")
+	db.Exec("DELETE FROM watcher_events WHERE 1=1")
 	db.Exec("DELETE FROM watcher_configs WHERE 1=1")
 	db.Exec("DELETE FROM translation_segments WHERE 1=1")
 	db.Exec("DELETE FROM translation_jobs WHERE 1=1")
@@ -276,6 +288,7 @@ func RequireDB(t *testing.T) *gorm.DB {
 		db.Exec("DELETE FROM api_keys WHERE 1=1")
 		db.Exec("DELETE FROM oauth_accounts WHERE 1=1")
 		db.Exec("DELETE FROM watcher_states WHERE 1=1")
+		db.Exec("DELETE FROM watcher_events WHERE 1=1")
 		db.Exec("DELETE FROM watcher_configs WHERE 1=1")
 		db.Exec("DELETE FROM subscriptions WHERE 1=1")
 		db.Exec("DELETE FROM users WHERE 1=1")

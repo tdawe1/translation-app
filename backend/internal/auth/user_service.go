@@ -1,6 +1,12 @@
 package auth
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"time"
+
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
@@ -11,8 +17,8 @@ import (
 
 // UserService handles user business logic
 type UserService struct {
-	db          database.Database
-	tokenSvc    *TokenService
+	db       database.Database
+	tokenSvc *TokenService
 }
 
 // NewUserService creates a new user service
@@ -37,18 +43,24 @@ type LoginRequest struct {
 
 // AuthResult represents a successful authentication
 type AuthResult struct {
-	AccessToken string     `json:"access_token"`
+	AccessToken string       `json:"access_token"`
 	User        *models.User `json:"user"`
+}
+
+// RefreshResult represents a successful refresh-token rotation.
+type RefreshResult struct {
+	RefreshToken string
+	User         *models.User
 }
 
 // Minimum password length
 const minPasswordLength = 8
 
 var (
-	ErrUserExists    = apperrors.New(apperrors.ErrUserExists, "User with this email already exists")
+	ErrUserExists         = apperrors.New(apperrors.ErrUserExists, "User with this email already exists")
 	ErrInvalidCredentials = apperrors.New(apperrors.ErrInvalidCredentials, "Invalid email or password")
-	ErrInactiveUser = apperrors.New(apperrors.ErrInactiveUser, "User account is inactive")
-	ErrWeakPassword = apperrors.New(apperrors.ErrWeakPassword, "Password must be at least 8 characters")
+	ErrInactiveUser       = apperrors.New(apperrors.ErrInactiveUser, "User account is inactive")
+	ErrWeakPassword       = apperrors.New(apperrors.ErrWeakPassword, "Password must be at least 8 characters")
 )
 
 // Register creates a new user account with default watcher config and state
@@ -179,6 +191,113 @@ func (s *UserService) Login(req LoginRequest) (*AuthResult, error) {
 	}, nil
 }
 
+// CreateRefreshToken creates a persisted refresh token and returns the raw token
+// value that should be sent only as an httpOnly cookie.
+func (s *UserService) CreateRefreshToken(userID uuid.UUID, ttl time.Duration) (string, error) {
+	rawToken, tokenHash, err := newRefreshToken()
+	if err != nil {
+		return "", apperrors.New(apperrors.ErrTokenError, "Failed to generate refresh token")
+	}
+
+	refreshToken := models.RefreshToken{
+		UserID:    userID,
+		Token:     tokenHash,
+		ExpiresAt: time.Now().UTC().Add(ttl),
+	}
+	if err := s.db.Create(&refreshToken).Error; err != nil {
+		return "", apperrors.New(apperrors.ErrTokenError, "Failed to persist refresh token")
+	}
+
+	return rawToken, nil
+}
+
+// RotateRefreshToken validates and revokes a refresh token, then issues a new one.
+func (s *UserService) RotateRefreshToken(rawToken string, ttl time.Duration) (*RefreshResult, error) {
+	if rawToken == "" {
+		return nil, ErrInvalidCredentials
+	}
+
+	now := time.Now().UTC()
+	tokenHash := hashRefreshToken(rawToken)
+
+	tx := s.db.Begin()
+	if tx.Error != nil {
+		return nil, apperrors.New(apperrors.ErrDatabase, "Database error")
+	}
+
+	var existing models.RefreshToken
+	if err := tx.Where("token = ? AND revoked_at IS NULL AND expires_at > ?", tokenHash, now).First(&existing).Error; err != nil {
+		tx.Rollback()
+		return nil, ErrInvalidCredentials
+	}
+
+	var user models.User
+	if err := tx.First(&user, "id = ?", existing.UserID).Error; err != nil {
+		tx.Rollback()
+		return nil, apperrors.New(apperrors.ErrUserNotFound, "User not found")
+	}
+	if !user.IsActive {
+		tx.Rollback()
+		return nil, ErrInactiveUser
+	}
+
+	revokedAt := now
+	if err := tx.Model(&existing).Update("revoked_at", &revokedAt).Error; err != nil {
+		tx.Rollback()
+		return nil, apperrors.New(apperrors.ErrTokenError, "Failed to revoke refresh token")
+	}
+
+	newRawToken, newTokenHash, err := newRefreshToken()
+	if err != nil {
+		tx.Rollback()
+		return nil, apperrors.New(apperrors.ErrTokenError, "Failed to generate refresh token")
+	}
+
+	nextRefreshToken := models.RefreshToken{
+		UserID:    user.ID,
+		Token:     newTokenHash,
+		ExpiresAt: now.Add(ttl),
+	}
+	if err := tx.Create(&nextRefreshToken).Error; err != nil {
+		tx.Rollback()
+		return nil, apperrors.New(apperrors.ErrTokenError, "Failed to persist refresh token")
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return nil, apperrors.New(apperrors.ErrCommitError, "Failed to commit transaction")
+	}
+
+	return &RefreshResult{
+		RefreshToken: newRawToken,
+		User:         &user,
+	}, nil
+}
+
+// RevokeRefreshToken revokes a refresh token if it exists.
+func (s *UserService) RevokeRefreshToken(rawToken string) error {
+	if rawToken == "" {
+		return nil
+	}
+	revokedAt := time.Now().UTC()
+	return s.db.Model(&models.RefreshToken{}).
+		Where("token = ? AND revoked_at IS NULL", hashRefreshToken(rawToken)).
+		Update("revoked_at", &revokedAt).Error
+}
+
+func newRefreshToken() (string, string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", "", err
+	}
+	rawToken := base64.RawURLEncoding.EncodeToString(bytes)
+	return rawToken, hashRefreshToken(rawToken), nil
+}
+
+func hashRefreshToken(rawToken string) string {
+	sum := sha256.Sum256([]byte(rawToken))
+	return hex.EncodeToString(sum[:])
+}
+
 // GetUserByID retrieves a user by ID
 func (s *UserService) GetUserByID(userID uuid.UUID) (*models.User, error) {
 	var user models.User
@@ -293,11 +412,11 @@ func (s *UserService) FindOrCreateByOAuth(provider, providerID, email string, in
 
 	// Create new user from OAuth
 	user := models.User{
-		Email:        email,
+		Email:         email,
 		EmailVerified: true, // OAuth providers verify emails
-		IsActive:     true,
-		Provider:     provider,
-		ProviderID:   providerID,
+		IsActive:      true,
+		Provider:      provider,
+		ProviderID:    providerID,
 	}
 
 	tx := s.db.Begin()

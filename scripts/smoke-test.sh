@@ -12,11 +12,11 @@ NC='\033[0m' # No Color
 
 # Service configuration
 POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
-POSTGRES_PORT="${POSTGRES_PORT:-5432}"
+POSTGRES_PORT="${POSTGRES_PORT:-5433}"
 REDIS_HOST="${REDIS_HOST:-localhost}"
-REDIS_PORT="${REDIS_PORT:-6379}"
-BACKEND_URL="${BACKEND_URL:-http://localhost:8000}"
-FRONTEND_URL="${FRONTEND_URL:-http://localhost:3001}"
+REDIS_PORT="${REDIS_PORT:-6380}"
+BACKEND_URL="${BACKEND_URL:-http://localhost:37181}"
+FRONTEND_URL="${FRONTEND_URL:-http://localhost:37180}"
 
 echo "🔍 Checking service health..."
 

@@ -17,7 +17,7 @@ import { DESIGN } from "@/lib/design/tokens";
 import { cn } from "@/lib/utils";
 import { filterJobs } from "./utils/filters";
 import type { FilterSource, JobFilters, SortBy } from "./utils/types";
-import { formatTimeAgo, getRewardColor, getSourceBadge } from "./utils/formatters";
+import { formatSourceLabel, formatTimeAgo, getRewardColor, getSourceBadge } from "./utils/formatters";
 
 // ============================================================================
 // TYPES
@@ -60,11 +60,13 @@ export function JobList({ onAcceptJob, isAccepting = false }: JobListProps) {
     const totalReward = jobs.reduce((sum, job) => sum + job.reward, 0);
     const rssCount = jobs.filter((j) => j.source === "rss").length;
     const wsCount = jobs.filter((j) => j.source === "websocket").length;
+    const externalCount = jobs.filter((j) => j.source === "external").length;
     const avgReward = jobs.length > 0 ? totalReward / jobs.length : 0;
     return {
       totalReward,
       rssCount,
       wsCount,
+      externalCount,
       avgReward,
       count: jobs.length,
     };
@@ -136,9 +138,9 @@ export function JobList({ onAcceptJob, isAccepting = false }: JobListProps) {
             className="p-4"
             hoverDisabled
           >
-            <p className="text-xs text-neutral-500 mb-1">RSS / WS</p>
+            <p className="text-xs text-neutral-500 mb-1">RSS / WS / EXT</p>
             <p className="text-2xl font-light text-cyan-600">
-              {stats.rssCount} / {stats.wsCount}
+              {stats.rssCount} / {stats.wsCount} / {stats.externalCount}
             </p>
           </BentoCard>
         </div>
@@ -177,6 +179,7 @@ export function JobList({ onAcceptJob, isAccepting = false }: JobListProps) {
               <option value="all">All Sources</option>
               <option value="rss">RSS Only</option>
               <option value="websocket">WebSocket Only</option>
+              <option value="external">External Bridge Only</option>
             </select>
 
             {/* Sort By */}
@@ -323,7 +326,7 @@ const JobListItem = React.memo(function JobListItem({
           getSourceBadge(job.source)
         )}
       >
-        {job.source === "rss" ? "RSS" : "WS"}
+        {formatSourceLabel(job.source)}
       </span>
 
       {/* Job Title - Truncated */}

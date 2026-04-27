@@ -2,11 +2,12 @@ services:
   postgres:
     image: postgres:17-alpine
     container_name: gengowatcher-postgres
-    network_mode: host
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     environment:
       POSTGRES_DB: gengowatcher
       POSTGRES_USER: gengo
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpass}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-devpass}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,8 +28,9 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: gengowatcher-redis
-    network_mode: host
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-devpass}
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6380}:6379"
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     healthcheck:
@@ -48,7 +50,9 @@ services:
 
   mailhog:
     image: mailhog/mailhog:latest
-    network_mode: host
+    ports:
+      - "127.0.0.1:${MAILHOG_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILHOG_UI_PORT:-8025}:8025"
     # P0-3 FIX: Add resource limits to prevent host DoS
     deploy:
       resources:
@@ -69,7 +73,7 @@ services:
     container_name: gengowatcher-translation-worker
     network_mode: host
     environment:
-      REDIS_URL: redis://:${REDIS_PASSWORD:-devpass}@localhost:6379/0
+      REDIS_URL: redis://redis:6379/0
       WATCH_INCOMING_DIR: /watch/incoming
       WATCH_PROCESSING_DIR: /watch/processing
       WATCH_TRANSLATED_DIR: /watch/translated

@@ -374,4 +374,50 @@ describe('HttpClient Request Deduplication', () => {
       await promise;
     });
   });
+
+  describe('session refresh', () => {
+    beforeEach(() => {
+      delete process.env.NEXT_PUBLIC_ENABLE_REQUEST_DEDUP;
+      client = new HttpClient('http://test.local');
+      mockFetch.mockReset();
+    });
+
+    it('refreshes the session and retries once after a 401', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: async () => ({ error: 'Invalid or expired token', code: 'INVALID_TOKEN' }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'new-token' }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: 'after-refresh' }),
+        } as Response);
+
+      await expect(client.get('/api/protected')).resolves.toEqual({ data: 'after-refresh' });
+
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(mockFetch.mock.calls[0][0]).toBe('http://test.local/api/protected');
+      expect(mockFetch.mock.calls[1][0]).toBe('http://test.local/api/v1/auth/refresh');
+      expect(mockFetch.mock.calls[2][0]).toBe('http://test.local/api/protected');
+    });
+
+    it('does not refresh auth endpoints', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS' }),
+      } as Response);
+
+      await expect(client.post('/api/v1/auth/login', {})).rejects.toMatchObject({
+        code: 'INVALID_CREDENTIALS',
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
 });

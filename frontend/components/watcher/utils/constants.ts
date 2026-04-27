@@ -61,4 +61,14 @@ export const QUICK_FILTERS: QuickFilterPreset[] = [
       source: "websocket",
     }),
   },
+  {
+    id: "external-only",
+    label: "External",
+    description: "External bridge source only",
+    accentColor: "violet",
+    apply: (current) => ({
+      ...current,
+      source: "external",
+    }),
+  },
 ];

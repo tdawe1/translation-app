@@ -134,47 +134,28 @@ func EmailLimiters(trustedProxies []string) struct {
 	SendPasswordReset fiber.Handler
 } {
 	// 3 emails per hour per IP address
-	sendVerificationLimiter := limiter.New(limiter.Config{
-		Max:        3,
-		Expiration: 1 * time.Hour,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			return "verify:" + getClientIP(c, trustedProxies)
-		},
-		LimitReached: func(c *fiber.Ctx) error {
-			return c.Status(429).JSON(fiber.Map{
-				"error": "Too many verification emails requested. Please try again later.",
-				"code":  "RATE_LIMITED",
-			})
-		},
-	})
-
-	sendMagicLinkLimiter := limiter.New(limiter.Config{
-		Max:        3,
-		Expiration: 1 * time.Hour,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			return "magic:" + getClientIP(c, trustedProxies)
-		},
-		LimitReached: func(c *fiber.Ctx) error {
-			return c.Status(429).JSON(fiber.Map{
-				"error": "Too many magic link requests. Please try again later.",
-				"code":  "RATE_LIMITED",
-			})
-		},
-	})
-
-	sendPasswordResetLimiter := limiter.New(limiter.Config{
-		Max:        3,
-		Expiration: 1 * time.Hour,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			return "reset:" + getClientIP(c, trustedProxies)
-		},
-		LimitReached: func(c *fiber.Ctx) error {
-			return c.Status(429).JSON(fiber.Map{
-				"error": "Too many password reset requests. Please try again later.",
-				"code":  "RATE_LIMITED",
-			})
-		},
-	})
+	const emailMessage = "Too many email requests. Please try again later."
+	sendVerificationLimiter := newIPRateLimiter(
+		trustedProxies,
+		3,
+		1*time.Hour,
+		"verify:",
+		emailMessage,
+	)
+	sendMagicLinkLimiter := newIPRateLimiter(
+		trustedProxies,
+		3,
+		1*time.Hour,
+		"magic:",
+		emailMessage,
+	)
+	sendPasswordResetLimiter := newIPRateLimiter(
+		trustedProxies,
+		3,
+		1*time.Hour,
+		"reset:",
+		emailMessage,
+	)
 
 	return struct {
 		SendVerification  fiber.Handler

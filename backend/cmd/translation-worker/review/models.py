@@ -9,9 +9,25 @@ Defines the core data structures used throughout the review system:
 - TranslationCandidate: Multi-model translation output
 """
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, List, Dict, Any, Literal
+
+
+class PathValidationError(ValueError):
+    """Raised when a file path violates security constraints.
+
+    Attributes:
+        path: The invalid path that was rejected
+        reason: Why the path was rejected (e.g., "outside_allowed_directories")
+    """
+
+    def __init__(self, path: str, reason: str):
+        self.path = path
+        self.reason = reason
+        super().__init__(f"Path validation failed for {path!r}: {reason}")
 
 
 @dataclass

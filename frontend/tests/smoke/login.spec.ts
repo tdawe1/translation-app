@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { shouldFilterConsoleError } from './helpers';
 
+const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:37181';
+
 // Helper to generate unique test user credentials
 function generateTestUser() {
   const timestamp = Date.now();
@@ -13,7 +15,7 @@ function generateTestUser() {
 
 // Helper to create a user via the registration API
 async function createTestUser(email: string, password: string) {
-  const response = await fetch('http://localhost:8000/api/v1/auth/register', {
+  const response = await fetch(`${BACKEND_URL}/api/v1/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),

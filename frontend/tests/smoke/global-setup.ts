@@ -9,8 +9,8 @@ import { FullConfig } from '@playwright/test';
  */
 export default async function globalSetup(config: FullConfig): Promise<void> {
   const services = {
-    backend: 'http://localhost:8000',
-    frontend: 'http://localhost:3001',
+    backend: process.env.BACKEND_URL ?? 'http://localhost:37181',
+    frontend: process.env.FRONTEND_URL ?? 'http://localhost:37180',
   };
 
   const errors: string[] = [];

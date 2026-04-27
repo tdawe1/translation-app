@@ -5,7 +5,12 @@
 # Note: _lib.sh is sourced by dev.sh before loading this file
 
 # Backend configuration
-BACKEND_PORT=8000
+APP_BIND_HOST="${APP_BIND_HOST:-127.0.0.1}"
+APP_PUBLIC_HOST="${APP_PUBLIC_HOST:-$APP_BIND_HOST}"
+BACKEND_HOST="${BACKEND_HOST:-$APP_BIND_HOST}"
+BACKEND_PORT="${BACKEND_PORT:-37181}"
+BACKEND_PUBLIC_HOST="${BACKEND_PUBLIC_HOST:-$APP_PUBLIC_HOST}"
+BACKEND_PUBLIC_URL="${BACKEND_PUBLIC_URL:-http://$BACKEND_PUBLIC_HOST:$BACKEND_PORT}"
 BACKEND_PID_FILE="$(get_pid_dir)/backend.pid"
 BACKEND_LOG_FILE="$(get_log_dir)/backend.log"
 
@@ -64,7 +69,9 @@ backend_start() {
 
     # Construct the start command for display
     # Source .env from project root (not backend directory)
-    local start_cmd="set -a && source $project_root/.env && set +a && ./server"
+    local frontend_url="${FRONTEND_PUBLIC_URL:-http://${APP_PUBLIC_HOST:-127.0.0.1}:${FRONTEND_PORT:-37180}}"
+    local allowed_origins="${BACKEND_ALLOWED_ORIGINS:-$frontend_url}"
+    local start_cmd="set -a && source \"$project_root/.env\" && set +a && HOST=\"$BACKEND_HOST\" PORT=\"$BACKEND_PORT\" FRONTEND_URL=\"$frontend_url\" OAUTH_REDIRECT_URL=\"$BACKEND_PUBLIC_URL\" ALLOWED_ORIGINS=\"$allowed_origins\" ./server"
     log_command "$start_cmd"
 
     # Start server in background with logging
@@ -93,11 +100,11 @@ backend_start() {
         return 1
     fi
 
-    log_verbose "Process is running, waiting for port $BACKEND_PORT to be ready..."
+    log_verbose "Process is running, waiting for $BACKEND_HOST:$BACKEND_PORT to be ready..."
 
     # Wait for the port to be ready
-    if ! wait_for_port "$BACKEND_PORT" 30; then
-        log_error "Backend did not start listening on port $BACKEND_PORT"
+    if ! wait_for_port "$BACKEND_PORT" 30 "$BACKEND_HOST"; then
+        log_error "Backend did not start listening on $BACKEND_HOST:$BACKEND_PORT"
         log_error "Check log for errors: $BACKEND_LOG_FILE"
         kill_pid "$BACKEND_PID_FILE"
         return 1
@@ -105,9 +112,10 @@ backend_start() {
 
     log_success "Backend started"
     echo -e "  ${C_DIM}PID:${C_RESET}       $backend_pid"
+    echo -e "  ${C_DIM}Host:${C_RESET}      $BACKEND_HOST"
     echo -e "  ${C_DIM}Port:${C_RESET}      $BACKEND_PORT"
     echo -e "  ${C_DIM}Log:${C_RESET}       $BACKEND_LOG_FILE"
-    echo -e "  ${C_DIM}Health:${C_RESET}    http://localhost:$BACKEND_PORT/health"
+    echo -e "  ${C_DIM}Health:${C_RESET}    $BACKEND_PUBLIC_URL/health"
 
     return 0
 }
@@ -169,7 +177,9 @@ backend_status() {
         local pid
         pid=$(cat "$BACKEND_PID_FILE")
         echo -e "${C_GREEN}●${C_RESET} Running (PID: $pid)"
+        echo "  Host: $BACKEND_HOST"
         echo "  Port: $BACKEND_PORT"
+        echo "  URL: $BACKEND_PUBLIC_URL"
         echo "  Log: $BACKEND_LOG_FILE"
 
         # Show memory usage if ps is available

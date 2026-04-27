@@ -72,6 +72,15 @@ Examples:
 
 Environment Variables:
   VERBOSE=1              Enable verbose mode (alternative to --verbose flag)
+  APP_BIND_HOST=...      Host/IP to bind backend and frontend to
+  APP_PUBLIC_HOST=...    Host/IP remote browsers should use
+  BACKEND_PORT=37181     Backend/API/WebSocket port
+  FRONTEND_PORT=37180    Frontend port
+  POSTGRES_PORT=5433     Local PostgreSQL dependency port
+  REDIS_PORT=6380        Local Redis dependency port
+
+WireGuard example:
+  APP_BIND_HOST=10.73.0.2 APP_PUBLIC_HOST=10.73.0.2 ./dev.sh up
 
 EOF
 }
@@ -118,11 +127,11 @@ cmd_up() {
 	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	echo ""
 	echo "  Services:"
-	echo "    • PostgreSQL:  localhost:5432"
-	echo "    • Redis:      localhost:6379"
-	echo "    • MailHog:    http://localhost:8025"
-	echo "    • Backend:    http://localhost:8000"
-	echo "    • Frontend:   http://localhost:3001"
+	echo "    • PostgreSQL:  localhost:${POSTGRES_PORT:-5433}"
+	echo "    • Redis:      localhost:${REDIS_PORT:-6380}"
+	echo "    • MailHog:    http://localhost:${MAILHOG_UI_PORT:-8025}"
+	echo "    • Backend:    $BACKEND_PUBLIC_URL"
+	echo "    • Frontend:   $FRONTEND_PUBLIC_URL"
 	echo ""
 	echo "  Commands:"
 	echo "    ./dev.sh logs              # View all logs"
@@ -136,7 +145,7 @@ cmd_down() {
 	log_step "Stopping development environment..."
 	echo ""
 
-	# First sweep: Kill orphaned non-Docker processes (e.g., MCP Redis on 6379)
+	# First sweep: Kill orphaned non-Docker processes on this app's managed ports.
 	cleanup_ports
 	echo ""
 

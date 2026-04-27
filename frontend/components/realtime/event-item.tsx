@@ -13,29 +13,77 @@ interface EventItemProps {
 }
 
 // Event type badge styling
-const EVENT_BADGE_STYLES: Record<EventType, string> = {
-  "watcher.started": "bg-green-900 text-green-300 border-green-700",
-  "watcher.stopped": "bg-red-900 text-red-300 border-red-700",
-  "job.detected": "bg-cyan-900 text-cyan-300 border-cyan-700",
-  "job.accepted": "bg-green-900 text-green-300 border-green-700",
-  "job.filtered": "bg-yellow-900 text-yellow-300 border-yellow-700",
-  "job.rejected": "bg-orange-900 text-orange-300 border-orange-700",
-  "rss.fetched": "bg-blue-900 text-blue-300 border-blue-700",
-  "websocket.connected": "bg-indigo-900 text-indigo-300 border-indigo-700",
-  "websocket.disconnected": "bg-violet-900 text-violet-300 border-violet-700",
-  "error": "bg-red-900 text-red-300 border-red-700",
+const EVENT_BADGE_STYLES: Partial<Record<EventType, string>> = {
+  "worker.started": "bg-green-50 text-green-700 border-green-300",
+  "worker.stopped": "bg-red-50 text-red-700 border-red-300",
+  "worker.ready": "bg-green-50 text-green-700 border-green-300",
+  "worker.blocked": "bg-red-50 text-red-700 border-red-300",
+  "worker.restore_started": "bg-blue-50 text-blue-700 border-blue-300",
+  "worker.restore_succeeded": "bg-green-50 text-green-700 border-green-300",
+  "worker.restore_failed": "bg-red-50 text-red-700 border-red-300",
+  "worker.shutdown_persisted": "bg-yellow-50 text-yellow-700 border-yellow-300",
+  "browser.unconfigured": "bg-yellow-50 text-yellow-700 border-yellow-300",
+  "browser.dashboard_mode": "bg-cyan-50 text-cyan-700 border-cyan-300",
+  "browser.started": "bg-blue-50 text-blue-700 border-blue-300",
+  "browser.ready": "bg-green-50 text-green-700 border-green-300",
+  "browser.start_failed": "bg-red-50 text-red-700 border-red-300",
+  "browser.job_open_started": "bg-blue-50 text-blue-700 border-blue-300",
+  "browser.job_open_succeeded": "bg-green-50 text-green-700 border-green-300",
+  "browser.screenshot_captured": "bg-violet-50 text-violet-700 border-violet-300",
+  "browser.captcha_detected": "bg-red-50 text-red-700 border-red-300",
+  "browser.suspicious_login_detected": "bg-red-50 text-red-700 border-red-300",
+  "action.accept_started": "bg-blue-50 text-blue-700 border-blue-300",
+  "action.accept_succeeded": "bg-green-50 text-green-700 border-green-300",
+  "action.accept_failed": "bg-red-50 text-red-700 border-red-300",
+  "job.detected": "bg-cyan-50 text-cyan-700 border-cyan-300",
+  "job.matched": "bg-green-50 text-green-700 border-green-300",
+  "job.accepted": "bg-green-50 text-green-700 border-green-300",
+  "job.filtered": "bg-yellow-50 text-yellow-700 border-yellow-300",
+  "job.rejected": "bg-orange-50 text-orange-700 border-orange-300",
+  "rss.fetched": "bg-blue-50 text-blue-700 border-blue-300",
+  "rss.poll_started": "bg-blue-50 text-blue-700 border-blue-300",
+  "rss.poll_ok": "bg-green-50 text-green-700 border-green-300",
+  "websocket.connected": "bg-indigo-50 text-indigo-700 border-indigo-300",
+  "websocket.message": "bg-cyan-50 text-cyan-700 border-cyan-300",
+  "websocket.pong": "bg-green-50 text-green-700 border-green-300",
+  "websocket.disconnected": "bg-violet-50 text-violet-700 border-violet-300",
+  "error": "bg-red-50 text-red-700 border-red-300",
 };
 
 // Short event type labels for badges
-const EVENT_LABELS: Record<EventType, string> = {
-  "watcher.started": "STARTED",
-  "watcher.stopped": "STOPPED",
+const EVENT_LABELS: Partial<Record<EventType, string>> = {
+  "worker.started": "STARTED",
+  "worker.stopped": "STOPPED",
+  "worker.ready": "READY",
+  "worker.blocked": "BLOCKED",
+  "worker.restore_started": "RESTORE",
+  "worker.restore_succeeded": "RESTORED",
+  "worker.restore_failed": "RFAIL",
+  "worker.shutdown_persisted": "SAVE",
+  "browser.unconfigured": "BROWSER",
+  "browser.dashboard_mode": "DASH",
+  "browser.started": "BROWSER+",
+  "browser.ready": "BREADY",
+  "browser.start_failed": "BFAIL",
+  "browser.job_open_started": "OPENING",
+  "browser.job_open_succeeded": "OPENED",
+  "browser.screenshot_captured": "SHOT",
+  "browser.captcha_detected": "CAPTCHA",
+  "browser.suspicious_login_detected": "LOGIN",
+  "action.accept_started": "ACCEPT",
+  "action.accept_succeeded": "ACCEPTED",
+  "action.accept_failed": "AFAIL",
   "job.detected": "DETECTED",
+  "job.matched": "MATCHED",
   "job.accepted": "ACCEPTED",
   "job.filtered": "FILTERED",
   "job.rejected": "REJECTED",
   "rss.fetched": "RSS",
+  "rss.poll_started": "RSS+",
+  "rss.poll_ok": "RSSOK",
   "websocket.connected": "WS+",
+  "websocket.message": "WSS",
+  "websocket.pong": "PONG",
   "websocket.disconnected": "WS-",
   "error": "ERROR",
 };
@@ -52,11 +100,15 @@ const formatTimestamp = (isoString: string): string => {
 };
 
 export const EventItem = React.memo<EventItemProps>(({ event, showTimestamp = true }) => {
-  const badgeClass = EVENT_BADGE_STYLES[event.type] || "bg-neutral-800 text-neutral-300 border-neutral-600";
+  const badgeClass =
+    EVENT_BADGE_STYLES[event.type] ||
+    (event.level === "critical"
+      ? "bg-red-50 text-red-700 border-red-300"
+      : "bg-white text-neutral-700 border-neutral-300");
   const badgeLabel = EVENT_LABELS[event.type] || event.type.toUpperCase();
 
   return (
-    <div className="flex items-start gap-3 py-1 hover:bg-neutral-800/50 rounded px-2 transition-colors group">
+    <div className="flex items-start gap-3 py-1 hover:bg-white rounded px-2 transition-colors group">
       {/* Timestamp */}
       {showTimestamp && (
         <span className="text-neutral-500 font-mono text-xs flex-shrink-0" aria-hidden="true">
@@ -73,13 +125,13 @@ export const EventItem = React.memo<EventItemProps>(({ event, showTimestamp = tr
       </span>
 
       {/* Message */}
-      <span className="text-neutral-100 text-xs flex-1 truncate" title={event.message}>
+      <span className="text-neutral-800 text-xs flex-1 truncate" title={event.message}>
         {event.message}
       </span>
 
       {/* Data hint on hover */}
       {event.data && (
-        <span className="text-neutral-600 text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" aria-hidden="true">
+        <span className="text-neutral-400 text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" aria-hidden="true">
           {"{ }"}
         </span>
       )}

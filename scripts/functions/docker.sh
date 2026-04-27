@@ -41,13 +41,9 @@ docker_up() {
 		return 1
 	fi
 
-	if [ ! -f "backend/docker-compose.test.yml" ]; then
-		log_error "backend/docker-compose.test.yml not found in: $project_root"
-		return 1
-	fi
-	log_verbose "Found docker-compose.yml and backend/docker-compose.test.yml"
+	log_verbose "Found docker-compose.yml"
 
-	local compose_files=(-f docker-compose.yml -f backend/docker-compose.test.yml)
+	local compose_files=(-f docker-compose.yml)
 
 	# Start services
 	local start_cmd="$compose_cmd ${compose_files[*]} up -d"
@@ -71,7 +67,7 @@ docker_up() {
 	log_info "Waiting for services to become healthy..."
 
 	# Wait for PostgreSQL (max 30 seconds)
-	log_info "Waiting for PostgreSQL (port 5432)..."
+	log_info "Waiting for PostgreSQL (port ${POSTGRES_PORT:-5433})..."
 	local count=0
 	while [ $count -lt 30 ]; do
 		if $compose_cmd ps -q postgres 2>/dev/null | xargs -r docker inspect --format='{{.State.Health.Status}}' 2>/dev/null | grep -q "healthy"; then
@@ -92,7 +88,7 @@ docker_up() {
 	fi
 
 	# Wait for Redis (max 15 seconds)
-	log_info "Waiting for Redis (port 6379)..."
+	log_info "Waiting for Redis (port ${REDIS_PORT:-6380})..."
 	count=0
 	while [ $count -lt 15 ]; do
 		if $compose_cmd ps -q redis 2>/dev/null | xargs -r docker inspect --format='{{.State.Status}}' 2>/dev/null | grep -q "running"; then
@@ -114,9 +110,9 @@ docker_up() {
 
 	# Show service URLs
 	log_success "Docker services started"
-	echo -e "  ${C_DIM}PostgreSQL:${C_RESET} localhost:5432"
-	echo -e "  ${C_DIM}Redis:${C_RESET}      localhost:6379"
-	echo -e "  ${C_DIM}MailHog UI:${C_RESET} http://localhost:8025"
+	echo -e "  ${C_DIM}PostgreSQL:${C_RESET} localhost:${POSTGRES_PORT:-5433}"
+	echo -e "  ${C_DIM}Redis:${C_RESET}      localhost:${REDIS_PORT:-6380}"
+	echo -e "  ${C_DIM}MailHog UI:${C_RESET} http://localhost:${MAILHOG_UI_PORT:-8025}"
 
 	return 0
 }
@@ -146,7 +142,7 @@ docker_down() {
 		log_verbose "Found $running_services running service(s)"
 	fi
 
-	local compose_files=(-f docker-compose.yml -f backend/docker-compose.test.yml)
+	local compose_files=(-f docker-compose.yml)
 	local stop_cmd="$compose_cmd ${compose_files[*]} down"
 	log_command "$stop_cmd"
 
@@ -213,9 +209,9 @@ docker_status() {
 		# Show service URLs
 		echo ""
 		echo -e "${C_DIM}Service URLs:${C_RESET}"
-		echo "  PostgreSQL:  localhost:5432"
-		echo "  Redis:       localhost:6379"
-		echo "  MailHog UI:  http://localhost:8025"
+		echo "  PostgreSQL:  localhost:${POSTGRES_PORT:-5433}"
+		echo "  Redis:       localhost:${REDIS_PORT:-6380}"
+		echo "  MailHog UI:  http://localhost:${MAILHOG_UI_PORT:-8025}"
 
 		# Show helpful commands
 		echo ""

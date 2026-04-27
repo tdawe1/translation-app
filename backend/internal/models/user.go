@@ -110,16 +110,45 @@ type WatcherConfig struct {
 
 // WatcherState represents per-user watcher runtime state
 type WatcherState struct {
-	UserID            uuid.UUID `gorm:"type:uuid;not null;uniqueIndex" json:"user_id"`
-	LastSeenJobIDs    string    `gorm:"type:jsonb" json:"last_seen_job_ids"` // JSON array
-	LastSeenRSSLink   string    `gorm:"type:text" json:"last_seen_rss_link,omitempty"`
-	TotalJobsFound    int       `gorm:"default:0" json:"total_jobs_found"`
-	TotalJobsAccepted int       `gorm:"default:0" json:"total_jobs_accepted"`
-	TotalEarnings     float64   `gorm:"default:0" json:"total_earnings"`
-	WatcherStatus     string    `gorm:"size:20;default:'stopped'" json:"watcher_status"`
-	LastActivity      time.Time `gorm:"default:now()" json:"last_activity"`
-	RecentJobHistory  string    `gorm:"type:jsonb" json:"recent_job_history"` // JSON array
-	UpdatedAt         time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	UserID                     uuid.UUID  `gorm:"type:uuid;primaryKey" json:"user_id"`
+	LastSeenJobIDs             string     `gorm:"type:jsonb" json:"last_seen_job_ids"` // JSON array
+	LastSeenRSSLink            string     `gorm:"type:text" json:"last_seen_rss_link,omitempty"`
+	TotalJobsFound             int        `gorm:"default:0" json:"total_jobs_found"`
+	TotalJobsAccepted          int        `gorm:"default:0" json:"total_jobs_accepted"`
+	TotalEarnings              float64    `gorm:"default:0" json:"total_earnings"`
+	WatcherStatus              string     `gorm:"size:20;default:'stopped'" json:"watcher_status"`
+	OverallStatus              string     `gorm:"size:32;default:'stopped'" json:"overall_status"`
+	FeedStatus                 string     `gorm:"size:32;default:'stopped'" json:"feed_status"`
+	BrowserStatus              string     `gorm:"size:32;default:'unconfigured'" json:"browser_status"`
+	ActionStatus               string     `gorm:"size:32;default:'idle'" json:"action_status"`
+	AlertStatus                string     `gorm:"size:32;default:'none'" json:"alert_status"`
+	ProfileStatus              string     `gorm:"size:32;default:'unseeded'" json:"profile_status"`
+	CurrentJobID               string     `gorm:"size:120" json:"current_job_id,omitempty"`
+	CurrentActionStep          string     `gorm:"size:120" json:"current_action_step,omitempty"`
+	CurrentURL                 string     `gorm:"type:text" json:"current_url,omitempty"`
+	CurrentTitle               string     `gorm:"type:text" json:"current_title,omitempty"`
+	FrontendURL                string     `gorm:"type:text" json:"frontend_url,omitempty"`
+	FrontendTitle              string     `gorm:"type:text" json:"frontend_title,omitempty"`
+	FrontendLastSeenAt         *time.Time `json:"frontend_last_seen_at,omitempty"`
+	LoggedInState              string     `gorm:"size:32;default:'unknown'" json:"logged_in_state"`
+	BrowserProcessAlive        bool       `gorm:"default:false" json:"browser_process_alive"`
+	DevToolsConnected          bool       `gorm:"default:false" json:"devtools_connected"`
+	LastRSSPollStartedAt       *time.Time `json:"last_rss_poll_started_at,omitempty"`
+	LastRSSPollOKAt            *time.Time `json:"last_rss_poll_ok_at,omitempty"`
+	RSSConsecutiveFailures     int        `gorm:"default:0" json:"rss_consecutive_failures"`
+	LastWSConnectAt            *time.Time `json:"last_ws_connect_at,omitempty"`
+	LastWSMessageAt            *time.Time `json:"last_ws_message_at,omitempty"`
+	LastWSPongAt               *time.Time `json:"last_ws_pong_at,omitempty"`
+	LastWSCloseCode            *int       `json:"last_ws_close_code,omitempty"`
+	LastWSCloseReason          string     `gorm:"type:text" json:"last_ws_close_reason,omitempty"`
+	WSReconnectCount           int        `gorm:"default:0" json:"ws_reconnect_count"`
+	LastBrowserHeartbeatAt     *time.Time `json:"last_browser_heartbeat_at,omitempty"`
+	LastError                  string     `gorm:"type:text" json:"last_error,omitempty"`
+	LastCriticalAlert          string     `gorm:"type:text" json:"last_critical_alert,omitempty"`
+	LatestScreenshotArtifactID string     `gorm:"size:120" json:"latest_screenshot_artifact_id,omitempty"`
+	LastActivity               time.Time  `gorm:"default:now()" json:"last_activity"`
+	RecentJobHistory           string     `gorm:"type:jsonb" json:"recent_job_history"` // JSON array
+	UpdatedAt                  time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 // SubscriptionPlan represents subscription tiers

@@ -9,7 +9,8 @@ export interface Job {
   title: string;
   reward: number;
   url: string;
-  source: "rss" | "websocket";
+  source: string;
+  currency?: string;
   timestamp?: string;
 }
 
@@ -51,7 +52,8 @@ export const useJobsStore = create<JobsStoreState>()((set, get) => ({
 
   addJob: (job) =>
     set((state) => {
-      const newJobs = [job, ...state.jobs].slice(0, state.maxJobs);
+      const existingJobs = state.jobs.filter((existing) => existing.id !== job.id);
+      const newJobs = [job, ...existingJobs].slice(0, state.maxJobs);
       return { jobs: newJobs };
     }),
 

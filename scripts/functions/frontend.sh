@@ -5,7 +5,19 @@
 # Note: _lib.sh is sourced by dev.sh before loading this file
 
 # Frontend configuration
-FRONTEND_PORT=3001
+APP_BIND_HOST="${APP_BIND_HOST:-127.0.0.1}"
+APP_PUBLIC_HOST="${APP_PUBLIC_HOST:-$APP_BIND_HOST}"
+FRONTEND_HOST="${FRONTEND_HOST:-$APP_BIND_HOST}"
+FRONTEND_PORT="${FRONTEND_PORT:-37180}"
+FRONTEND_PUBLIC_HOST="${FRONTEND_PUBLIC_HOST:-$APP_PUBLIC_HOST}"
+FRONTEND_PUBLIC_URL="${FRONTEND_PUBLIC_URL:-http://$FRONTEND_PUBLIC_HOST:$FRONTEND_PORT}"
+FRONTEND_API_URL="${FRONTEND_API_URL:-${NEXT_PUBLIC_API_URL:-${BACKEND_PUBLIC_URL:-http://${APP_PUBLIC_HOST:-127.0.0.1}:${BACKEND_PORT:-37181}}}}"
+if [[ "$FRONTEND_API_URL" == https://* ]]; then
+    DEFAULT_FRONTEND_WS_URL="wss://${FRONTEND_API_URL#https://}/ws"
+else
+    DEFAULT_FRONTEND_WS_URL="ws://${FRONTEND_API_URL#http://}/ws"
+fi
+FRONTEND_WS_URL="${FRONTEND_WS_URL:-${NEXT_PUBLIC_WS_URL:-$DEFAULT_FRONTEND_WS_URL}}"
 FRONTEND_PID_FILE="$(get_pid_dir)/frontend.pid"
 FRONTEND_LOG_FILE="$(get_log_dir)/frontend.log"
 
@@ -64,12 +76,12 @@ frontend_start() {
     fi
 
     # Construct the start command for display
-    local start_cmd="PORT=$FRONTEND_PORT npm run dev"
+    local start_cmd="NEXT_PUBLIC_API_URL=\"$FRONTEND_API_URL\" NEXT_PUBLIC_WS_URL=\"$FRONTEND_WS_URL\" npm run dev -- --hostname \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\""
     log_command "$start_cmd"
 
     # Start dev server in background with logging
     log_verbose "Starting background process with nohup..."
-    nohup env "PORT=$FRONTEND_PORT" npm run dev > "$FRONTEND_LOG_FILE" 2>&1 &
+    nohup env "PORT=$FRONTEND_PORT" "HOSTNAME=$FRONTEND_HOST" "NEXT_PUBLIC_API_URL=$FRONTEND_API_URL" "NEXT_PUBLIC_WS_URL=$FRONTEND_WS_URL" npm run dev -- --hostname "$FRONTEND_HOST" --port "$FRONTEND_PORT" > "$FRONTEND_LOG_FILE" 2>&1 &
     local frontend_pid=$!
 
     log_verbose "Process started with PID: $frontend_pid"
@@ -91,11 +103,11 @@ frontend_start() {
         return 1
     fi
 
-    log_verbose "Process is running, waiting for port $FRONTEND_PORT to be ready..."
+    log_verbose "Process is running, waiting for $FRONTEND_HOST:$FRONTEND_PORT to be ready..."
 
     # Wait for the port to be ready (Next.js can take 10-15s on first start)
-    if ! wait_for_port "$FRONTEND_PORT" 30; then
-        log_error "Frontend did not start listening on port $FRONTEND_PORT"
+    if ! wait_for_port "$FRONTEND_PORT" 30 "$FRONTEND_HOST"; then
+        log_error "Frontend did not start listening on $FRONTEND_HOST:$FRONTEND_PORT"
         log_error "Check log for errors: $FRONTEND_LOG_FILE"
         kill_pid "$FRONTEND_PID_FILE"
         return 1
@@ -103,9 +115,11 @@ frontend_start() {
 
     log_success "Frontend started"
     echo -e "  ${C_DIM}PID:${C_RESET}       $frontend_pid"
+    echo -e "  ${C_DIM}Host:${C_RESET}      $FRONTEND_HOST"
     echo -e "  ${C_DIM}Port:${C_RESET}      $FRONTEND_PORT"
     echo -e "  ${C_DIM}Log:${C_RESET}       $FRONTEND_LOG_FILE"
-    echo -e "  ${C_DIM}URL:${C_RESET}        http://localhost:$FRONTEND_PORT"
+    echo -e "  ${C_DIM}URL:${C_RESET}        $FRONTEND_PUBLIC_URL"
+    echo -e "  ${C_DIM}API:${C_RESET}        $FRONTEND_API_URL"
 
     return 0
 }
@@ -167,8 +181,10 @@ frontend_status() {
         local pid
         pid=$(cat "$FRONTEND_PID_FILE")
         echo -e "${C_GREEN}●${C_RESET} Running (PID: $pid)"
+        echo "  Host: $FRONTEND_HOST"
         echo "  Port: $FRONTEND_PORT"
-        echo "  URL: http://localhost:$FRONTEND_PORT"
+        echo "  URL: $FRONTEND_PUBLIC_URL"
+        echo "  API: $FRONTEND_API_URL"
         echo "  Log: $FRONTEND_LOG_FILE"
 
         # Show memory usage if ps is available
