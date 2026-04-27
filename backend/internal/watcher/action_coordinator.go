@@ -185,6 +185,8 @@ func (c *ActionCoordinator) RestartBrowser(ctx context.Context) error {
 		"dev_tools_connected":       true,
 		"last_browser_heartbeat_at": now,
 		"last_error":                "",
+		"current_url":               "",
+		"current_title":             "",
 		"current_action_step":       "Worker browser restarted",
 		"last_activity":             now,
 	})
@@ -311,6 +313,8 @@ func (c *ActionCoordinator) startBrowser(ctx context.Context) {
 			"browser_process_alive":     true,
 			"dev_tools_connected":       true,
 			"last_browser_heartbeat_at": now,
+			"current_url":               "",
+			"current_title":             "",
 			"last_activity":             now,
 		})
 	}
@@ -394,6 +398,8 @@ func (c *ActionCoordinator) checkBrowserHealth(ctx context.Context) {
 		"dev_tools_connected":       true,
 		"last_browser_heartbeat_at": now,
 		"last_error":                "",
+		"current_url":               "",
+		"current_title":             "",
 		"last_activity":             now,
 	})
 }
