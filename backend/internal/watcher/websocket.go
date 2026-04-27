@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -100,9 +102,17 @@ type wsAuthPayload struct {
 
 // wsMessage represents a message received from Gengo
 type wsMessage struct {
-	Type  string                 `json:"type"`
-	JobID string                 `json:"job_id,omitempty"`
-	Other map[string]interface{} `json:"-"`
+	Type       string                 `json:"type"`
+	JobID      string                 `json:"job_id,omitempty"`
+	Collection *wsCollection          `json:"collection,omitempty"`
+	Other      map[string]interface{} `json:"-"`
+}
+
+type wsCollection struct {
+	ID      interface{} `json:"id,omitempty"`
+	LCSrc   string      `json:"lc_src,omitempty"`
+	LCTgt   string      `json:"lc_tgt,omitempty"`
+	Rewards interface{} `json:"rewards,omitempty"`
 }
 
 // UnmarshalJSON handles unmarshaling with unknown fields
@@ -120,11 +130,19 @@ func (m *wsMessage) UnmarshalJSON(data []byte) error {
 	if jobID, ok := raw["job_id"].(string); ok {
 		m.JobID = jobID
 	}
+	if collection, ok := raw["collection"].(map[string]interface{}); ok {
+		m.Collection = &wsCollection{
+			ID:      collection["id"],
+			LCSrc:   wsStringValue(collection["lc_src"]),
+			LCTgt:   wsStringValue(collection["lc_tgt"]),
+			Rewards: collection["rewards"],
+		}
+	}
 
 	// Store unknown fields
 	m.Other = make(map[string]interface{})
 	for k, v := range raw {
-		if k != "type" && k != "job_id" {
+		if k != "type" && k != "job_id" && k != "collection" {
 			m.Other[k] = v
 		}
 	}
@@ -388,7 +406,7 @@ func (m *WebSocketMonitor) processMessage(data []byte, jobChan chan<- Job) error
 
 // handleJobAvailable processes a new job notification
 func (m *WebSocketMonitor) handleJobAvailable(msg wsMessage, jobChan chan<- Job) error {
-	jobID := msg.JobID
+	jobID := msg.jobID()
 	if jobID == "" {
 		return fmt.Errorf("job_id missing in available_collection message")
 	}
@@ -401,9 +419,9 @@ func (m *WebSocketMonitor) handleJobAvailable(msg wsMessage, jobChan chan<- Job)
 
 	job := Job{
 		ID:     jobID,
-		Title:  fmt.Sprintf("Job %s", jobID),
-		Reward: 0,
-		URL:    fmt.Sprintf("https://gengo.com/dashboard/jobs/%s", jobID),
+		Title:  msg.jobTitle(jobID),
+		Reward: msg.reward(),
+		URL:    fmt.Sprintf("https://gengo.com/t/jobs/details/%s", jobID),
 		Source: "websocket",
 		UserID: m.UserID,
 	}
@@ -416,6 +434,66 @@ func (m *WebSocketMonitor) handleJobAvailable(msg wsMessage, jobChan chan<- Job)
 	}
 
 	return nil
+}
+
+func (m wsMessage) jobID() string {
+	if strings.TrimSpace(m.JobID) != "" {
+		return strings.TrimSpace(m.JobID)
+	}
+	if m.Collection == nil {
+		return ""
+	}
+	return wsStringValue(m.Collection.ID)
+}
+
+func (m wsMessage) reward() float64 {
+	if m.Collection == nil {
+		return 0
+	}
+	return wsFloatValue(m.Collection.Rewards)
+}
+
+func (m wsMessage) jobTitle(jobID string) string {
+	if m.Collection == nil {
+		return fmt.Sprintf("Job %s", jobID)
+	}
+	src := strings.TrimSpace(m.Collection.LCSrc)
+	tgt := strings.TrimSpace(m.Collection.LCTgt)
+	if src != "" && tgt != "" {
+		return fmt.Sprintf("%s > %s", src, tgt)
+	}
+	return fmt.Sprintf("Job %s", jobID)
+}
+
+func wsStringValue(value interface{}) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case float64:
+		if typed == float64(int64(typed)) {
+			return strconv.FormatInt(int64(typed), 10)
+		}
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case json.Number:
+		return typed.String()
+	default:
+		return ""
+	}
+}
+
+func wsFloatValue(value interface{}) float64 {
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case json.Number:
+		parsed, _ := typed.Float64()
+		return parsed
+	case string:
+		parsed, _ := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		return parsed
+	default:
+		return 0
+	}
 }
 
 // GetStatus returns the current connection status
