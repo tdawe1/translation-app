@@ -62,14 +62,18 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
 
     if (name === "enable_desktop_notifications" && checked) {
       void requestJobAlertPermission().then((permission) => {
+        if (!mountedRef.current) return;
         if (permission === "denied") {
-          setError("Browser notifications are blocked. Job pages will still auto-open if pop-ups are allowed for this site.");
+          setNotice("Browser notifications are blocked. Job pages will still auto-open if pop-ups are allowed for this site.");
         } else if (permission === "unsupported") {
-          setError("This browser does not support desktop notifications. Job pages will still auto-open if pop-ups are allowed for this site.");
+          setNotice("This browser does not support desktop notifications. Job pages will still auto-open if pop-ups are allowed for this site.");
         } else {
-          setError(null);
+          setNotice(null);
         }
       });
+    }
+    if (name === "enable_desktop_notifications" && !checked) {
+      setNotice(null);
     }
 
     setFormData((prev) => ({
