@@ -10,7 +10,7 @@ Environment=PORT=32000
 Environment=HOSTNAME=10.73.0.2
 Environment=NEXT_PUBLIC_API_URL=http://10.73.0.2:8001
 Environment=NEXT_PUBLIC_WS_URL=ws://10.73.0.2:8001/ws
-ExecStart=/usr/bin/npm run dev -- --hostname 10.73.0.2 --port 32000
+ExecStart=/usr/bin/pnpm dev --hostname 10.73.0.2 --port 32000
 Restart=on-failure
 RestartSec=10
 
