@@ -393,15 +393,18 @@ func (c *ActionCoordinator) checkBrowserHealth(ctx context.Context) {
 
 	c.updateRuntime(map[string]interface{}{
 		"browser_status":            BrowserStatusReady,
-		"profile_status":            ProfileStatusVerified,
-		"browser_process_alive":     true,
-		"dev_tools_connected":       true,
-		"last_browser_heartbeat_at": now,
-		"last_error":                "",
-		"current_url":               "",
-		"current_title":             "",
-		"last_activity":             now,
-	})
+healthUpdates := map[string]interface{}{
+    "profile_status":            ProfileStatusVerified,
+    "browser_process_alive":     true,
+    "dev_tools_connected":       true,
+    "last_browser_heartbeat_at": now,
+    "last_error":                "",
+    "last_activity":             now,
+}
+if !c.isActionActive() {
+    healthUpdates["browser_status"] = BrowserStatusReady
+}
+c.updateRuntime(healthUpdates)
 }
 
 func (c *ActionCoordinator) run(ctx context.Context) {
