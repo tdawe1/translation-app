@@ -35,6 +35,8 @@ type RSSMonitor struct {
 	UserID     uuid.UUID
 	MinReward  float64
 	MaxReward  float64
+	// RuntimeUpdate reports health fields to the owning watcher manager.
+	RuntimeUpdate func(map[string]interface{}) error
 	// P0-2 FIX: Use LRU cache instead of unbounded map to prevent memory leaks
 	seenIDs *LRUCache
 	// P0-5 FIX: URL validator to prevent SSRF attacks
@@ -118,6 +120,10 @@ func (m *RSSMonitor) Start(ctx context.Context, jobChan chan<- Job) error {
 
 // Fetch fetches and parses the RSS feed (exported for testing)
 func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
+	m.reportRuntime(map[string]interface{}{
+		"last_rss_poll_started_at": time.Now().UTC(),
+	})
+
 	// P0-5 FIX: Validate URL before fetching to prevent SSRF attacks
 	if err := m.urlValidator.Validate(m.FeedURL); err != nil {
 		return fmt.Errorf("URL validation failed: %w", err)
@@ -148,6 +154,12 @@ func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
 	// Log feed info
 	log.Printf("[RSS] User %s: Fetched feed with %d items (title: %s)",
 		m.UserID, len(feed.Items), feed.Title)
+	m.reportRuntime(map[string]interface{}{
+		"feed_status":              FeedStatusMonitoring,
+		"last_rss_poll_ok_at":      time.Now().UTC(),
+		"rss_consecutive_failures": 0,
+		"last_activity":            time.Now().UTC(),
+	})
 
 	// Process each item
 	newJobs := 0
@@ -207,6 +219,15 @@ func (m *RSSMonitor) Fetch(ctx context.Context, jobChan chan<- Job) error {
 	}
 
 	return nil
+}
+
+func (m *RSSMonitor) reportRuntime(updates map[string]interface{}) {
+	if m.RuntimeUpdate == nil || len(updates) == 0 {
+		return
+	}
+	if err := m.RuntimeUpdate(updates); err != nil {
+		log.Printf("[RSS] User %s: Failed to update runtime state: %v", m.UserID, err)
+	}
 }
 
 // extractReward extracts reward from an RSS item
@@ -298,12 +319,12 @@ func (m *RSSMonitor) extractJobID(item *gofeed.Item) string {
 
 // GengoJobInfo represents parsed Gengo job information
 type GengoJobInfo struct {
-	ID       string
-	Title    string
-	Reward   float64
-	Source   string
-	Link     string
-	PubDate  time.Time
+	ID           string
+	Title        string
+	Reward       float64
+	Source       string
+	Link         string
+	PubDate      time.Time
 	LanguagePair string // Source -> Target
 }
 
@@ -322,12 +343,12 @@ func (m *RSSMonitor) ParseGengoJob(item *gofeed.Item) (*GengoJobInfo, error) {
 	langPair := m.extractLanguagePair(item.Title, item.Description)
 
 	return &GengoJobInfo{
-		ID:        jobID,
-		Title:     item.Title,
-		Reward:    reward,
-		Source:    "rss",
-		Link:      item.Link,
-		PubDate:   pubDate,
+		ID:           jobID,
+		Title:        item.Title,
+		Reward:       reward,
+		Source:       "rss",
+		Link:         item.Link,
+		PubDate:      pubDate,
 		LanguagePair: langPair,
 	}, nil
 }
@@ -339,24 +360,24 @@ func (m *RSSMonitor) extractLanguagePair(title, description string) string {
 
 	// Common language name patterns
 	langPatterns := map[string]string{
-		"English to Japanese":       "en → ja",
-		"Japanese to English":      "ja → en",
-		"English to Spanish":        "en → es",
-		"Spanish to English":        "es → en",
-		"English to French":         "en → fr",
-		"French to English":         "fr → en",
-		"English to German":         "en → de",
-		"German to English":         "de → en",
-		"English to Chinese":        "en → zh",
-		"Chinese to English":        "zh → en",
-		"English to Korean":         "en → ko",
-		"Korean to English":         "ko → en",
-		"English to Portuguese":     "en → pt",
-		"Portuguese to English":     "pt → en",
-		"English to Italian":        "en → it",
-		"Italian to English":        "it → en",
-		"English to Russian":        "en → ru",
-		"Russian to English":        "ru → en",
+		"English to Japanese":   "en → ja",
+		"Japanese to English":   "ja → en",
+		"English to Spanish":    "en → es",
+		"Spanish to English":    "es → en",
+		"English to French":     "en → fr",
+		"French to English":     "fr → en",
+		"English to German":     "en → de",
+		"German to English":     "de → en",
+		"English to Chinese":    "en → zh",
+		"Chinese to English":    "zh → en",
+		"English to Korean":     "en → ko",
+		"Korean to English":     "ko → en",
+		"English to Portuguese": "en → pt",
+		"Portuguese to English": "pt → en",
+		"English to Italian":    "en → it",
+		"Italian to English":    "it → en",
+		"English to Russian":    "en → ru",
+		"Russian to English":    "ru → en",
 	}
 
 	// Check for full language names

@@ -184,21 +184,17 @@ func (h *MagicLinkHandler) VerifyMagicLink(c *fiber.Ctx) error {
 
 	// Check if this is a GET request (redirect flow from email link)
 	if c.Method() == "GET" {
-		// Set httpOnly cookie with proper session config
-		c.Cookie(&fiber.Cookie{
-			Name:     CookieName,
-			Value:    accessToken,
-			HTTPOnly: true,
-			Secure:   isSecureContext(c),
-			SameSite: h.sessionConfig.SameSite,
-			Domain:   h.sessionConfig.Domain,
-			MaxAge:   7 * 24 * 60 * 60, // 7 days
-		})
+		if err := h.setSessionCookies(c, &user, accessToken); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to create session",
+				"code":  "TOKEN_GENERATION_FAILED",
+			})
+		}
 
 		// Redirect to frontend with success indicator
 		frontendURL := h.frontendURL
 		if frontendURL == "" {
-			frontendURL = "http://localhost:3001/dashboard?auth=success"
+			frontendURL = "http://localhost:37180/dashboard?auth=success"
 		} else {
 			frontendURL = frontendURL + "/dashboard?auth=success"
 		}
@@ -206,18 +202,26 @@ func (h *MagicLinkHandler) VerifyMagicLink(c *fiber.Ctx) error {
 	}
 
 	// POST flow: return JSON response with token, using proper session config
-	c.Cookie(&fiber.Cookie{
-		Name:     CookieName,
-		Value:    accessToken,
-		HTTPOnly: true,
-		Secure:   isSecureContext(c),
-		SameSite: h.sessionConfig.SameSite,
-		Domain:   h.sessionConfig.Domain,
-		MaxAge:   7 * 24 * 60 * 60, // 7 days
-	})
+	if err := h.setSessionCookies(c, &user, accessToken); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create session",
+			"code":  "TOKEN_GENERATION_FAILED",
+		})
+	}
 
 	return c.JSON(fiber.Map{
 		"access_token": accessToken,
 		"user":         user,
 	})
+}
+
+func (h *MagicLinkHandler) setSessionCookies(c *fiber.Ctx, user *models.User, accessToken string) error {
+	userService := auth.NewUserService(h.db, h.tokenAuthService)
+	refreshToken, err := userService.CreateRefreshToken(user.ID, h.sessionConfig.RefreshExpires)
+	if err != nil {
+		return err
+	}
+	SetSessionCookie(c, accessToken, h.sessionConfig)
+	SetRefreshCookie(c, refreshToken, h.sessionConfig)
+	return nil
 }

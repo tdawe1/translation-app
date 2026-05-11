@@ -86,11 +86,23 @@ func (s *AdminSeeder) EnsureAdminUser(email, password string) (*models.User, str
 
 		log.Printf("[AdminSeeder] Created new admin user: %s (ID: %s)", email, user.ID)
 	} else {
-		// User exists - update role to admin if needed
+		// User exists - update dev credentials and admin access.
+		needsSave := false
+		if user.PasswordHash != string(hashedPassword) {
+			user.PasswordHash = string(hashedPassword)
+			needsSave = true
+		}
+		if !user.IsActive {
+			user.IsActive = true
+			needsSave = true
+		}
 		if user.Role != models.RoleAdmin {
 			user.Role = models.RoleAdmin
+			needsSave = true
+		}
+		if needsSave {
 			if err := s.db.Save(&user).Error; err != nil {
-				return nil, "", fmt.Errorf("failed to update user role: %w", err)
+				return nil, "", fmt.Errorf("failed to update admin user: %w", err)
 			}
 			log.Printf("[AdminSeeder] Updated user to admin: %s (ID: %s)", email, user.ID)
 		} else {

@@ -40,8 +40,12 @@ export function WatcherConfigCard({
               value={config.websocket_enabled ? "Enabled" : "Disabled"}
             />
             <ConfigRow
-              label="Auto Accept"
-              value={config.auto_accept_enabled ? "Enabled" : "Disabled"}
+              label="Job Alerts"
+              value={config.enable_desktop_notifications ? "Auto-open tabs" : "Disabled"}
+            />
+            <ConfigRow
+              label="Sound"
+              value={config.enable_sound_notifications ? "Enabled" : "Disabled"}
             />
           </div>
           <div className="col-span-2">

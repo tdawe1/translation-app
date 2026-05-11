@@ -49,6 +49,7 @@ func TestWatcher_CompleteFlow(t *testing.T) {
 	app.Get("/api/v1/watcher/config", middleware.JWTValidator(jwtCfg), watcherHandler.GetConfig)
 	app.Put("/api/v1/watcher/config", middleware.JWTValidator(jwtCfg), watcherHandler.UpdateConfig)
 	app.Get("/api/v1/watcher/state", middleware.JWTValidator(jwtCfg), watcherHandler.GetState)
+	app.Get("/api/v1/watcher/events", middleware.JWTValidator(jwtCfg), watcherHandler.GetEvents)
 	app.Post("/api/v1/watcher/start", middleware.JWTValidator(jwtCfg), watcherHandler.StartWatcher)
 	app.Post("/api/v1/watcher/stop", middleware.JWTValidator(jwtCfg), watcherHandler.StopWatcher)
 
@@ -109,7 +110,28 @@ func TestWatcher_CompleteFlow(t *testing.T) {
 		err = json.NewDecoder(resp.Body).Decode(&state)
 		require.NoError(t, err)
 		assert.Equal(t, "stopped", state["watcher_status"])
+		assert.Equal(t, "stopped", state["overall_status"])
+		assert.Equal(t, "stopped", state["feed_status"])
+		assert.Equal(t, "unconfigured", state["browser_status"])
+		assert.Equal(t, "idle", state["action_status"])
+		assert.Equal(t, "none", state["alert_status"])
+		assert.Equal(t, "unseeded", state["profile_status"])
 		assert.Equal(t, 0, int(state["total_jobs_found"].(float64)))
+	})
+
+	t.Run("GetEvents returns empty timeline before watcher activity", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/v1/watcher/events", nil)
+		req.Header.Set("Authorization", authHeader)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, 200, resp.StatusCode)
+
+		var result map[string]interface{}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+		events, ok := result["events"].([]interface{})
+		require.True(t, ok, "events should be an array")
+		assert.Len(t, events, 0)
 	})
 
 	t.Run("StartWatcher starts the watcher", func(t *testing.T) {
@@ -138,6 +160,39 @@ func TestWatcher_CompleteFlow(t *testing.T) {
 		err = json.NewDecoder(resp.Body).Decode(&state)
 		require.NoError(t, err)
 		assert.Equal(t, "running", state["watcher_status"])
+		assert.Equal(t, "degraded", state["overall_status"])
+		assert.Equal(t, "monitoring", state["feed_status"])
+		assert.Equal(t, "unconfigured", state["browser_status"])
+		assert.Equal(t, "idle", state["action_status"])
+		assert.Equal(t, "warning", state["alert_status"])
+	})
+
+	t.Run("GetEvents after start includes structured worker lifecycle entries", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/v1/watcher/events", nil)
+		req.Header.Set("Authorization", authHeader)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, 200, resp.StatusCode)
+
+		var result map[string]interface{}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+		events, ok := result["events"].([]interface{})
+		require.True(t, ok, "events should be an array")
+		require.NotEmpty(t, events)
+
+		eventTypes := make([]string, 0, len(events))
+		for _, item := range events {
+			event, ok := item.(map[string]interface{})
+			require.True(t, ok, "event should be an object")
+			require.NotEmpty(t, event["level"])
+			require.NotEmpty(t, event["source"])
+			require.NotEmpty(t, event["message"])
+			eventTypes = append(eventTypes, event["type"].(string))
+		}
+
+		assert.Contains(t, eventTypes, "worker.started")
+		assert.Contains(t, eventTypes, "browser.unconfigured")
 	})
 
 	t.Run("StopWatcher stops the watcher", func(t *testing.T) {
@@ -166,6 +221,8 @@ func TestWatcher_CompleteFlow(t *testing.T) {
 		err = json.NewDecoder(resp.Body).Decode(&state)
 		require.NoError(t, err)
 		assert.Equal(t, "stopped", state["watcher_status"])
+		assert.Equal(t, "stopped", state["overall_status"])
+		assert.Equal(t, "stopped", state["feed_status"])
 	})
 }
 
@@ -193,6 +250,11 @@ func TestWatcher_IngestJobPublishesExternalJob(t *testing.T) {
 		middleware.JWTValidator(jwtCfg),
 		watcherHandler.GetState,
 	)
+	app.Get(
+		"/api/v1/watcher/events",
+		middleware.JWTValidator(jwtCfg),
+		watcherHandler.GetEvents,
+	)
 
 	user := CreateTestUser(t, db, "watcher-ingest@example.com")
 	authHeader := "Bearer " + GenerateTestToken(t, user.ID)
@@ -210,7 +272,7 @@ func TestWatcher_IngestJobPublishesExternalJob(t *testing.T) {
 		"title":      "JA > EN | Test Job",
 		"reward":     42.5,
 		"url":        "https://gengo.com/t/jobs/details/123",
-		"source":     "GengoWatcher",
+		"source":     "rss",
 		"currency":   "USD",
 		"timestamp":  1712736000.0,
 		"lang_pair":  "JA→EN",
@@ -237,10 +299,13 @@ func TestWatcher_IngestJobPublishesExternalJob(t *testing.T) {
 
 	var published map[string]interface{}
 	require.NoError(t, json.Unmarshal([]byte(msg.Payload), &published))
-	assert.Equal(t, "job-123", published["id"])
-	assert.Equal(t, "JA→EN", published["lang_pair"])
-	assert.Equal(t, 320.0, published["word_count"])
-	assert.Equal(t, user.ID.String(), published["user_id"])
+	assert.Equal(t, "job", published["type"])
+	data, ok := published["data"].(map[string]interface{})
+	require.True(t, ok, "job payload should include nested data")
+	assert.Equal(t, "job-123", data["id"])
+	assert.Equal(t, "JA→EN", data["lang_pair"])
+	assert.Equal(t, 320.0, data["word_count"])
+	assert.Equal(t, user.ID.String(), data["user_id"])
 
 	stateReq := httptest.NewRequest("GET", "/api/v1/watcher/state", nil)
 	stateReq.Header.Set("Authorization", authHeader)
@@ -251,6 +316,24 @@ func TestWatcher_IngestJobPublishesExternalJob(t *testing.T) {
 	var state map[string]interface{}
 	require.NoError(t, json.NewDecoder(stateResp.Body).Decode(&state))
 	assert.Equal(t, 1, int(state["total_jobs_found"].(float64)))
+	assert.Equal(t, "job.detected", state["current_action_step"])
+
+	eventsReq := httptest.NewRequest("GET", "/api/v1/watcher/events", nil)
+	eventsReq.Header.Set("Authorization", authHeader)
+	eventsResp, err := app.Test(eventsReq)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, eventsResp.StatusCode)
+
+	var eventsResult map[string]interface{}
+	require.NoError(t, json.NewDecoder(eventsResp.Body).Decode(&eventsResult))
+	events, ok := eventsResult["events"].([]interface{})
+	require.True(t, ok, "events should be an array")
+	require.NotEmpty(t, events)
+
+	firstEvent, ok := events[0].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "job.detected", firstEvent["type"])
+	assert.Equal(t, "rss", firstEvent["source"])
 }
 
 // TestWatcher_UnauthorizedAccess rejects requests without auth

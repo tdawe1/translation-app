@@ -20,8 +20,14 @@ func isSecureContext(c *fiber.Ctx) bool {
 const (
 	// CookieName is the name of the session cookie
 	CookieName = "session_token"
-	// DefaultCookieExpiration is the default session token expiration
-	DefaultCookieExpiration = 7 * 24 * time.Hour
+	// RefreshCookieName is the name of the long-lived refresh cookie.
+	RefreshCookieName = "refresh_token"
+	// DefaultAccessCookieExpiration matches the JWT access-token TTL.
+	DefaultAccessCookieExpiration = 15 * time.Minute
+	// DefaultRefreshCookieExpiration is the default refresh-token lifetime.
+	DefaultRefreshCookieExpiration = 7 * 24 * time.Hour
+	// DefaultCookieExpiration is kept for compatibility with older tests/helpers.
+	DefaultCookieExpiration = DefaultAccessCookieExpiration
 )
 
 // SessionConfig holds cookie configuration for session management.
@@ -29,20 +35,22 @@ const (
 // cookie attributes (domain, secure, sameSite), which is critical for
 // proper cookie clearing in production environments.
 type SessionConfig struct {
-	Domain   string        // Cookie domain (empty for localhost, ".example.com" for prod)
-	Secure   bool          // Whether to set the Secure flag (HTTPS only)
-	SameSite string        // SameSite policy: "Lax", "Strict", or "None"
-	Expires  time.Duration // Cookie expiration duration (for Set only, not Clear)
+	Domain         string        // Cookie domain (empty for localhost, ".example.com" for prod)
+	Secure         bool          // Whether to set the Secure flag (HTTPS only)
+	SameSite       string        // SameSite policy: "Lax", "Strict", or "None"
+	Expires        time.Duration // Access cookie expiration duration
+	RefreshExpires time.Duration // Refresh cookie expiration duration
 }
 
 // DefaultSessionConfig returns a SessionConfig with development-friendly defaults.
 // For production, use config-based values with proper domain and Secure=true.
 func DefaultSessionConfig() SessionConfig {
 	return SessionConfig{
-		Domain:   "",    // Current host only (localhost)
-		Secure:   false, // HTTP in development
-		SameSite: "Lax",
-		Expires:  DefaultCookieExpiration,
+		Domain:         "",    // Current host only (localhost)
+		Secure:         false, // HTTP in development
+		SameSite:       "Lax",
+		Expires:        DefaultAccessCookieExpiration,
+		RefreshExpires: DefaultRefreshCookieExpiration,
 	}
 }
 
@@ -50,10 +58,11 @@ func DefaultSessionConfig() SessionConfig {
 // Use this in production to ensure proper domain matching and security flags.
 func SessionConfigFromEnv(domain string, secure bool, sameSite string) SessionConfig {
 	return SessionConfig{
-		Domain:   domain,
-		Secure:   secure,
-		SameSite: sameSite,
-		Expires:  DefaultCookieExpiration,
+		Domain:         domain,
+		Secure:         secure,
+		SameSite:       sameSite,
+		Expires:        DefaultAccessCookieExpiration,
+		RefreshExpires: DefaultRefreshCookieExpiration,
 	}
 }
 
@@ -107,6 +116,10 @@ func RespondWithAPIError(c *fiber.Ctx, status int, apiErr *apperrors.APIError) e
 // The config parameter ensures all cookie attributes (domain, secure, sameSite)
 // are properly set and can be matched when clearing the cookie.
 func SetSessionCookie(c *fiber.Ctx, token string, config SessionConfig) {
+	expires := config.Expires
+	if expires <= 0 {
+		expires = DefaultAccessCookieExpiration
+	}
 	c.Cookie(&fiber.Cookie{
 		Name:     CookieName,
 		Value:    token,
@@ -114,7 +127,24 @@ func SetSessionCookie(c *fiber.Ctx, token string, config SessionConfig) {
 		HTTPOnly: true,
 		Secure:   isSecureContext(c),
 		SameSite: config.SameSite,
-		Expires:  time.Now().Add(config.Expires),
+		Expires:  time.Now().Add(expires),
+	})
+}
+
+// SetRefreshCookie sets the long-lived httpOnly refresh cookie.
+func SetRefreshCookie(c *fiber.Ctx, token string, config SessionConfig) {
+	expires := config.RefreshExpires
+	if expires <= 0 {
+		expires = DefaultRefreshCookieExpiration
+	}
+	c.Cookie(&fiber.Cookie{
+		Name:     RefreshCookieName,
+		Value:    token,
+		Domain:   config.Domain,
+		HTTPOnly: true,
+		Secure:   isSecureContext(c),
+		SameSite: config.SameSite,
+		Expires:  time.Now().Add(expires),
 	})
 }
 
@@ -139,6 +169,19 @@ func ClearSessionCookie(c *fiber.Ctx, config SessionConfig) {
 		Secure:   isSecureContext(c),
 		SameSite: config.SameSite,
 		Expires:  time.Now().Add(-1 * time.Hour), // Set to past to ensure deletion
+	})
+}
+
+// ClearRefreshCookie clears the refresh cookie using matching attributes.
+func ClearRefreshCookie(c *fiber.Ctx, config SessionConfig) {
+	c.Cookie(&fiber.Cookie{
+		Name:     RefreshCookieName,
+		Value:    "",
+		Domain:   config.Domain,
+		HTTPOnly: true,
+		Secure:   isSecureContext(c),
+		SameSite: config.SameSite,
+		Expires:  time.Now().Add(-1 * time.Hour),
 	})
 }
 

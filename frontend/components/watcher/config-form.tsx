@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { useWatcherStore } from "@/store/watcher";
+import { requestJobAlertPermission } from "@/lib/job-alerts";
 import type { WatcherConfig } from "@/lib/api";
 
 interface WatcherConfigFormProps {
@@ -57,11 +58,29 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value, type } = e.target;
+    const checked = type === "checkbox" ? (e.target as HTMLInputElement).checked : false;
+
+    if (name === "enable_desktop_notifications" && checked) {
+      void requestJobAlertPermission().then((permission) => {
+        if (!mountedRef.current) return;
+        if (permission === "denied") {
+          setNotice("Browser notifications are blocked. Job pages will still auto-open if pop-ups are allowed for this site.");
+        } else if (permission === "unsupported") {
+          setNotice("This browser does not support desktop notifications. Job pages will still auto-open if pop-ups are allowed for this site.");
+        } else {
+          setNotice(null);
+        }
+      });
+    }
+    if (name === "enable_desktop_notifications" && !checked) {
+      setNotice(null);
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]:
         type === "checkbox"
-          ? (e.target as HTMLInputElement).checked
+          ? checked
           : type === "number"
             ? parseFloat(value) || 0
             : value,
@@ -164,22 +183,6 @@ export function WatcherConfigForm({ onClose }: WatcherConfigFormProps) {
               name="websocket_enabled"
               id="websocket-enabled"
               checked={formData.websocket_enabled || false}
-              onChange={handleChange}
-              className="sr-only peer"
-            />
-            <div className="w-10 h-5 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
-          </div>
-        </label>
-
-        {/* Auto Accept */}
-        <label className="flex items-center justify-between cursor-pointer">
-          <span className="text-sm">Auto Accept Jobs</span>
-          <div className="relative">
-            <input
-              type="checkbox"
-              name="auto_accept_enabled"
-              id="auto-accept-enabled"
-              checked={formData.auto_accept_enabled || false}
               onChange={handleChange}
               className="sr-only peer"
             />

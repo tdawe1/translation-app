@@ -13,10 +13,10 @@ export function WatcherStatusCard({ connected, statusDisplay }: WatcherStatusCar
       accentColor="red"
       staggerIndex={0}
       testId="status-card"
-      className="p-6"
+      className="p-3"
     >
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-mono text-xs uppercase tracking-widest text-red-600">
+      <div className="mb-1 flex items-center justify-between">
+        <h3 className="font-mono text-[10px] uppercase tracking-widest text-red-600">
           Watcher Status
         </h3>
         {connected && (
@@ -27,7 +27,7 @@ export function WatcherStatusCard({ connected, statusDisplay }: WatcherStatusCar
         data-testid="watcher-status"
         role="status"
         aria-live="polite"
-        className={`text-3xl font-light ${statusDisplay.color}`}
+        className={`text-xl font-light ${statusDisplay.color}`}
       >
         {statusDisplay.text}
       </p>

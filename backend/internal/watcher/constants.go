@@ -32,10 +32,77 @@ const (
 	StatusError   = "error"
 )
 
-// Event types
+// Runtime domain status constants.
 const (
-	EventTypeWatcherStarted = "watcher_started"
-	EventTypeWatcherStopped = "watcher_stopped"
+	OverallStatusStopped  = "stopped"
+	OverallStatusRunning  = "running"
+	OverallStatusDegraded = "degraded"
+	OverallStatusBlocked  = "blocked"
+
+	FeedStatusStopped    = "stopped"
+	FeedStatusMonitoring = "monitoring"
+
+	BrowserStatusUnconfigured = "unconfigured"
+	BrowserStatusDashboard    = "dashboard"
+	BrowserStatusStarting     = "starting"
+	BrowserStatusReady        = "ready"
+	BrowserStatusBusy         = "busy"
+	BrowserStatusBlocked      = "blocked"
+	BrowserStatusFailed       = "failed"
+	BrowserStatusStopped      = "stopped"
+
+	ActionStatusIdle      = "idle"
+	ActionStatusQueued    = "queued"
+	ActionStatusOpening   = "opening"
+	ActionStatusOpen      = "open"
+	ActionStatusAccepting = "accepting"
+	ActionStatusAccepted  = "accepted"
+	ActionStatusFailed    = "failed"
+	ActionStatusBlocked   = "blocked"
+
+	AlertStatusNone     = "none"
+	AlertStatusWarning  = "warning"
+	AlertStatusCritical = "critical"
+
+	ProfileStatusUnseeded = "unseeded"
+	ProfileStatusSeeded   = "seeded"
+	ProfileStatusVerified = "verified"
+	ProfileStatusBlocked  = "blocked"
+)
+
+// Event types.
+const (
+	EventTypeWorkerStarted       = "worker.started"
+	EventTypeWorkerStopped       = "worker.stopped"
+	EventTypeWorkerReady         = "worker.ready"
+	EventTypeWorkerBlocked       = "worker.blocked"
+	EventTypeWorkerRestoreStart  = "worker.restore_started"
+	EventTypeWorkerRestoreOK     = "worker.restore_succeeded"
+	EventTypeWorkerRestoreFailed = "worker.restore_failed"
+	EventTypeWorkerShutdown      = "worker.shutdown_persisted"
+	EventTypeBrowserUnconfigured = "browser.unconfigured"
+	EventTypeBrowserDashboard    = "browser.dashboard_mode"
+	EventTypeBrowserStarted      = "browser.started"
+	EventTypeBrowserReady        = "browser.ready"
+	EventTypeBrowserStartFailed  = "browser.start_failed"
+	EventTypeBrowserJobOpenStart = "browser.job_open_started"
+	EventTypeBrowserJobOpenOK    = "browser.job_open_succeeded"
+	EventTypeBrowserJobOpenFail  = "browser.job_open_failed"
+	EventTypeBrowserScreenshot   = "browser.screenshot_captured"
+	EventTypeBrowserCaptcha      = "browser.captcha_detected"
+	EventTypeBrowserSuspicious   = "browser.suspicious_login_detected"
+	EventTypeActionAcceptStarted = "action.accept_started"
+	EventTypeActionAcceptOK      = "action.accept_succeeded"
+	EventTypeActionAcceptFailed  = "action.accept_failed"
+	EventTypeJobDetected         = "job.detected"
+	EventTypeJobMatched          = "job.matched"
+	EventTypeRSSPollStarted      = "rss.poll_started"
+	EventTypeRSSPollOK           = "rss.poll_ok"
+	EventTypeWebSocketConnected  = "websocket.connected"
+	EventTypeWebSocketPong       = "websocket.pong"
+	EventTypeWebSocketMessage    = "websocket.message"
+	EventTypeWebSocketClosed     = "websocket.disconnected"
+	EventTypeWatcherHealth       = "watcher.health"
 )
 
 // GetSeenJobsKey returns the Redis key for a user's seen jobs set

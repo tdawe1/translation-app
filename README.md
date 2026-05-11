@@ -12,7 +12,7 @@ GengoWatcher SaaS provides isolated job monitoring for multiple users, featuring
 - **Multi-tenant Auth**: Magic links, OAuth (Google/GitHub), and API key support.
 - **Real-time Alerts**: Instant job notifications powered by Redis pub/sub.
 - **Automated Processing**: Background translation worker for job automation.
-- **Subscription Support**: Multi-tier billing integration.
+- **Launch Scope**: First online release focuses on job detection, API/WebSocket delivery, and auto-opening job pages from the web dashboard. Payment/provider billing is intentionally out of scope.
 
 ## Tech Stack
 

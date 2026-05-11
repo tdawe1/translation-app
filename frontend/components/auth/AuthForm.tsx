@@ -45,11 +45,11 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
     // Validation for register mode
     if (mode === "register") {
       if (password.length < 8) {
-        setError(tCommon('error'));
+        setError(t('passwordTooShort'));
         return;
       }
       if (password !== confirmPassword) {
-        setError(tCommon('error'));
+        setError(t('passwordMismatch'));
         return;
       }
     }
@@ -73,7 +73,7 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
 
   const isLogin = mode === "login";
   const submitText = isLogin ? t('signIn') : t('signUp');
-  const loadingText = isLogin ? `${tCommon('loading')}...` : `${tCommon('loading')}...`;
+  const loadingText = isLogin ? t('signingIn') : t('creatingAccount');
   const disabled = isLoading || isSubmitting;
 
   return (
@@ -101,6 +101,7 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
             required
             autoComplete={isLogin ? "email" : "email"}
             disabled={disabled}
+            suppressHydrationWarning
           />
         </div>
 
@@ -126,6 +127,7 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
             required
             autoComplete={isLogin ? "current-password" : "new-password"}
             disabled={disabled}
+            suppressHydrationWarning
           />
         </div>
 
@@ -152,6 +154,7 @@ export function AuthForm({ mode, onSubmit, onOAuthLogin, errorMessage, isLoading
               required
               autoComplete="new-password"
               disabled={disabled}
+              suppressHydrationWarning
             />
           </div>
         )}

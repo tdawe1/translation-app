@@ -10,6 +10,7 @@ const options = [
   { value: "all" as const, label: "All Sources" },
   { value: "rss" as const, label: "RSS Feed" },
   { value: "websocket" as const, label: "WebSocket" },
+  { value: "external" as const, label: "External Bridge" },
 ] as const;
 
 export function SourceFilter({ value, onChange }: SourceFilterProps) {

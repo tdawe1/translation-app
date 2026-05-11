@@ -209,15 +209,26 @@ wait_for_service() {
 	done
 }
 
-# wait_for_port - Wait until a port is accepting connections
-# Usage: wait_for_port <port> <timeout_seconds>
+# port_check_host - Convert wildcard bind addresses to a connectable host
+port_check_host() {
+	local host="${1:-127.0.0.1}"
+	if [ -z "$host" ] || [ "$host" = "0.0.0.0" ] || [ "$host" = "::" ]; then
+		host="127.0.0.1"
+	fi
+	printf '%s' "$host"
+}
+
+# wait_for_port - Wait until a host:port is accepting connections
+# Usage: wait_for_port <port> <timeout_seconds> [host]
 wait_for_port() {
 	local port="$1"
 	local timeout="${2:-30}"
+	local host
+	host="$(port_check_host "${3:-127.0.0.1}")"
 	local start_time
 	start_time=$(date +%s)
 
-	log_info "Waiting for port $port (timeout: ${timeout}s)..."
+	log_info "Waiting for $host:$port (timeout: ${timeout}s)..."
 
 	while true; do
 		local current_time
@@ -225,17 +236,17 @@ wait_for_port() {
 		local elapsed=$((current_time - start_time))
 
 		if [ $elapsed -ge $timeout ]; then
-			log_error "Timeout waiting for port $port"
+			log_error "Timeout waiting for $host:$port"
 			return 1
 		fi
 
 		if command -v nc &>/dev/null; then
-			if nc -z 127.0.0.1 "$port" 2>/dev/null; then
+			if nc -z "$host" "$port" 2>/dev/null; then
 				return 0
 			fi
 		elif command -v bash &>/dev/null; then
 			# Bash built-in TCP check
-			if timeout 1 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/$port" 2>/dev/null; then
+			if timeout 1 bash -c "cat < /dev/null > /dev/tcp/$host/$port" 2>/dev/null; then
 				return 0
 			fi
 		fi
@@ -324,7 +335,7 @@ kill_pid() {
 # This is a fallback cleanup that doesn't rely on PID files
 # Returns: 0 always (errors are logged but don't fail)
 cleanup_ports() {
-	local ports=(8000 3001 5432 6379 8025) # Include Docker DB ports for host networking and MailHog
+	local ports=("${BACKEND_PORT:-37181}" "${FRONTEND_PORT:-37180}" "${POSTGRES_PORT:-5433}" "${REDIS_PORT:-6380}" "${MAILHOG_UI_PORT:-8025}" "${MAILHOG_SMTP_PORT:-1025}")
 	local killed_any=0
 
 	log_info "Checking for orphaned processes on managed ports..."
@@ -415,7 +426,7 @@ is_port_in_use() {
 # check_required_ports - Verify all required ports are available
 # Usage: check_required_ports
 check_required_ports() {
-	local ports=(5432 6379 8000 3001)
+	local ports=("${POSTGRES_PORT:-5433}" "${REDIS_PORT:-6380}" "${MAILHOG_UI_PORT:-8025}" "${MAILHOG_SMTP_PORT:-1025}" "${BACKEND_PORT:-37181}" "${FRONTEND_PORT:-37180}")
 	local conflicts=()
 
 	for port in "${ports[@]}"; do

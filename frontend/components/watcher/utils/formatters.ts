@@ -16,8 +16,24 @@ export const getSourceBadge = (source: Job["source"]): string => {
   const styles = {
     rss: "bg-orange-50 border-orange-200 text-orange-700",
     websocket: "bg-blue-50 border-blue-200 text-blue-700",
+    external: "bg-emerald-50 border-emerald-200 text-emerald-700",
   };
-  return styles[source];
+  return styles[source as keyof typeof styles] ?? "bg-neutral-50 border-neutral-200 text-neutral-700";
+};
+
+export const formatSourceLabel = (source: Job["source"]): string => {
+  switch (source.toLowerCase()) {
+    case "rss":
+      return "RSS";
+    case "websocket":
+    case "gengo_ws":
+    case "gengo-websocket":
+      return "WS";
+    case "external":
+      return "EXT";
+    default:
+      return source.slice(0, 3).toUpperCase();
+  }
 };
 
 // Format timestamp to relative time (short version for lists)

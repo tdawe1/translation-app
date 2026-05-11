@@ -2,6 +2,8 @@ import { test as base, Page } from '@playwright/test';
 import type { TestUser } from './types';
 import { DEFAULT_TEST_PASSWORD, shouldFilterConsoleError } from './types';
 
+const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:37181';
+
 /**
  * Generate a unique test admin user per test run
  * Uses timestamp + random suffix to prevent email conflicts.
@@ -28,7 +30,7 @@ export function generateTestAdmin(): TestUser {
  * @throws Error if seeding fails
  */
 export async function seedAdminUser(user: TestUser): Promise<string> {
-  const response = await fetch('http://localhost:8000/dev/seed-admin', {
+  const response = await fetch(`${BACKEND_URL}/dev/seed-admin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -62,7 +64,7 @@ export async function authenticateWithToken(
     {
       name: 'session_token',
       value: token,
-      url: 'http://localhost:8000',
+      url: BACKEND_URL,
       httpOnly: true,
       sameSite: 'Lax',
       path: '/',

@@ -1,6 +1,8 @@
 package watcher
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -50,6 +52,17 @@ func (m *StateManager) UpdateStatus(userID uuid.UUID, status string) error {
 		}).Error
 }
 
+// UpdateRuntime updates the extended runtime snapshot fields for a user.
+func (m *StateManager) UpdateRuntime(userID uuid.UUID, updates map[string]interface{}) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	updates["updated_at"] = time.Now().UTC()
+	return m.db.Model(&models.WatcherState{}).
+		Where("user_id = ?", userID).
+		Updates(updates).Error
+}
+
 // UpdateConfig updates the watcher config in the database
 func (m *StateManager) UpdateConfig(config *models.WatcherConfig) error {
 	return m.db.Save(config).Error
@@ -71,4 +84,69 @@ func (m *StateManager) IncrementJobCount(userID uuid.UUID) error {
 		Where("user_id = ?", userID).
 		UpdateColumn("total_jobs_found", gorm.Expr("total_jobs_found + 1")).
 		Update("last_activity", gorm.Expr("NOW()")).Error
+}
+
+// WatcherEventInput is the persisted and streamed representation of a watcher event.
+type WatcherEventInput struct {
+	Level   string
+	Source  string
+	Type    string
+	JobID   string
+	Message string
+	Data    map[string]interface{}
+}
+
+// AppendEvent persists a watcher event for the user's timeline.
+func (m *StateManager) AppendEvent(userID uuid.UUID, input WatcherEventInput) (*models.WatcherEvent, error) {
+	data := "{}"
+	if len(input.Data) > 0 {
+		raw, err := json.Marshal(input.Data)
+		if err != nil {
+			return nil, fmt.Errorf("marshal watcher event data: %w", err)
+		}
+		data = string(raw)
+	}
+
+	event := &models.WatcherEvent{
+		Base:       models.Base{ID: uuid.New()},
+		WorkerID:   userID,
+		UserID:     userID,
+		Level:      input.Level,
+		Source:     input.Source,
+		Type:       input.Type,
+		JobID:      input.JobID,
+		Message:    input.Message,
+		Data:       data,
+		OccurredAt: time.Now().UTC(),
+	}
+
+	if err := m.db.Create(event).Error; err != nil {
+		return nil, err
+	}
+	return event, nil
+}
+
+// ListEvents returns recent watcher events for a user in reverse chronological order.
+func (m *StateManager) ListEvents(userID uuid.UUID, limit int) ([]models.WatcherEvent, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	gormDB, ok := database.GetPool(m.db)
+	if !ok || gormDB == nil {
+		return nil, fmt.Errorf("database pool unavailable")
+	}
+
+	var events []models.WatcherEvent
+	if err := gormDB.
+		Where("user_id = ?", userID).
+		Order("occurred_at DESC").
+		Limit(limit).
+		Find(&events).Error; err != nil {
+		return nil, err
+	}
+	return events, nil
 }

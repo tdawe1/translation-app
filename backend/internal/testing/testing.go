@@ -29,10 +29,10 @@ func SetupTestEnvironment() {
 		"GOOGLE_OAUTH_CLIENT_SECRET":  "test-client-secret",
 		"GITHUB_OAUTH_CLIENT_ID":      "test-client-id",
 		"GITHUB_OAUTH_CLIENT_SECRET":  "test-client-secret",
-		"OAUTH_REDIRECT_URL":          "http://localhost:8000",
-		"FRONTEND_URL":                "http://localhost:3001",
+		"OAUTH_REDIRECT_URL":          "http://localhost:37181",
+		"FRONTEND_URL":                "http://localhost:37180",
 		"LEMONSQUEEZY_WEBHOOK_SECRET": "test-webhook-secret",
-		"ALLOWED_ORIGINS":             "http://localhost:3000,http://localhost:3001",
+		"ALLOWED_ORIGINS":             "http://localhost:37180",
 		"ENV":                         "test",
 	}
 

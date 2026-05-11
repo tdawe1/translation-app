@@ -19,6 +19,7 @@ import (
 	apperrors "github.com/tdawe1/translation-app/internal/errors"
 	"github.com/tdawe1/translation-app/internal/logger"
 	"github.com/tdawe1/translation-app/internal/middleware"
+	"github.com/tdawe1/translation-app/internal/models"
 	"github.com/tdawe1/translation-app/internal/password"
 	"github.com/tdawe1/translation-app/internal/validation"
 )
@@ -147,10 +148,40 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		return RespondWithAPIError(c, status, errObj)
 	}
 
-	SetSessionCookie(c, result.AccessToken, h.sessionConfig)
+	if err := h.setSessionCookies(c, result.User, result.AccessToken); err != nil {
+		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrTokenError, "Failed to create session")
+	}
 
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
 		AccessToken: result.AccessToken,
+		User:        UserToResponse(result.User),
+	})
+}
+
+func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
+	result, apiErr := h.userService.RotateRefreshToken(c.Cookies(RefreshCookieName), h.sessionConfig.RefreshExpires)
+	if apiErr != nil {
+		ClearSessionCookie(c, h.sessionConfig)
+		ClearRefreshCookie(c, h.sessionConfig)
+
+		errObj := getAPIError(apiErr)
+		if errObj == nil {
+			return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrInternal, "Internal error")
+		}
+		status := h.statusCodeForError(errObj.Code)
+		return RespondWithAPIError(c, status, errObj)
+	}
+
+	accessToken, err := h.tokenService.GenerateAccessToken(result.User.ID, result.User.Role)
+	if err != nil {
+		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrTokenError, "Failed to create session")
+	}
+
+	SetSessionCookie(c, accessToken, h.sessionConfig)
+	SetRefreshCookie(c, result.RefreshToken, h.sessionConfig)
+
+	return c.JSON(AuthResponse{
+		AccessToken: accessToken,
 		User:        UserToResponse(result.User),
 	})
 }
@@ -228,7 +259,12 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 		}
 	}
 
+	if err := h.userService.RevokeRefreshToken(c.Cookies(RefreshCookieName)); err != nil {
+		logger.Log.Warn("failed_to_revoke_refresh_token", zap.Error(err))
+	}
+
 	ClearSessionCookie(c, h.sessionConfig)
+	ClearRefreshCookie(c, h.sessionConfig)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -338,10 +374,22 @@ func (h *AuthHandler) VerifyMagicLink(c *fiber.Ctx) error {
 	}
 
 	// Set session cookie with proper session config
-	SetSessionCookie(c, accessToken, h.sessionConfig)
+	if err := h.setSessionCookies(c, user, accessToken); err != nil {
+		return RespondWithError(c, fiber.StatusInternalServerError, apperrors.ErrTokenError, "Failed to create session")
+	}
 
 	// Redirect to dashboard
 	return c.Redirect("/dashboard", fiber.StatusTemporaryRedirect)
+}
+
+func (h *AuthHandler) setSessionCookies(c *fiber.Ctx, user *models.User, accessToken string) error {
+	refreshToken, err := h.userService.CreateRefreshToken(user.ID, h.sessionConfig.RefreshExpires)
+	if err != nil {
+		return err
+	}
+	SetSessionCookie(c, accessToken, h.sessionConfig)
+	SetRefreshCookie(c, refreshToken, h.sessionConfig)
+	return nil
 }
 
 // ChangePasswordRequest represents password change input

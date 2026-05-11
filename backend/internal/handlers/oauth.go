@@ -39,14 +39,14 @@ func NewOAuthHandler(db database.Database, tokenService *auth.TokenService, cfg 
 	// This should be the backend URL with the callback endpoint path
 	callbackURL := cfg.OAuthRedirectURL
 	if callbackURL == "" {
-		callbackURL = "http://localhost:8000"
+		callbackURL = "http://localhost:37181"
 	}
 
 	// Frontend URL for redirecting users after successful login
 	// This is where users land after OAuth completes
 	frontendURL := cfg.FrontendURL
 	if frontendURL == "" {
-		frontendURL = "http://localhost:3001"
+		frontendURL = "http://localhost:37180"
 	}
 
 	// Load OAuth config from centralized config

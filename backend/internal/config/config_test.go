@@ -16,7 +16,8 @@ func TestLoad_Development(t *testing.T) {
 	cfg := Load()
 
 	assert.Equal(t, "development", cfg.Env)
-	assert.Equal(t, "8000", cfg.Port)
+	assert.Equal(t, "", cfg.Host)
+	assert.Equal(t, "37181", cfg.Port)
 	assert.False(t, cfg.CookieSecure)
 	assert.NotEmpty(t, cfg.JWTSecret, "Should generate default JWT secret in dev")
 }

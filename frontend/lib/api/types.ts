@@ -15,13 +15,13 @@ export interface User {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  provider?: string;                    // 'google', 'github', or undefined
+  provider?: string; // 'google', 'github', or undefined
   oauth_accounts?: OAuthAccount[];
 }
 
 export interface OAuthAccount {
-  provider: string;    // 'google', 'github'
-  created_at: string;  // ISO 8601 timestamp
+  provider: string; // 'google', 'github'
+  created_at: string; // ISO 8601 timestamp
 }
 
 export interface AuthResponse {
@@ -58,12 +58,73 @@ export interface WatcherConfig {
 }
 
 export interface WatcherState {
+  worker_id: string;
   user_id: string;
   watcher_status: string;
+  overall_status: string;
+  feed_status: string;
+  browser_status: string;
+  action_status: string;
+  alert_status: string;
+  profile_status: string;
+  current_job_id?: string;
+  current_action_step?: string;
+  current_url?: string;
+  current_title?: string;
+  frontend_url?: string;
+  frontend_title?: string;
+  frontend_last_seen_at?: string;
+  logged_in_state?: string;
+  browser_process_alive?: boolean;
+  devtools_connected?: boolean;
+  last_rss_poll_started_at?: string;
+  last_rss_poll_ok_at?: string;
+  rss_consecutive_failures?: number;
+  last_ws_connect_at?: string;
+  last_ws_message_at?: string;
+  last_ws_pong_at?: string;
+  last_ws_close_code?: number | null;
+  last_ws_close_reason?: string;
+  ws_reconnect_count?: number;
+  last_browser_heartbeat_at?: string;
+  last_error?: string;
+  last_critical_alert?: string;
+  latest_screenshot_artifact_id?: string;
+  latest_screenshot_url?: string;
   total_jobs_found: number;
   total_jobs_accepted: number;
   total_earnings: number;
   last_activity: string;
+  updated_at?: string;
+}
+
+export interface BrowserStateSyncRequest {
+  current_url?: string;
+  current_title?: string;
+  current_action_step?: string;
+  current_job_id?: string;
+  frontend_url?: string;
+  frontend_title?: string;
+  logged_in_state?: "unknown" | "logged_in" | "logged_out";
+  browser_process_alive?: boolean;
+  devtools_connected?: boolean;
+}
+
+export interface WatcherEvent {
+  id: string;
+  worker_id: string;
+  user_id: string;
+  level: string;
+  source: string;
+  type: string;
+  job_id?: string;
+  message: string;
+  data: Record<string, unknown>;
+  occurred_at: string;
+}
+
+export interface WatcherEventsResponse {
+  events: WatcherEvent[];
 }
 
 export type TranslationJobStatus =

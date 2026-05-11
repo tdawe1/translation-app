@@ -6,7 +6,12 @@
  */
 
 // Export client and error handling
-export { client, HttpClient, ApiErrorClass as ApiError, ApiErrorClass } from "./client";
+export {
+  client,
+  HttpClient,
+  ApiErrorClass as ApiError,
+  ApiErrorClass,
+} from "./client";
 
 // Export all types
 export type {
@@ -19,6 +24,9 @@ export type {
   ChangePasswordRequest,
   WatcherConfig,
   WatcherState,
+  BrowserStateSyncRequest,
+  WatcherEvent,
+  WatcherEventsResponse,
   TranslationJob,
   TranslationSegment,
   JobSummary,

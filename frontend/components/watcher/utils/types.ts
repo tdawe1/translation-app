@@ -4,7 +4,7 @@
 
 import { Job } from "@/store/jobs";
 
-export type FilterSource = "all" | "rss" | "websocket";
+export type FilterSource = "all" | "rss" | "websocket" | "external";
 export type SortBy = "newest" | "reward-high" | "reward-low";
 export type TimeFilter = "all" | "today" | "hour" | "week";
 

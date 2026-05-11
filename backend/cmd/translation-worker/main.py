@@ -27,7 +27,7 @@ from review.multimodel import MultiModelTranslator
 from review.judge import TranslationJudge
 from review.exporter import BilingualCSVExporter
 from review.llm import get_provider, AnthropicProvider
-from review.models import ReviewConfig
+from review.models import PathValidationError, ReviewConfig
 
 
 logger = logging.getLogger(__name__)
@@ -303,10 +303,9 @@ class SegmentExtractor:
                 except ValueError:
                     continue
             if not in_allowed_base:
-                print(
-                    f"Warning: Source file outside allowed directories: {source_file}"
+                raise PathValidationError(
+                    source_file, "outside_allowed_directories"
                 )
-                return []
 
         ext = resolved.suffix.lower()
 

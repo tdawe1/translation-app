@@ -1,0 +1,15 @@
+[Unit]
+Description=GengoWatcher translation-app backend
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/user/projects/translation-app
+EnvironmentFile=/home/user/projects/translation-app/.env
+ExecStartPre=/usr/bin/docker compose up -d postgres redis mailhog
+ExecStart=/usr/bin/env HOST=10.73.0.2 PORT=8001 FRONTEND_URL=http://10.73.0.2:32000 OAUTH_REDIRECT_URL=http://10.73.0.2:8001 ALLOWED_ORIGINS=http://10.73.0.2:32000 /home/user/projects/translation-app/backend/server
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

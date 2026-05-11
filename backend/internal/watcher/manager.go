@@ -34,11 +34,13 @@ func NewTestManager(db database.Database) *UserWatcherManager {
 	}
 
 	return &UserWatcherManager{
-		db:           db,
-		redis:        redisClient,
-		watchers:     make(map[uuid.UUID]*WatcherInstance),
-		stateManager: NewStateManager(db),
-		jobProcessor: NewJobProcessor(db, redisClient),
+		db:                   db,
+		redis:                redisClient,
+		watchers:             make(map[uuid.UUID]*WatcherInstance),
+		stateManager:         NewStateManager(db),
+		jobProcessor:         NewJobProcessor(db, redisClient),
+		browserFactory:       func(uuid.UUID) BrowserController { return noopBrowserController{} },
+		actionCoordinatorCfg: ActionCoordinatorConfig{QueueSize: defaultActionQueueSize},
 	}
 }
 
@@ -61,6 +63,29 @@ func (m *minimalTestDB) Limit(limit int) *gorm.DB                               
 func (m *minimalTestDB) Order(value interface{}) *gorm.DB                        { return nil }
 func (m *minimalTestDB) Count(count *int64) *gorm.DB                             { return nil }
 
+type noopBrowserController struct{}
+
+func (noopBrowserController) Start(context.Context) error { return nil }
+func (noopBrowserController) Stop(context.Context) error  { return nil }
+func (noopBrowserController) Restart(context.Context) error {
+	return nil
+}
+func (noopBrowserController) Health(context.Context) error {
+	return nil
+}
+func (noopBrowserController) CaptureScreenshot(context.Context) (*BrowserActionResult, error) {
+	return &BrowserActionResult{
+		Outcome: BrowserOutcomeOpened,
+		Message: "noop screenshot",
+	}, nil
+}
+func (noopBrowserController) OpenJob(context.Context, Job) (*BrowserActionResult, error) {
+	return &BrowserActionResult{Outcome: BrowserOutcomeOpened, Message: "noop browser"}, nil
+}
+func (noopBrowserController) AcceptJob(context.Context, Job, string) (*BrowserActionResult, error) {
+	return &BrowserActionResult{Outcome: BrowserOutcomeAccepted, Message: "noop accept"}, nil
+}
+
 // Job represents a detected job from RSS or WebSocket
 type Job struct {
 	ID        string    `json:"id"`
@@ -77,36 +102,64 @@ type Job struct {
 
 // WatcherInstance represents an active watcher for a user
 type WatcherInstance struct {
-	UserID    uuid.UUID
-	Config    *models.WatcherConfig
-	State     *models.WatcherState
-	RSS       *RSSMonitor
-	WebSocket *WebSocketMonitor
-	Context   context.Context
-	Cancel    context.CancelFunc
-	Running   bool
-	mu        sync.RWMutex
+	UserID            uuid.UUID
+	Config            *models.WatcherConfig
+	State             *models.WatcherState
+	RSS               *RSSMonitor
+	WebSocket         *WebSocketMonitor
+	Browser           BrowserController
+	ActionCoordinator *ActionCoordinator
+	Context           context.Context
+	Cancel            context.CancelFunc
+	Running           bool
+	mu                sync.RWMutex
 }
+
+type BrowserFactory func(userID uuid.UUID) BrowserController
+
+type ManagerOption func(*UserWatcherManager)
 
 // UserWatcherManager manages per-user watcher instances
 type UserWatcherManager struct {
-	db           database.Database
-	redis        *redis.Client
-	watchers     map[uuid.UUID]*WatcherInstance
-	mu           sync.RWMutex
-	stateManager *StateManager
-	jobProcessor *JobProcessor
+	db                   database.Database
+	redis                *redis.Client
+	watchers             map[uuid.UUID]*WatcherInstance
+	mu                   sync.RWMutex
+	stateManager         *StateManager
+	jobProcessor         *JobProcessor
+	browserFactory       BrowserFactory
+	actionCoordinatorCfg ActionCoordinatorConfig
+}
+
+func WithBrowserFactory(factory BrowserFactory) ManagerOption {
+	return func(m *UserWatcherManager) {
+		m.browserFactory = factory
+	}
+}
+
+func WithActionCoordinatorConfig(config ActionCoordinatorConfig) ManagerOption {
+	return func(m *UserWatcherManager) {
+		m.actionCoordinatorCfg = config
+	}
 }
 
 // NewUserWatcherManager creates a new watcher manager
-func NewUserWatcherManager(db database.Database, redisClient *redis.Client) *UserWatcherManager {
-	return &UserWatcherManager{
-		db:           db,
-		redis:        redisClient,
-		watchers:     make(map[uuid.UUID]*WatcherInstance),
-		stateManager: NewStateManager(db),
-		jobProcessor: NewJobProcessor(db, redisClient),
+func NewUserWatcherManager(db database.Database, redisClient *redis.Client, opts ...ManagerOption) *UserWatcherManager {
+	manager := &UserWatcherManager{
+		db:                   db,
+		redis:                redisClient,
+		watchers:             make(map[uuid.UUID]*WatcherInstance),
+		stateManager:         NewStateManager(db),
+		jobProcessor:         NewJobProcessor(db, redisClient),
+		actionCoordinatorCfg: ActionCoordinatorConfigFromEnv(),
 	}
+	manager.browserFactory = func(userID uuid.UUID) BrowserController {
+		return NewConfiguredBrowserWorker(userID, BrowserWorkerConfigFromEnv())
+	}
+	for _, opt := range opts {
+		opt(manager)
+	}
+	return manager
 }
 
 // ProcessExternalJob runs an externally discovered watcher job through the normal pipeline.
@@ -122,7 +175,78 @@ func (m *UserWatcherManager) ProcessExternalJob(
 	if job.Source == "" {
 		job.Source = "external"
 	}
-	return m.jobProcessor.ProcessJob(ctx, job)
+	result, err := m.jobProcessor.ProcessJobWithResult(ctx, job)
+	if err != nil {
+		return err
+	}
+	if !result.Matched {
+		return nil
+	}
+
+	m.mu.RLock()
+	instance := m.watchers[userID]
+	m.mu.RUnlock()
+	if instance == nil || !instance.Running || instance.ActionCoordinator == nil {
+		return nil
+	}
+	return instance.ActionCoordinator.Submit(job, shouldAutoAccept(job, instance.Config))
+}
+
+// UpdateBrowserState stores the dashboard browser snapshot and streams it to
+// connected dashboard clients as a watcher health patch.
+func (m *UserWatcherManager) UpdateBrowserState(
+	ctx context.Context,
+	userID uuid.UUID,
+	updates map[string]interface{},
+) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	if err := m.stateManager.UpdateRuntime(userID, updates); err != nil {
+		return err
+	}
+	if err := m.jobProcessor.PublishEvent(ctx, userID, EventTypeWatcherHealth, updates); err != nil {
+		log.Printf("[WATCHER] Failed to publish browser state update for user %s: %v", userID, err)
+	}
+	return nil
+}
+
+func (m *UserWatcherManager) RestartBrowser(ctx context.Context, userID uuid.UUID) error {
+	instance, err := m.runningInstance(userID)
+	if err != nil {
+		return err
+	}
+	if instance.ActionCoordinator == nil {
+		return fmt.Errorf("action coordinator unavailable for user %s", userID)
+	}
+	return instance.ActionCoordinator.RestartBrowser(ctx)
+}
+
+func (m *UserWatcherManager) CaptureBrowserScreenshot(
+	ctx context.Context,
+	userID uuid.UUID,
+) (*BrowserActionResult, error) {
+	instance, err := m.runningInstance(userID)
+	if err != nil {
+		return nil, err
+	}
+	if instance.ActionCoordinator == nil {
+		return nil, fmt.Errorf("action coordinator unavailable for user %s", userID)
+	}
+	return instance.ActionCoordinator.CaptureScreenshot(ctx)
+}
+
+func (m *UserWatcherManager) runningInstance(userID uuid.UUID) (*WatcherInstance, error) {
+	m.mu.RLock()
+	instance := m.watchers[userID]
+	m.mu.RUnlock()
+	if instance == nil || !instance.Running {
+		return nil, fmt.Errorf("watcher is not running for user %s", userID)
+	}
+	return instance, nil
 }
 
 // StartWatcher starts a watcher for a user
@@ -163,9 +287,34 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 	// Create monitors
 	rss := NewRSSMonitor(config.RSSFeedURL, userID, config.MinReward)
 	ws := NewWebSocketMonitor(userID, config.GengoSessionToken, config.GengoUserKey, config.GengoUserID, user.IsAdmin())
+	var browser BrowserController
+	if m.browserFactory != nil {
+		browser = m.browserFactory(userID)
+	}
+	actionReporter := &dbActionReporter{
+		userID:       userID,
+		stateManager: m.stateManager,
+		jobProcessor: m.jobProcessor,
+		db:           m.db,
+	}
+	actionCoordinator := NewActionCoordinator(userID, browser, actionReporter, m.actionCoordinatorCfg)
 	runtimeUpdater := func(updates map[string]interface{}) error {
 		if err := m.stateManager.UpdateRuntime(userID, updates); err != nil {
 			return err
+		}
+		for _, event := range runtimeEventsFromUpdates(updates) {
+			if _, err := m.stateManager.AppendEvent(userID, event); err != nil {
+				log.Printf("[WATCHER] Failed to append runtime event for user %s: %v", userID, err)
+				continue
+			}
+			if err := m.jobProcessor.PublishEvent(context.Background(), userID, event.Type, map[string]interface{}{
+				"message": event.Message,
+				"source":  event.Source,
+				"level":   event.Level,
+				"data":    event.Data,
+			}); err != nil {
+				log.Printf("[WATCHER] Failed to publish runtime event for user %s: %v", userID, err)
+			}
 		}
 		if isHealthUpdate(updates) {
 			if err := m.jobProcessor.PublishEvent(context.Background(), userID, EventTypeWatcherHealth, updates); err != nil {
@@ -178,14 +327,16 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 	ws.RuntimeUpdate = runtimeUpdater
 
 	instance := &WatcherInstance{
-		UserID:    userID,
-		Config:    config,
-		State:     state,
-		RSS:       rss,
-		WebSocket: ws,
-		Context:   ctx,
-		Cancel:    cancel,
-		Running:   true,
+		UserID:            userID,
+		Config:            config,
+		State:             state,
+		RSS:               rss,
+		WebSocket:         ws,
+		Browser:           browser,
+		ActionCoordinator: actionCoordinator,
+		Context:           ctx,
+		Cancel:            cancel,
+		Running:           true,
 	}
 
 	m.watchers[userID] = instance
@@ -207,9 +358,9 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 		profileStatus = ProfileStatusSeeded
 		overallStatus = OverallStatusRunning
 		alertStatus = AlertStatusNone
-		browserStatus = BrowserStatusDashboard
-		browserEventType = EventTypeBrowserDashboard
-		runtimeMode = "First-stage mode: job alerts open from the web dashboard"
+		browserStatus = BrowserStatusStarting
+		browserEventType = EventTypeBrowserStarted
+		runtimeMode = "Server-owned worker browser starting"
 		actionStep = "Monitoring RSS and realtime WebSocket"
 		lastError = ""
 	}
@@ -269,8 +420,56 @@ func (m *UserWatcherManager) StartWatcher(userID uuid.UUID) error {
 	}); err != nil {
 		log.Printf("[WATCHER] Failed to publish browser event for user %s: %v", userID, err)
 	}
+	actionCoordinator.Start(instance.Context)
 
 	log.Printf("[WATCHER] Watcher started successfully for user %s at %s", userID, time.Now().Format(time.RFC3339))
+	return nil
+}
+
+// RestoreRunningWatchers starts watcher workers that were marked running before
+// the backend process restarted.
+func (m *UserWatcherManager) RestoreRunningWatchers(ctx context.Context) error {
+	var states []models.WatcherState
+	if err := m.db.Where("watcher_status = ?", StatusRunning).Find(&states).Error; err != nil {
+		return fmt.Errorf("load running watcher states: %w", err)
+	}
+
+	for _, state := range states {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		m.appendAndPublishManagerEvent(context.Background(), state.UserID, EventTypeWorkerRestoreStart, WatcherEventInput{
+			Level:   "info",
+			Source:  "system",
+			Type:    EventTypeWorkerRestoreStart,
+			Message: "Restoring watcher after backend restart",
+		})
+
+		if err := m.StartWatcher(state.UserID); err != nil {
+			log.Printf("[WATCHER] Failed to restore watcher for user %s: %v", state.UserID, err)
+			m.appendAndPublishManagerEvent(context.Background(), state.UserID, EventTypeWorkerRestoreFailed, WatcherEventInput{
+				Level:   "warning",
+				Source:  "system",
+				Type:    EventTypeWorkerRestoreFailed,
+				Message: "Watcher restore failed",
+				Data: map[string]interface{}{
+					"error": err.Error(),
+				},
+			})
+			continue
+		}
+		m.appendAndPublishManagerEvent(context.Background(), state.UserID, EventTypeWorkerRestoreOK, WatcherEventInput{
+			Level:   "info",
+			Source:  "system",
+			Type:    EventTypeWorkerRestoreOK,
+			Message: "Watcher restored after backend restart",
+		})
+		log.Printf("[WATCHER] Restored watcher for user %s", state.UserID)
+	}
+
 	return nil
 }
 
@@ -288,18 +487,24 @@ func (m *UserWatcherManager) StopWatcher(userID uuid.UUID) error {
 
 	instance.Cancel()
 	instance.Running = false
+	if instance.ActionCoordinator != nil {
+		instance.ActionCoordinator.Stop(context.Background())
+	}
 
 	// Update state
 	if err := m.stateManager.UpdateRuntime(userID, map[string]interface{}{
-		"watcher_status":      StatusStopped,
-		"overall_status":      OverallStatusStopped,
-		"feed_status":         FeedStatusStopped,
-		"action_status":       ActionStatusIdle,
-		"alert_status":        AlertStatusNone,
-		"current_action_step": "",
-		"current_job_id":      "",
-		"last_error":          "",
-		"last_activity":       time.Now().UTC(),
+		"watcher_status":        StatusStopped,
+		"overall_status":        OverallStatusStopped,
+		"feed_status":           FeedStatusStopped,
+		"browser_status":        BrowserStatusStopped,
+		"action_status":         ActionStatusIdle,
+		"alert_status":          AlertStatusNone,
+		"browser_process_alive": false,
+		"dev_tools_connected":   false,
+		"current_action_step":   "",
+		"current_job_id":        "",
+		"last_error":            "",
+		"last_activity":         time.Now().UTC(),
 	}); err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
@@ -391,10 +596,17 @@ func (m *UserWatcherManager) runWatcher(instance *WatcherInstance) {
 			jobCount++
 			log.Printf("[WATCHER] Processing job #%d for user %s: %s (%s, $%.2f)",
 				jobCount, instance.UserID, job.ID, job.Source, job.Reward)
-			if err := m.jobProcessor.ProcessJob(instance.Context, job); err != nil {
+			result, err := m.jobProcessor.ProcessJobWithResult(instance.Context, job)
+			if err != nil {
 				log.Printf("[WATCHER] Error processing job for user %s: %v", instance.UserID, err)
 			} else {
 				log.Printf("[WATCHER] Job processed successfully for user %s: %s", instance.UserID, job.ID)
+				if result.Matched && instance.ActionCoordinator != nil {
+					autoAccept := shouldAutoAccept(job, instance.Config)
+					if err := instance.ActionCoordinator.Submit(job, autoAccept); err != nil {
+						log.Printf("[WATCHER] Failed to queue browser action for user %s job %s: %v", instance.UserID, job.ID, err)
+					}
+				}
 			}
 		}
 	}
@@ -424,19 +636,62 @@ func (m *UserWatcherManager) StopAll() {
 		if instance.Running {
 			instance.Cancel()
 			instance.Running = false
+			if instance.ActionCoordinator != nil {
+				instance.ActionCoordinator.Stop(context.Background())
+			}
 			m.stateManager.UpdateRuntime(userID, map[string]interface{}{
-				"watcher_status": StatusStopped,
-				"overall_status": OverallStatusStopped,
-				"feed_status":    FeedStatusStopped,
-				"action_status":  ActionStatusIdle,
-				"alert_status":   AlertStatusNone,
-				"last_activity":  time.Now().UTC(),
+				"watcher_status":        StatusStopped,
+				"overall_status":        OverallStatusStopped,
+				"feed_status":           FeedStatusStopped,
+				"browser_status":        BrowserStatusStopped,
+				"action_status":         ActionStatusIdle,
+				"alert_status":          AlertStatusNone,
+				"browser_process_alive": false,
+				"dev_tools_connected":   false,
+				"last_activity":         time.Now().UTC(),
 			})
 			m.jobProcessor.PublishEvent(ctx, userID, EventTypeWorkerStopped, map[string]interface{}{
 				"watcher_status": StatusStopped,
 				"overall_status": OverallStatusStopped,
 			})
 		}
+	}
+}
+
+// ShutdownRunningWatchers stops in-process workers for backend shutdown while
+// preserving watcher_status=running so RestoreRunningWatchers can bring them
+// back on process start.
+func (m *UserWatcherManager) ShutdownRunningWatchers() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for userID, instance := range m.watchers {
+		if !instance.Running {
+			continue
+		}
+		instance.Cancel()
+		instance.Running = false
+		if instance.ActionCoordinator != nil {
+			instance.ActionCoordinator.Stop(context.Background())
+		}
+		if err := m.stateManager.UpdateRuntime(userID, map[string]interface{}{
+			"watcher_status":        StatusRunning,
+			"overall_status":        OverallStatusDegraded,
+			"feed_status":           FeedStatusStopped,
+			"browser_status":        BrowserStatusStopped,
+			"browser_process_alive": false,
+			"dev_tools_connected":   false,
+			"current_action_step":   "Backend shutting down; watcher will restore on startup",
+			"last_activity":         time.Now().UTC(),
+		}); err != nil {
+			log.Printf("[WATCHER] Failed to persist shutdown state for user %s: %v", userID, err)
+		}
+		m.appendAndPublishManagerEvent(context.Background(), userID, EventTypeWorkerShutdown, WatcherEventInput{
+			Level:   "info",
+			Source:  "system",
+			Type:    EventTypeWorkerShutdown,
+			Message: "Backend shutdown persisted watcher for restore",
+		})
 	}
 }
 
@@ -460,6 +715,42 @@ func (m *UserWatcherManager) GetEvents(userID uuid.UUID, limit int) ([]models.Wa
 	return m.stateManager.ListEvents(userID, limit)
 }
 
+func (m *UserWatcherManager) appendAndPublishManagerEvent(
+	ctx context.Context,
+	userID uuid.UUID,
+	eventType string,
+	input WatcherEventInput,
+) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if input.Type == "" {
+		input.Type = eventType
+	}
+	if input.Source == "" {
+		input.Source = "system"
+	}
+	if input.Level == "" {
+		input.Level = "info"
+	}
+	if _, err := m.stateManager.AppendEvent(userID, input); err != nil {
+		log.Printf("[WATCHER] Failed to append manager event %s for user %s: %v", eventType, userID, err)
+		return
+	}
+	data := input.Data
+	if data == nil {
+		data = map[string]interface{}{}
+	}
+	if err := m.jobProcessor.PublishEvent(ctx, userID, eventType, map[string]interface{}{
+		"message": input.Message,
+		"source":  input.Source,
+		"level":   input.Level,
+		"data":    data,
+	}); err != nil {
+		log.Printf("[WATCHER] Failed to publish manager event %s for user %s: %v", eventType, userID, err)
+	}
+}
+
 func isHealthUpdate(updates map[string]interface{}) bool {
 	if _, ok := updates["last_ws_pong_at"]; ok {
 		return true
@@ -470,8 +761,74 @@ func isHealthUpdate(updates map[string]interface{}) bool {
 	if _, ok := updates["last_ws_message_at"]; ok {
 		return true
 	}
+	if _, ok := updates["last_browser_heartbeat_at"]; ok {
+		return true
+	}
 	if _, ok := updates["last_rss_poll_ok_at"]; ok {
 		return true
 	}
 	return false
+}
+
+func runtimeEventsFromUpdates(updates map[string]interface{}) []WatcherEventInput {
+	events := make([]WatcherEventInput, 0, 2)
+	if value, ok := updates["last_rss_poll_started_at"]; ok {
+		events = append(events, WatcherEventInput{
+			Level:   "info",
+			Source:  "rss",
+			Type:    EventTypeRSSPollStarted,
+			Message: "RSS poll started",
+			Data:    map[string]interface{}{"last_rss_poll_started_at": value},
+		})
+	}
+	if value, ok := updates["last_rss_poll_ok_at"]; ok {
+		data := map[string]interface{}{"last_rss_poll_ok_at": value}
+		if failures, ok := updates["rss_consecutive_failures"]; ok {
+			data["rss_consecutive_failures"] = failures
+		}
+		events = append(events, WatcherEventInput{
+			Level:   "info",
+			Source:  "rss",
+			Type:    EventTypeRSSPollOK,
+			Message: "RSS poll completed",
+			Data:    data,
+		})
+	}
+	if value, ok := updates["last_ws_connect_at"]; ok {
+		events = append(events, WatcherEventInput{
+			Level:   "info",
+			Source:  "websocket",
+			Type:    EventTypeWebSocketConnected,
+			Message: "Gengo WSS connected",
+			Data:    map[string]interface{}{"last_ws_connect_at": value},
+		})
+	}
+	if value, ok := updates["last_ws_message_at"]; ok {
+		events = append(events, WatcherEventInput{
+			Level:   "info",
+			Source:  "websocket",
+			Type:    EventTypeWebSocketMessage,
+			Message: "Gengo WSS message received",
+			Data:    map[string]interface{}{"last_ws_message_at": value},
+		})
+	}
+	if value, ok := updates["last_ws_pong_at"]; ok {
+		events = append(events, WatcherEventInput{
+			Level:   "info",
+			Source:  "websocket",
+			Type:    EventTypeWebSocketPong,
+			Message: "Gengo WSS pong received",
+			Data:    map[string]interface{}{"last_ws_pong_at": value},
+		})
+	}
+	if reason, ok := updates["last_ws_close_reason"].(string); ok && reason != "" {
+		events = append(events, WatcherEventInput{
+			Level:   "warning",
+			Source:  "websocket",
+			Type:    EventTypeWebSocketClosed,
+			Message: "Gengo WSS disconnected: " + reason,
+			Data:    map[string]interface{}{"last_ws_close_reason": reason},
+		})
+	}
+	return events
 }

@@ -47,11 +47,16 @@ interface JobData {
   title: string;
   reward: number;
   url: string;
-  source: "rss" | "websocket";
-  timestamp?: string;
+  source: string;
+  currency?: string;
+  timestamp?: string | number;
 }
 
 type WSMessage = WSConnectedMessage | WSEventMessage | WSErrorMessage | WSJobDataMessage;
+
+function isWatcherStatePatch(data: unknown): data is Partial<WatcherState> {
+  return typeof data === "object" && data !== null;
+}
 
 // Type guard for JobData
 function isJobData(data: unknown): data is JobData {
@@ -64,14 +69,26 @@ function isJobData(data: unknown): data is JobData {
     typeof d.title === "string" &&
     typeof d.reward === "number" &&
     typeof d.url === "string" &&
-    (d.source === "rss" || d.source === "websocket") &&
-    (d.timestamp === undefined || typeof d.timestamp === "string")
+    typeof d.source === "string" &&
+    d.source.trim().length > 0 &&
+    (d.currency === undefined || typeof d.currency === "string") &&
+    (d.timestamp === undefined || typeof d.timestamp === "string" || typeof d.timestamp === "number")
   );
+}
+
+function normalizeJobTimestamp(timestamp: JobData["timestamp"]): string {
+  if (typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0) {
+    return new Date(timestamp * 1000).toISOString();
+  }
+  if (typeof timestamp === "string" && timestamp.length > 0) {
+    return timestamp;
+  }
+  return new Date().toISOString();
 }
 
 interface UseWatcherWebSocketOptions {
   enabled?: boolean;
-  onJob?: (job: unknown) => void;
+  onJob?: (job: Job) => void;
   onEvent?: (event: string, data: unknown) => void;
   onError?: (error: string) => void;
 }
@@ -87,7 +104,7 @@ export interface WebSocketMetrics {
 }
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:37181/ws";
 
 export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   const { enabled = true, onJob, onEvent, onError } = options;
@@ -102,25 +119,15 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
   const [connectionStartTime, setConnectionStartTime] = useState<number | null>(null);
   const [messagesReceived, setMessagesReceived] = useState(0);
   const [lastMessageTime, setLastMessageTime] = useState<number | null>(null);
-  const [, forceUpdate] = useState(0);
 
   const setState = useWatcherStore((state) => state.setState);
   const addJob = useJobsStore((state) => state.addJob);
 
-  // Calculate uptime in seconds
+  // Calculate uptime when realtime messages arrive instead of forcing a page-wide tick.
   const uptime = useMemo(() => {
     if (!connectionStartTime) return 0;
     return Math.floor((Date.now() - connectionStartTime) / 1000);
-  }, [connectionStartTime, forceUpdate]);
-
-  // Update uptime every second when connected
-  useEffect(() => {
-    if (!connectionStartTime) return;
-    const interval = setInterval(() => {
-      forceUpdate((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [connectionStartTime, forceUpdate]);
+  }, [connectionStartTime, lastMessageTime]);
 
   // Clean up connection
   const cleanup = useCallback(() => {
@@ -192,14 +199,29 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
               console.log("[WS] Event:", message.event, message.data);
               onEvent?.(message.event, message.data);
 
-              // Update store for known events
-              if (message.event === "watcher.started" || message.event === "watcher.stopped") {
-                // Trigger state refresh
+              if (message.event === "watcher.health" && isWatcherStatePatch(message.data)) {
                 const currentState = useWatcherStore.getState().state;
                 if (currentState) {
                   setState({
                     ...currentState,
-                    watcher_status: message.event === "watcher.started" ? "running" : "stopped",
+                    ...message.data,
+                  });
+                }
+              }
+
+              // Update store for known events
+              if (message.event === "worker.started" || message.event === "worker.stopped") {
+                // Trigger state refresh
+                const currentState = useWatcherStore.getState().state;
+                if (currentState) {
+                  const nextWatcherStatus = message.event === "worker.started" ? "running" : "stopped";
+                  setState({
+                    ...currentState,
+                    watcher_status: nextWatcherStatus,
+                    overall_status:
+                      message.event === "worker.started"
+                        ? "running"
+                        : currentState.overall_status,
                   });
                 }
               }
@@ -214,15 +236,17 @@ export function useWatcherWebSocket(options: UseWatcherWebSocketOptions = {}) {
               console.log("[WS] New job:", message.data);
               // Use type guard to safely validate job data
               if (isJobData(message.data)) {
-                addJob({
+                const job: Job = {
                   id: message.data.id,
                   title: message.data.title,
                   reward: message.data.reward,
                   url: message.data.url,
                   source: message.data.source,
-                  timestamp: message.data.timestamp || new Date().toISOString(),
-                });
-                onJob?.(message.data);
+                  currency: message.data.currency,
+                  timestamp: normalizeJobTimestamp(message.data.timestamp),
+                };
+                addJob(job);
+                onJob?.(job);
               } else {
                 console.warn("[WS] Invalid job data received:", message.data);
               }
